@@ -1,0 +1,110 @@
+import { ipcMain } from 'electron';
+import { randomUUID } from 'node:crypto';
+import { getDb } from '../database';
+import type { Transaction, TransactionFilters } from '../../shared/types';
+
+const JOIN = `
+  SELECT t.*, a.name as account_name,
+    c.name as category_name, c.icon as category_icon, c.color as category_color
+  FROM transactions t
+  JOIN accounts a ON t.account_id = a.id
+  JOIN categories c ON t.category_id = c.id
+`;
+
+export function registerTransactionHandlers(): void {
+  ipcMain.handle('transactions:list', (_e, filters: TransactionFilters = {}) => {
+    const conds: string[] = ['1=1'];
+    const params: unknown[] = [];
+
+    if (filters.month != null) {
+      conds.push("CAST(strftime('%m', t.date) AS INTEGER) = ?");
+      params.push(filters.month);
+    }
+    if (filters.year != null) {
+      conds.push("CAST(strftime('%Y', t.date) AS INTEGER) = ?");
+      params.push(filters.year);
+    }
+    if (filters.account_id)  { conds.push('t.account_id = ?');  params.push(filters.account_id); }
+    if (filters.category_id) { conds.push('t.category_id = ?'); params.push(filters.category_id); }
+    if (filters.type)        { conds.push('t.type = ?');        params.push(filters.type); }
+    if (filters.status)      { conds.push('t.status = ?');      params.push(filters.status); }
+
+    const limit  = filters.limit  ?? 200;
+    const offset = filters.offset ?? 0;
+
+    return getDb()
+      .prepare(`${JOIN} WHERE ${conds.join(' AND ')} ORDER BY t.date DESC, t.created_at DESC LIMIT ? OFFSET ?`)
+      .all(...params, limit, offset);
+  });
+
+  ipcMain.handle('transactions:get', (_e, id: string) =>
+    getDb().prepare(`${JOIN} WHERE t.id = ?`).get(id) ?? null
+  );
+
+  ipcMain.handle('transactions:create', (_e, data: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>) => {
+    const id = randomUUID();
+    getDb().prepare(
+      'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,?)'
+    ).run(id, data.account_id, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0);
+    return getDb().prepare(`${JOIN} WHERE t.id = ?`).get(id);
+  });
+
+  ipcMain.handle('transactions:update', (_e, { id, ...data }: Partial<Transaction> & { id: string }) => {
+    getDb().prepare(
+      `UPDATE transactions SET account_id=?, category_id=?, description=?, amount=?, type=?, date=?, status=?, notes=?, recurring=?, updated_at=datetime('now') WHERE id=?`
+    ).run(data.account_id, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, id);
+    return getDb().prepare(`${JOIN} WHERE t.id = ?`).get(id);
+  });
+
+  ipcMain.handle('transactions:delete', (_e, id: string) => {
+    getDb().prepare('DELETE FROM transactions WHERE id = ?').run(id);
+  });
+
+  ipcMain.handle('transactions:getMonthlySummary', (_e, { month, year }: { month: number; year: number }) => {
+    const row = getDb().prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END), 0) as income,
+        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expense
+      FROM transactions
+      WHERE CAST(strftime('%m', date) AS INTEGER) = ?
+        AND CAST(strftime('%Y', date) AS INTEGER) = ?
+    `).get(month, year) as { income: number; expense: number };
+    return { ...row, balance: row.income - row.expense };
+  });
+
+  ipcMain.handle('transactions:getMonthlyHistory', (_e, months = 6) => {
+    const rows: { label: string; income: number; expense: number }[] = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      const m = d.getMonth() + 1;
+      const y = d.getFullYear();
+      const label = d.toLocaleDateString('pt-BR', { month: 'short' });
+      const row = getDb().prepare(`
+        SELECT
+          COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END), 0) as income,
+          COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expense
+        FROM transactions
+        WHERE CAST(strftime('%m', date) AS INTEGER) = ?
+          AND CAST(strftime('%Y', date) AS INTEGER) = ?
+      `).get(m, y) as { income: number; expense: number };
+      rows.push({ label, ...row });
+    }
+    return rows;
+  });
+
+  ipcMain.handle('transactions:getExpensesByCategory', (_e, { month, year }: { month: number; year: number }) => {
+    return getDb().prepare(`
+      SELECT c.name, c.color, COALESCE(SUM(t.amount), 0) as total
+      FROM categories c
+      LEFT JOIN transactions t ON t.category_id = c.id AND t.type = 'expense'
+        AND CAST(strftime('%m', t.date) AS INTEGER) = ?
+        AND CAST(strftime('%Y', t.date) AS INTEGER) = ?
+      WHERE c.type = 'expense'
+      GROUP BY c.id
+      HAVING total > 0
+      ORDER BY total DESC
+    `).all(month, year);
+  });
+}

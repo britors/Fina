@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+      background: #0C1A14;
+      color: #fff;
+      width: 520px;
+      height: 300px;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+      border-radius: 14px;
+      -webkit-app-region: drag;
+      user-select: none;
+      position: relative;
+    }
+
+    /* Subtle grid lines — same as banner */
+    .grid {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .grid line { stroke: #1D9E75; stroke-width: 0.3; opacity: 0.15; }
+
+    /* Left glow */
+    .glow {
+      position: absolute;
+      left: -40px; top: 50%;
+      transform: translateY(-50%);
+      width: 200px; height: 200px;
+      background: radial-gradient(circle, rgba(29,158,117,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* Left side */
+    .left {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 0 36px;
+      flex: 0 0 auto;
+      z-index: 1;
+    }
+
+    /* Icon (bar chart in circle — from fina_logo.svg) */
+    .icon-wrap {
+      margin-bottom: 18px;
+      animation: pop 0.45s cubic-bezier(0.34,1.56,0.64,1) both;
+    }
+    .icon-wrap svg { width: 68px; height: 68px; display: block; }
+
+    .brand {
+      font-size: 46px;
+      font-weight: 300;
+      letter-spacing: -1.5px;
+      color: #fff;
+      line-height: 1;
+      animation: fadeUp 0.4s 0.1s ease both;
+    }
+
+    .tagline {
+      font-size: 10px;
+      font-weight: 400;
+      letter-spacing: 3px;
+      color: #4B9E80;
+      margin-top: 6px;
+      animation: fadeUp 0.4s 0.15s ease both;
+    }
+
+    .divider {
+      width: 160px;
+      height: 0.5px;
+      background: rgba(29,158,117,0.3);
+      margin: 14px 0;
+      animation: fadeUp 0.4s 0.2s ease both;
+    }
+
+    .copy {
+      font-size: 13px;
+      font-weight: 300;
+      color: #E5E7EB;
+      line-height: 1.6;
+      animation: fadeUp 0.4s 0.25s ease both;
+    }
+
+    .pills {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      animation: fadeUp 0.4s 0.3s ease both;
+    }
+    .pill {
+      padding: 4px 10px;
+      border-radius: 11px;
+      font-size: 10px;
+      background: #0F2E22;
+      border: 0.5px solid #1D9E75;
+      color: #1D9E75;
+    }
+
+    /* Right side: mini mockup */
+    .right {
+      flex: 1;
+      padding: 16px 20px 16px 8px;
+      z-index: 1;
+      animation: fadeIn 0.5s 0.35s ease both;
+    }
+
+    .mockup {
+      background: #111820;
+      border-radius: 8px;
+      border: 0.5px solid rgba(29,158,117,0.3);
+      padding: 12px;
+      width: 100%;
+    }
+
+    .mock-topbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 0.5px solid #2A2D3A;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot-r { background: #E05A30; opacity: 0.7; }
+    .dot-y { background: #EF9F27; opacity: 0.7; }
+    .dot-g { background: #1D9E75; opacity: 0.7; }
+    .mock-label { font-size: 9px; color: #4B5563; margin-left: 4px; }
+
+    .mock-cards { display: flex; gap: 6px; margin-bottom: 10px; }
+    .mock-card {
+      flex: 1;
+      background: #1A2535;
+      border-radius: 4px;
+      padding: 7px 8px;
+    }
+    .mock-card-label { font-size: 8px; color: #4B9E80; margin-bottom: 3px; }
+    .mock-card-val { font-size: 11px; font-weight: 500; color: #fff; }
+    .mock-card-sub { font-size: 7px; margin-top: 2px; }
+    .green { color: #1D9E75; }
+    .red { color: #E05A30; }
+
+    .mock-bars {
+      background: #1A2535;
+      border-radius: 4px;
+      padding: 7px 8px;
+      margin-bottom: 8px;
+    }
+    .mock-bars-label { font-size: 8px; font-weight: 500; color: #E5E7EB; margin-bottom: 6px; }
+    .bars { display: flex; align-items: flex-end; gap: 3px; height: 36px; }
+    .bar-pair { display: flex; align-items: flex-end; gap: 1px; flex: 1; }
+    .bar { border-radius: 1px 1px 0 0; width: 8px; }
+
+    .mock-txs { background: #1A2535; border-radius: 4px; padding: 7px 8px; }
+    .mock-txs-label { font-size: 8px; font-weight: 500; color: #E5E7EB; margin-bottom: 5px; border-bottom: 0.5px solid #2A2D3A; padding-bottom: 4px; }
+    .tx-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; font-size: 8px; color: #E5E7EB; border-bottom: 0.5px solid rgba(42,45,58,0.5); }
+    .tx-row:last-child { border-bottom: none; }
+
+    /* Progress bar at very bottom */
+    .progress-wrap {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 3px;
+      background: #1D2E26;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #1D9E75, #2DD4A4);
+      animation: load 1.6s 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      width: 0%;
+    }
+
+    @keyframes pop {
+      from { opacity: 0; transform: scale(0.7); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes load {
+      0%   { width: 0%; }
+      60%  { width: 72%; }
+      100% { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <svg class="grid" viewBox="0 0 520 300" preserveAspectRatio="none">
+    <line x1="0" y1="100" x2="520" y2="100"/>
+    <line x1="0" y1="200" x2="520" y2="200"/>
+    <line x1="130" y1="0" x2="130" y2="300"/>
+    <line x1="260" y1="0" x2="260" y2="300"/>
+    <line x1="390" y1="0" x2="390" y2="300"/>
+  </svg>
+  <div class="glow"></div>
+
+  <!-- Left: branding -->
+  <div class="left">
+    <div class="icon-wrap">
+      <!-- Ícone do fina_logo.svg: círculo com barras + linha de tendência -->
+      <svg viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="80" cy="80" r="76" fill="none" stroke="#1D9E75" stroke-width="2" opacity="0.3"/>
+        <circle cx="80" cy="80" r="66" fill="#0C2E22"/>
+        <!-- Barras crescentes -->
+        <rect x="30" y="97" width="18" height="27" rx="3" fill="#1D9E75" opacity="0.5"/>
+        <rect x="56" y="75" width="18" height="49" rx="3" fill="#1D9E75" opacity="0.75"/>
+        <rect x="82" y="53" width="18" height="71" rx="3" fill="#1D9E75"/>
+        <rect x="108" y="65" width="18" height="59" rx="3" fill="#1D9E75" opacity="0.85"/>
+        <!-- Linha de tendência -->
+        <polyline points="39,91 65,71 91,47 117,59" fill="none" stroke="#9FE1CB" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="91" cy="47" r="5" fill="#9FE1CB"/>
+      </svg>
+    </div>
+
+    <div class="brand">fina</div>
+    <div class="tagline">FINANÇAS PESSOAIS</div>
+    <div class="divider"></div>
+    <div class="copy">Controle simples.<br>Vida financeira clara.</div>
+
+    <div class="pills">
+      <span class="pill">Fluxo de caixa</span>
+      <span class="pill">Orçamento</span>
+      <span class="pill">Relatórios</span>
+    </div>
+  </div>
+
+  <!-- Right: mini mockup -->
+  <div class="right">
+    <div class="mockup">
+      <div class="mock-topbar">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <span class="mock-label">Dashboard • maio 2026</span>
+      </div>
+
+      <div class="mock-cards">
+        <div class="mock-card">
+          <div class="mock-card-label">Saldo total</div>
+          <div class="mock-card-val">R$12.840</div>
+          <div class="mock-card-sub green">↑ +R$420</div>
+        </div>
+        <div class="mock-card">
+          <div class="mock-card-label">Receitas</div>
+          <div class="mock-card-val">R$8.200</div>
+          <div class="mock-card-sub green">↑ +12%</div>
+        </div>
+        <div class="mock-card">
+          <div class="mock-card-label">Despesas</div>
+          <div class="mock-card-val">R$5.340</div>
+          <div class="mock-card-sub red">↑ +8%</div>
+        </div>
+      </div>
+
+      <div class="mock-bars">
+        <div class="mock-bars-label">Receitas × Despesas</div>
+        <div class="bars">
+          <div class="bar-pair">
+            <div class="bar" style="height:28px;background:#1D9E75;opacity:0.7"></div>
+            <div class="bar" style="height:20px;background:#E05A30;opacity:0.7"></div>
+          </div>
+          <div class="bar-pair">
+            <div class="bar" style="height:30px;background:#1D9E75;opacity:0.75"></div>
+            <div class="bar" style="height:17px;background:#E05A30;opacity:0.7"></div>
+          </div>
+          <div class="bar-pair">
+            <div class="bar" style="height:32px;background:#1D9E75;opacity:0.8"></div>
+            <div class="bar" style="height:22px;background:#E05A30;opacity:0.75"></div>
+          </div>
+          <div class="bar-pair">
+            <div class="bar" style="height:36px;background:#1D9E75"></div>
+            <div class="bar" style="height:24px;background:#E05A30"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mock-txs">
+        <div class="mock-txs-label">Últimas transações</div>
+        <div class="tx-row"><span>Salário</span><span class="green">+R$ 8.200</span></div>
+        <div class="tx-row"><span>iFood</span><span class="red">-R$ 64,50</span></div>
+        <div class="tx-row"><span>Aluguel</span><span class="red">-R$ 1.400</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-fill"></div>
+  </div>
+</body>
+</html>

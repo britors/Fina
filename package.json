@@ -1,0 +1,26 @@
+{
+  "name": "fina",
+  "version": "0.1.0",
+  "description": "Gerenciador de finanças pessoais",
+  "main": "out/main/index.js",
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "watch": "node esbuild.config.js --watch",
+    "start": "electron .",
+    "typecheck": "tsc --noEmit",
+    "build:tests": "node esbuild.config.js --tests",
+    "test": "node esbuild.config.js --tests && node --test out/tests/accounts.test.js out/tests/transactions.test.js",
+    "postinstall": "electron-rebuild -f -w better-sqlite3"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^25.9.1",
+    "electron": "^34.5.8",
+    "esbuild": "^0.28.0",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0"
+  }
+}
