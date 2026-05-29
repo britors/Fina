@@ -205,14 +205,15 @@ function renderData(el: HTMLElement, _s: Settings, dbPath: string): void {
   });
 }
 
-function renderAbout(el: HTMLElement): void {
+async function renderAbout(el: HTMLElement): Promise<void> {
+  const version = await invoke<string>('app:version');
   el.innerHTML = `
     <div class="settings-section-label">SOBRE O FINA</div>
     <div class="settings-hr"></div>
     <div class="settings-row">
       <div class="settings-row-label">Versão</div>
       <div class="settings-row-right">
-        <span style="font-weight:500">1.0.0</span>
+        <span style="font-weight:500">v${version}</span>
         <span class="badge badge-confirmed">Estável</span>
       </div>
     </div>

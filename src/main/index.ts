@@ -96,6 +96,7 @@ function registerHandlers(): void {
   registerMarketHandlers();
 
   ipcMain.handle('db:path', () => dbPath());
+  ipcMain.handle('app:version', () => app.getVersion());
 
   ipcMain.handle('dialog:openFile', () =>
     dialog.showOpenDialog({
