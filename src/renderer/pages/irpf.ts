@@ -1,13 +1,15 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
-import type { IRPFReport } from '../../shared/types';
+import type { IRPFReport, IRPFImportPreview } from '../../shared/types';
 
 export async function render(el: HTMLElement): Promise<void> {
   const currentYear = new Date().getFullYear();
-  let year = currentYear - 1; // padrão: ano anterior (ano-calendário)
+  let year = currentYear - 1;
   let report: IRPFReport | null = null;
   let loading = false;
+  let accounts: { id: string; name: string }[] = [];
+  accounts = await invoke<{ id: string; name: string }[]>('accounts:list');
 
   setTopbarActions(`
     <select class="form-ctrl" id="irpf-year" style="width:110px">
@@ -18,6 +20,9 @@ export async function render(el: HTMLElement): Promise<void> {
     </select>
     <button class="btn btn-secondary" id="btn-irpf-load">
       <i class="ti ti-refresh"></i> Gerar
+    </button>
+    <button class="btn btn-secondary" id="btn-irpf-import">
+      <i class="ti ti-upload"></i> Importar ano anterior
     </button>
     <button class="btn btn-secondary" id="btn-irpf-csv" disabled>
       <i class="ti ti-table-export"></i> Exportar CSV
@@ -32,6 +37,8 @@ export async function render(el: HTMLElement): Promise<void> {
   });
 
   document.getElementById('btn-irpf-load')?.addEventListener('click', fetchAndRender);
+
+  document.getElementById('btn-irpf-import')?.addEventListener('click', () => openImportModal());
 
   document.getElementById('btn-irpf-csv')?.addEventListener('click', async () => {
     if (!report) return;
@@ -195,6 +202,106 @@ export async function render(el: HTMLElement): Promise<void> {
   }
 
   await fetchAndRender();
+}
+
+function openImportModal(): void {
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:620px">
+      <div class="modal-header">
+        <span class="modal-title"><i class="ti ti-upload"></i> Importar declaração de ano anterior</span>
+        <button class="btn btn-ghost btn-sm modal-close"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.2);border-radius:8px;padding:12px;font-size:0.82rem;color:var(--text-2);line-height:1.6">
+          <i class="ti ti-info-circle" style="color:var(--accent)"></i>
+          Selecione o CSV exportado pelo Fina (botão <strong>Exportar CSV</strong>) de um ano anterior.
+          Os rendimentos e deduções serão criados como transações em 31/12 do ano selecionado.
+          Bens e dívidas serão adicionados ao cadastro se ainda não existirem.
+          <br><br>
+          Não tem o CSV? <button class="btn btn-ghost btn-sm" id="btn-dl-template" style="font-size:0.78rem;padding:2px 8px">
+            <i class="ti ti-download"></i> Baixar modelo CSV
+          </button>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Arquivo CSV *</label>
+            <input class="form-ctrl" id="imp-file" type="file" accept=".csv">
+          </div>
+          <div class="form-group" style="flex:0 0 120px">
+            <label class="form-label">Ano-calendário *</label>
+            <input class="form-ctrl" id="imp-year" type="number" min="2000" max="${new Date().getFullYear() - 1}" value="${new Date().getFullYear() - 1}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Conta para lançar os rendimentos *</label>
+          <select class="form-ctrl" id="imp-account">
+            <option value="">— Selecione —</option>
+            ${accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div id="imp-preview"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-close">Cancelar</button>
+        <button class="btn btn-secondary" id="btn-imp-preview-irpf">
+          <i class="ti ti-eye"></i> Pré-visualizar
+        </button>
+        <button class="btn btn-primary" id="btn-imp-confirm-irpf" disabled>
+          <i class="ti ti-check"></i> Importar
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelector('#btn-dl-template')?.addEventListener('click', () => invoke('irpf:downloadTemplate'));
+
+  let previewData: IRPFImportPreview | null = null;
+
+  overlay.querySelector('#btn-imp-preview-irpf')?.addEventListener('click', async () => {
+    const fileInput = overlay.querySelector<HTMLInputElement>('#imp-file')!;
+    const file = fileInput.files?.[0];
+    if (!file) { alert('Selecione um arquivo CSV.'); return; }
+    const filePath = (file as File & { path?: string }).path ?? '';
+    if (!filePath) { alert('Não foi possível ler o caminho do arquivo.'); return; }
+
+    previewData = await invoke<IRPFImportPreview>('irpf:previewImport', filePath);
+    const pvEl = overlay.querySelector('#imp-preview')!;
+    pvEl.innerHTML = `
+      <div style="font-size:0.82rem;font-weight:600;color:var(--text-2);margin-bottom:8px">Prévia dos dados:</div>
+      <div class="grid-2" style="gap:10px;font-size:0.8rem">
+        ${previewRow('Rendimentos', previewData.total_rendimentos, previewData.rendimentos.length)}
+        ${previewRow('Deduções', previewData.total_deducoes, previewData.deducoes.length)}
+        ${previewRow('Bens e Direitos', previewData.total_bens, previewData.bens.length)}
+        ${previewRow('Dívidas', previewData.total_dividas, previewData.dividas.length)}
+      </div>`;
+
+    const confirmBtn = overlay.querySelector<HTMLButtonElement>('#btn-imp-confirm-irpf')!;
+    confirmBtn.disabled = (previewData.rendimentos.length + previewData.deducoes.length + previewData.bens.length + previewData.dividas.length) === 0;
+  });
+
+  overlay.querySelector('#btn-imp-confirm-irpf')?.addEventListener('click', async () => {
+    if (!previewData) return;
+    const accountId = (overlay.querySelector<HTMLSelectElement>('#imp-account')!).value;
+    const importYear = parseInt((overlay.querySelector<HTMLInputElement>('#imp-year')!).value);
+    if (!accountId) { alert('Selecione a conta de destino.'); return; }
+    if (!importYear) { alert('Informe o ano.'); return; }
+
+    const result = await invoke<{ imported: number }>('irpf:confirmImport', { preview: previewData, year: importYear, accountId });
+    overlay.remove();
+    alert(`Importação concluída: ${result.imported} registros criados no Fina.`);
+  });
+}
+
+function previewRow(label: string, total: number, count: number): string {
+  return `<div class="card" style="padding:10px 14px">
+    <div style="font-size:0.75rem;color:var(--text-3)">${label} (${count})</div>
+    <div style="font-weight:600;margin-top:2px">${formatCurrency(total)}</div>
+  </div>`;
 }
 
 function sectionCard(

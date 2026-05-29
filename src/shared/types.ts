@@ -225,6 +225,17 @@ export interface IRPFReport {
   total_dividas: number;
 }
 
+export interface IRPFImportPreview {
+  rendimentos: { category: string; total: number }[];
+  deducoes: { categoria: string; total: number }[];
+  bens: { descricao: string; tipo: string; valor: number }[];
+  dividas: { descricao: string; credor: string; saldo: number }[];
+  total_rendimentos: number;
+  total_deducoes: number;
+  total_bens: number;
+  total_dividas: number;
+}
+
 // ── Indicadores de mercado ────────────────────────────────────────────────────
 
 export interface MarketQuote {

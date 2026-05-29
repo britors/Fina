@@ -1,5 +1,6 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 
 export interface IRPFRendimento {
@@ -211,6 +212,193 @@ export function registerIRPFHandlers(): void {
     writeFileSync(filePath, buf);
     return filePath;
   });
+
+  // ── Importação de CSV de ano anterior ──────────────────────────────────────
+
+  ipcMain.handle('irpf:previewImport', (_e, filePath: string): IRPFImportPreview => {
+    const content = readFileSync(filePath, 'utf-8').replace(/^﻿/, ''); // strip BOM
+    return parseIRPFCsv(content);
+  });
+
+  ipcMain.handle('irpf:confirmImport', (_e, payload: { preview: IRPFImportPreview; year: number; accountId: string }) => {
+    const db = getDb();
+    const { preview, year, accountId } = payload;
+    const date = `${year}-12-31`; // lançamentos resumo em 31/12 do ano-calendário
+    let imported = 0;
+
+    // Encontrar ou usar fallback de categorias
+    const catId = (name: string, type: 'income' | 'expense'): string => {
+      const norm = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const row = db.prepare(`SELECT id FROM categories WHERE lower(name) LIKE ? AND type = ? LIMIT 1`)
+        .get(`%${norm.slice(0, 6)}%`, type) as { id: string } | undefined;
+      if (row) return row.id;
+      const fallback = db.prepare(`SELECT id FROM categories WHERE type = ? ORDER BY id LIMIT 1`).get(type) as { id: string } | undefined;
+      return fallback?.id ?? 'cat-1';
+    };
+
+    const insertTx = db.prepare(`
+      INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring)
+      VALUES (?,?,?,?,?,?,?,'confirmed',?,0)
+    `);
+
+    const doImport = db.transaction(() => {
+      // Rendimentos tributáveis → transações de receita
+      for (const r of preview.rendimentos) {
+        if (r.total <= 0) continue;
+        insertTx.run(randomUUID(), accountId, catId(r.category, 'income'),
+          r.category, r.total, 'income', date, `IRPF ${year}`);
+        imported++;
+      }
+
+      // Deduções → transações de despesa
+      for (const d of preview.deducoes) {
+        if (d.total <= 0) continue;
+        insertTx.run(randomUUID(), accountId, catId(d.categoria, 'expense'),
+          d.categoria, d.total, 'expense', date, `IRPF ${year} — dedução`);
+        imported++;
+      }
+
+      // Bens → assets (se nome não existir ainda)
+      const insertAsset = db.prepare(`
+        INSERT OR IGNORE INTO assets (id, name, type, acquisition_value, current_value, description)
+        VALUES (?,?,?,?,?,?)
+      `);
+      for (const b of preview.bens) {
+        if (b.valor <= 0) continue;
+        const assetType = guessAssetType(b.tipo);
+        insertAsset.run(randomUUID(), b.descricao, assetType, b.valor, b.valor, `Importado IRPF ${year}`);
+        imported++;
+      }
+
+      // Dívidas → debts (se descrição não existir ainda)
+      const insertDebt = db.prepare(`
+        INSERT OR IGNORE INTO debts
+          (id, description, type, creditor, original_amount, outstanding_balance,
+           interest_rate, installments_total, installments_remaining, installment_amount, status)
+        VALUES (?,?,?,?,?,?,0,1,1,0,'em_dia')
+      `);
+      for (const d of preview.dividas) {
+        if (d.saldo <= 0) continue;
+        insertDebt.run(randomUUID(), d.descricao, 'outro', d.credor, d.saldo, d.saldo);
+        imported++;
+      }
+    });
+
+    doImport();
+    return { imported };
+  });
+
+  ipcMain.handle('irpf:downloadTemplate', async () => {
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Salvar modelo CSV do IRPF',
+      defaultPath: 'irpf-modelo.csv',
+      filters: [{ name: 'CSV', extensions: ['csv'] }],
+    });
+    if (!filePath) return null;
+
+    const template = [
+      'FICHA;DESCRICAO;VALOR',
+      '"Rendimentos Tributáveis";"Salário";5000,00',
+      '"Rendimentos Tributáveis";"Freelance";1200,00',
+      '"Rendimentos Isentos";"Rendimento Poupança";80,00',
+      '"Deduções";"Saúde";450,00',
+      '"Deduções";"Educação";200,00',
+      '"Bens e Direitos";"Apartamento — Banco Itaú";280000,00',
+      '"Bens e Direitos";"Veículo — Fiat Uno";18000,00',
+      '"Dívidas";"Financiamento Imóvel — Caixa";150000,00',
+    ].join('\n');
+
+    writeFileSync(filePath, '﻿' + template, 'utf-8');
+    return filePath;
+  });
+}
+
+// ── Tipos de importação ───────────────────────────────────────────────────────
+
+export interface IRPFImportPreview {
+  rendimentos: { category: string; total: number }[];
+  deducoes: { categoria: string; total: number }[];
+  bens: { descricao: string; tipo: string; valor: number }[];
+  dividas: { descricao: string; credor: string; saldo: number }[];
+  total_rendimentos: number;
+  total_deducoes: number;
+  total_bens: number;
+  total_dividas: number;
+}
+
+// ── Parser do CSV de importação ───────────────────────────────────────────────
+
+function parseMoney(s: string): number {
+  return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+}
+
+function unquote(s: string): string {
+  return s.trim().replace(/^"|"$/g, '').replace(/""/g, '"');
+}
+
+function splitSemi(line: string): string[] {
+  const cols: string[] = [];
+  let cur = '';
+  let inQ = false;
+  for (const ch of line) {
+    if (ch === '"') { inQ = !inQ; cur += ch; continue; }
+    if (ch === ';' && !inQ) { cols.push(unquote(cur)); cur = ''; continue; }
+    cur += ch;
+  }
+  cols.push(unquote(cur));
+  return cols;
+}
+
+function parseIRPFCsv(content: string): IRPFImportPreview {
+  const preview: IRPFImportPreview = {
+    rendimentos: [], deducoes: [], bens: [], dividas: [],
+    total_rendimentos: 0, total_deducoes: 0, total_bens: 0, total_dividas: 0,
+  };
+
+  const SKIP = ['ficha', 'total', ''];
+
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    const [ficha, descricao, valorRaw] = splitSemi(line);
+    if (!ficha || SKIP.some(s => ficha.toLowerCase().startsWith(s))) continue;
+
+    const valor = parseMoney(valorRaw ?? '0');
+    if (!descricao || valor <= 0) continue;
+
+    const fichaL = ficha.toLowerCase();
+
+    if (fichaL.includes('tribut') || fichaL.includes('rendimento')) {
+      preview.rendimentos.push({ category: descricao, total: valor });
+      preview.total_rendimentos += valor;
+    } else if (fichaL.includes('isent')) {
+      // isentos → tratados como rendimento para fins de importação
+      preview.rendimentos.push({ category: descricao, total: valor });
+      preview.total_rendimentos += valor;
+    } else if (fichaL.includes('dedu')) {
+      preview.deducoes.push({ categoria: descricao, total: valor });
+      preview.total_deducoes += valor;
+    } else if (fichaL.includes('bem') || fichaL.includes('bem') || fichaL.includes('dire')) {
+      preview.bens.push({ descricao, tipo: ficha, valor });
+      preview.total_bens += valor;
+    } else if (fichaL.includes('dív') || fichaL.includes('div') || fichaL.includes('ônus')) {
+      const parts = descricao.split(' — ');
+      preview.dividas.push({ descricao: parts[0], credor: parts[1] ?? '—', saldo: valor });
+      preview.total_dividas += valor;
+    }
+  }
+
+  return preview;
+}
+
+function guessAssetType(tipo: string): string {
+  const t = tipo.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (t.includes('imovel') || t.includes('imóvel') || t.includes('apartamento') || t.includes('casa')) return 'imovel';
+  if (t.includes('veic') || t.includes('carro') || t.includes('moto')) return 'veiculo';
+  if (t.includes('terreno')) return 'terreno';
+  if (t.includes('invest') || t.includes('fundo') || t.includes('renda') || t.includes('cdb') || t.includes('acao')) return 'investimento';
+  return 'outro';
 }
 
 // ── Helpers de label ─────────────────────────────────────────────────────────
