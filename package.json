@@ -1,6 +1,6 @@
 {
   "name": "fina",
-  "version": "0.1.0",
+  "version": "8.9.3",
   "description": "Gerenciador de finanças pessoais",
   "main": "out/main/index.js",
   "scripts": {
