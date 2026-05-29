@@ -12,6 +12,9 @@ import { registerInvestmentHandlers } from './ipc/investments';
 import { registerForecastHandlers } from './ipc/forecast';
 import { registerImportHandlers } from './ipc/import';
 import { registerExportHandlers } from './ipc/export';
+import { registerGoalHandlers } from './ipc/goals';
+import { registerDebtHandlers } from './ipc/debts';
+import { registerMarketHandlers } from './ipc/market';
 import { startNotificationScheduler } from './notifications';
 import { generateRecurrences } from './recurrences';
 
@@ -73,6 +76,9 @@ function registerHandlers(): void {
   registerForecastHandlers();
   registerImportHandlers();
   registerExportHandlers();
+  registerGoalHandlers();
+  registerDebtHandlers();
+  registerMarketHandlers();
 
   ipcMain.handle('db:path', () => dbPath());
 

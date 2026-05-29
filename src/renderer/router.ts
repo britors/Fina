@@ -7,6 +7,9 @@ import { render as renderSettings     } from './pages/settings';
 import { render as renderAgenda       } from './pages/agenda';
 import { render as renderPatrimonio   } from './pages/patrimonio';
 import { render as renderInvestments  } from './pages/investments';
+import { render as renderGoals        } from './pages/goals';
+import { render as renderDebts        } from './pages/debts';
+import { render as renderMarket       } from './pages/market';
 import { setActiveRoute               } from './components/sidebar';
 import { setTopbar                    } from './components/topbar';
 
@@ -39,6 +42,9 @@ const ROUTES: Record<string, Route> = {
   agenda:       { title: 'Agenda',        subtitle: 'Contas a pagar e receber',                   render: renderAgenda       },
   patrimonio:   { title: 'Patrimônio',    subtitle: 'Imóveis, veículos e outros bens',             render: renderPatrimonio   },
   investments:  { title: 'Investimentos', subtitle: 'Carteira e rendimentos',                      render: renderInvestments  },
+  goals:        { title: 'Metas',         subtitle: 'Planejamento financeiro',                      render: renderGoals        },
+  debts:        { title: 'Dívidas',       subtitle: 'Empréstimos e financiamentos',                 render: renderDebts        },
+  market:       { title: 'Mercado',       subtitle: 'Câmbio, bolsas e indicadores',                 render: renderMarket       },
 };
 
 export function initRouter(content: HTMLElement): void {

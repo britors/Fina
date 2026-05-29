@@ -1,7 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate, getDaysUntilDue } from '../../shared/utils';
 import { createDonut, createAreaChart } from '../components/charts';
-import type { Account, Bill, TransactionWithDetails, MonthlySummary, ForecastPoint, InvestmentSummary } from '../../shared/types';
+import type { Account, Bill, TransactionWithDetails, MonthlySummary, ForecastPoint, InvestmentSummary, Goal, MarketQuote } from '../../shared/types';
 
 export async function render(el: HTMLElement): Promise<void> {
   el.innerHTML = '<div class="loading"><i class="ti ti-loader-2"></i> Carregando...</div>';
@@ -10,7 +10,7 @@ export async function render(el: HTMLElement): Promise<void> {
   const month = now.getMonth() + 1;
   const year  = now.getFullYear();
 
-  const [accounts, summary, recent, bills, expenses, forecast, invSummary, assetSummary] = await Promise.all([
+  const [accounts, summary, recent, bills, expenses, forecast, invSummary, assetSummary, goals, debtSummary, quotes] = await Promise.all([
     invoke<Account[]>('accounts:list'),
     invoke<MonthlySummary>('transactions:getMonthlySummary', { month, year }),
     invoke<TransactionWithDetails[]>('transactions:list', { month, year, limit: 5 }),
@@ -19,11 +19,19 @@ export async function render(el: HTMLElement): Promise<void> {
     invoke<ForecastPoint[]>('forecast:get', 30),
     invoke<InvestmentSummary>('investments:getSummary'),
     invoke<{ total: number }>('assets:getSummary'),
+    invoke<Goal[]>('goals:list'),
+    invoke<{ total_debt: number }>('debts:getSummary'),
+    invoke<MarketQuote[]>('market:getQuotes'),
   ]);
 
   const totalBalance  = accounts.reduce((s, a) => s + a.balance, 0);
-  const netWorth      = totalBalance + invSummary.total_current + (assetSummary.total ?? 0);
+  const netWorth      = totalBalance + invSummary.total_current + (assetSummary.total ?? 0) - (debtSummary.total_debt ?? 0);
   const donutSegs     = expenses.map(e => ({ value: e.total, color: e.color, label: e.name }));
+  const urgentGoals   = goals.filter(g => {
+    if (!g.target_date) return false;
+    const days = Math.ceil((new Date(g.target_date + 'T12:00').getTime() - Date.now()) / 86400_000);
+    return days <= 60 && g.current_amount < g.target_amount;
+  }).slice(0, 3);
 
   el.innerHTML = `
     <!-- Stat cards -->
@@ -143,6 +151,71 @@ export async function render(el: HTMLElement): Promise<void> {
             `).join('')}
           </div>`
       }
+    </div>
+
+    <!-- Metas urgentes + Indicadores -->
+    <div class="grid-2" style="margin-top:20px">
+      <!-- Metas próximas do prazo -->
+      <div class="card">
+        <div class="card-header">
+          <span>Metas próximas</span>
+          <a href="#goals" style="font-size:12px;color:var(--accent)">Ver todas</a>
+        </div>
+        <div class="card-hr"></div>
+        ${urgentGoals.length === 0
+          ? `<div class="empty" style="padding:24px"><i class="ti ti-target"></i><div class="empty-title">Nenhuma meta urgente</div></div>`
+          : `<div style="display:flex;flex-direction:column;gap:0">
+              ${urgentGoals.map(g => {
+                const pct  = g.target_amount > 0 ? Math.min(100, (g.current_amount / g.target_amount) * 100) : 0;
+                const days = Math.ceil((new Date(g.target_date! + 'T12:00').getTime() - Date.now()) / 86400_000);
+                return `<div style="padding:12px 20px;border-bottom:0.5px solid var(--border)">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                    <div style="font-weight:500;font-size:0.88rem">${esc(g.name)}</div>
+                    <span style="font-size:0.75rem;color:${days <= 0 ? 'var(--danger)' : 'var(--warning)'}">
+                      ${days <= 0 ? `${Math.abs(days)}d atraso` : `${days}d restantes`}
+                    </span>
+                  </div>
+                  <div class="progress-track">
+                    <div class="prog-fill" style="width:${pct.toFixed(0)}%;background:${days <= 0 ? 'var(--danger)' : 'var(--warning)'}"></div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;font-size:0.73rem;color:var(--text-3);margin-top:4px">
+                    <span>${formatCurrency(g.current_amount)}</span>
+                    <span>${formatCurrency(g.target_amount)}</span>
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>`
+        }
+      </div>
+
+      <!-- Indicadores de mercado -->
+      <div class="card">
+        <div class="card-header">
+          <span>Mercado</span>
+          <a href="#market" style="font-size:12px;color:var(--accent)">Ver todos</a>
+        </div>
+        <div class="card-hr"></div>
+        ${quotes.length === 0
+          ? `<div class="empty" style="padding:24px"><i class="ti ti-wifi-off"></i><div class="empty-title">Cotações indisponíveis</div></div>`
+          : `<div style="display:flex;flex-direction:column;gap:0">
+              ${quotes.slice(0, 5).map(q => {
+                const up    = q.change_pct > 0;
+                const noChg = q.change_pct === 0;
+                const color = noChg ? 'var(--text-2)' : up ? 'var(--accent)' : 'var(--danger)';
+                const priceStr = q.currency === '%'
+                  ? `${q.price.toFixed(2)}% a.a.`
+                  : q.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                return `<div style="padding:10px 20px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+                  <span style="font-size:0.85rem;font-weight:500">${esc(q.label)}</span>
+                  <div style="text-align:right">
+                    <div style="font-weight:600;font-size:0.88rem">${priceStr}</div>
+                    ${!noChg ? `<div style="font-size:0.73rem;color:${color}">${up ? '+' : ''}${q.change_pct.toFixed(2)}%</div>` : ''}
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>`
+        }
+      </div>
     </div>
   `;
 }

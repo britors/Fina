@@ -160,3 +160,62 @@ export interface ImportPreview {
   total: number;
   duplicates: number;
 }
+
+// ── Metas financeiras ─────────────────────────────────────────────────────────
+
+export type GoalType = 'viagem' | 'imovel' | 'evento' | 'emergencia' | 'outro';
+
+export interface Goal {
+  id: string;
+  name: string;
+  type: GoalType;
+  target_amount: number;
+  current_amount: number;
+  target_date: string | null;
+  account_id: string | null;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Dívidas ───────────────────────────────────────────────────────────────────
+
+export type DebtType = 'emprestimo' | 'financiamento' | 'cartao' | 'cheque_especial' | 'pessoal' | 'outro';
+export type DebtStatus = 'em_dia' | 'em_atraso' | 'renegociada' | 'quitada';
+
+export interface Debt {
+  id: string;
+  description: string;
+  type: DebtType;
+  creditor: string | null;
+  original_amount: number;
+  outstanding_balance: number;
+  interest_rate: number;
+  installments_total: number;
+  installments_remaining: number;
+  installment_amount: number;
+  next_due_date: string | null;
+  status: DebtStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DebtSimulation {
+  extra_payment: number;
+  months_to_pay: number;
+  total_paid: number;
+  total_interest: number;
+  savings_vs_minimum: number;
+}
+
+// ── Indicadores de mercado ────────────────────────────────────────────────────
+
+export interface MarketQuote {
+  symbol: string;
+  label: string;
+  price: number;
+  change_pct: number;
+  currency: string;
+  updated_at: string;
+  stale: boolean;
+}

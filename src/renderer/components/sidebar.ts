@@ -17,6 +17,9 @@ const NAV: { section: string; items: { route: string; label: string; icon: strin
       { route: 'agenda',       label: 'Agenda',         icon: 'ti-calendar'      },
       { route: 'patrimonio',   label: 'Patrimônio',     icon: 'ti-home'          },
       { route: 'investments',  label: 'Investimentos',  icon: 'ti-trending-up'   },
+      { route: 'goals',        label: 'Metas',          icon: 'ti-target'        },
+      { route: 'debts',        label: 'Dívidas',        icon: 'ti-receipt'       },
+      { route: 'market',       label: 'Mercado',        icon: 'ti-chart-line'    },
     ],
   },
   {
