@@ -5,6 +5,8 @@ import { render as renderBudget       } from './pages/budget';
 import { render as renderReports      } from './pages/reports';
 import { render as renderSettings     } from './pages/settings';
 import { render as renderAgenda       } from './pages/agenda';
+import { render as renderPatrimonio   } from './pages/patrimonio';
+import { render as renderInvestments  } from './pages/investments';
 import { setActiveRoute               } from './components/sidebar';
 import { setTopbar                    } from './components/topbar';
 
@@ -35,6 +37,8 @@ const ROUTES: Record<string, Route> = {
   reports:      { title: 'Relatórios',    subtitle: 'Últimos 6 meses',                           render: renderReports      },
   settings:     { title: 'Configurações', subtitle: 'Personalize o Fina de acordo com suas preferências', render: renderSettings },
   agenda:       { title: 'Agenda',        subtitle: 'Contas a pagar e receber',                   render: renderAgenda       },
+  patrimonio:   { title: 'Patrimônio',    subtitle: 'Imóveis, veículos e outros bens',             render: renderPatrimonio   },
+  investments:  { title: 'Investimentos', subtitle: 'Carteira e rendimentos',                      render: renderInvestments  },
 };
 
 export function initRouter(content: HTMLElement): void {

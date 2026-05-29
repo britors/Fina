@@ -7,6 +7,13 @@ import { registerCategoryHandlers } from './ipc/categories';
 import { registerBudgetHandlers } from './ipc/budgets';
 import { registerBillHandlers } from './ipc/bills';
 import { registerSettingsHandlers } from './ipc/settings';
+import { registerAssetHandlers } from './ipc/assets';
+import { registerInvestmentHandlers } from './ipc/investments';
+import { registerForecastHandlers } from './ipc/forecast';
+import { registerImportHandlers } from './ipc/import';
+import { registerExportHandlers } from './ipc/export';
+import { startNotificationScheduler } from './notifications';
+import { generateRecurrences } from './recurrences';
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -61,6 +68,11 @@ function registerHandlers(): void {
   registerBudgetHandlers();
   registerBillHandlers();
   registerSettingsHandlers();
+  registerAssetHandlers();
+  registerInvestmentHandlers();
+  registerForecastHandlers();
+  registerImportHandlers();
+  registerExportHandlers();
 
   ipcMain.handle('db:path', () => dbPath());
 
@@ -98,6 +110,11 @@ app.whenReady().then(async () => {
   win.once('ready-to-show', () => {
     win.show();
     splash.destroy();
+    const rec = generateRecurrences();
+    if (rec.transactions + rec.bills > 0) {
+      console.log(`[Recorrências] ${rec.transactions} transações, ${rec.bills} contas geradas`);
+    }
+    startNotificationScheduler();
   });
 
   app.on('activate', () => {

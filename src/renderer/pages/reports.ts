@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { createBarChart, createDonut } from '../components/charts';
+import { setTopbarActions } from '../components/topbar';
 
 type MonthRow = { label: string; income: number; expense: number };
 type CatRow   = { name: string; color: string; total: number };
@@ -8,6 +9,15 @@ type CatRow   = { name: string; color: string; total: number };
 export async function render(el: HTMLElement): Promise<void> {
   const now  = new Date();
   let months = 6;
+
+  setTopbarActions(`
+    <button class="btn btn-secondary" id="btn-export-pdf">
+      <i class="ti ti-file-type-pdf"></i> Exportar PDF
+    </button>
+  `);
+  document.getElementById('btn-export-pdf')?.addEventListener('click', async () => {
+    await invoke('export:pdf', { month: now.getMonth() + 1, year: now.getFullYear() });
+  });
 
   async function renderPage(): Promise<void> {
     const month = now.getMonth() + 1;

@@ -13,8 +13,10 @@ const NAV: { section: string; items: { route: string; label: string; icon: strin
   {
     section: 'ANÁLISE',
     items: [
-      { route: 'reports', label: 'Relatórios', icon: 'ti-chart-bar'  },
-      { route: 'agenda',  label: 'Agenda',     icon: 'ti-calendar'   },
+      { route: 'reports',      label: 'Relatórios',    icon: 'ti-chart-bar'     },
+      { route: 'agenda',       label: 'Agenda',         icon: 'ti-calendar'      },
+      { route: 'patrimonio',   label: 'Patrimônio',     icon: 'ti-home'          },
+      { route: 'investments',  label: 'Investimentos',  icon: 'ti-trending-up'   },
     ],
   },
   {

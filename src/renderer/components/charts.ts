@@ -39,6 +39,60 @@ function centerText(cx: number, cy: number, l1: string, l2: string): string {
   `;
 }
 
+export interface AreaPoint { date: string; balance: number; }
+
+export function createAreaChart(data: AreaPoint[], width = 560, height = 160): string {
+  if (data.length < 2) return '';
+
+  const padL = 40, padR = 12, padT = 12, padB = 24;
+  const chartW = width - padL - padR;
+  const chartH = height - padT - padB;
+
+  const values  = data.map(d => d.balance);
+  const minVal  = Math.min(...values);
+  const maxVal  = Math.max(...values);
+  const range   = maxVal - minVal || 1;
+
+  function xPos(i: number): number { return padL + (i / (data.length - 1)) * chartW; }
+  function yPos(v: number): number { return padT + chartH - ((v - minVal) / range) * chartH; }
+
+  const pts = data.map((d, i) => `${xPos(i).toFixed(1)},${yPos(d.balance).toFixed(1)}`).join(' ');
+  const areaPath = `M ${xPos(0).toFixed(1)},${yPos(data[0].balance).toFixed(1)} ` +
+    data.slice(1).map((d, i) => `L ${xPos(i + 1).toFixed(1)},${yPos(d.balance).toFixed(1)}`).join(' ') +
+    ` L ${xPos(data.length - 1).toFixed(1)},${(padT + chartH).toFixed(1)}` +
+    ` L ${xPos(0).toFixed(1)},${(padT + chartH).toFixed(1)} Z`;
+
+  // Marcadores de data (início, meio, fim)
+  const ticks = [0, Math.floor((data.length - 1) / 2), data.length - 1].map(i => {
+    const d = data[i];
+    const label = new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    return `<text x="${xPos(i).toFixed(1)}" y="${height - 4}" text-anchor="middle" font-size="9" fill="#6B7280" font-family="Inter,system-ui">${label}</text>`;
+  });
+
+  // Linha zero se houver valores negativos
+  const zeroLine = minVal < 0 ? `<line x1="${padL}" y1="${yPos(0).toFixed(1)}" x2="${padL + chartW}" y2="${yPos(0).toFixed(1)}" stroke="#D85A30" stroke-width="0.8" stroke-dasharray="3,2" opacity="0.5"/>` : '';
+
+  // Cor varia se o saldo final for negativo
+  const endNegative = data[data.length - 1].balance < 0;
+  const lineColor   = endNegative ? '#D85A30' : '#1D9E75';
+  const areaColor   = endNegative ? 'rgba(216,90,48,0.12)' : 'rgba(29,158,117,0.12)';
+
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow:visible">
+    <defs>
+      <linearGradient id="area-grad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="${lineColor}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + chartH}" stroke="#2A2D3A" stroke-width="0.5"/>
+    <line x1="${padL}" y1="${padT + chartH}" x2="${padL + chartW}" y2="${padT + chartH}" stroke="#2A2D3A" stroke-width="0.5"/>
+    ${zeroLine}
+    <path d="${areaPath}" fill="url(#area-grad)"/>
+    <polyline points="${pts}" fill="none" stroke="${lineColor}" stroke-width="1.8" stroke-linejoin="round"/>
+    ${ticks.join('')}
+  </svg>`;
+}
+
 export interface BarPair { label: string; income: number; expense: number; }
 
 export function createBarChart(data: BarPair[], width = 560, height = 200): string {

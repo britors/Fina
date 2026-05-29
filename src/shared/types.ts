@@ -93,3 +93,70 @@ export interface MonthlySummary {
   expense: number;
   balance: number;
 }
+
+// ── Bens patrimoniais ────────────────────────────────────────────────────────
+
+export type AssetType = 'imovel' | 'veiculo' | 'terreno' | 'investimento' | 'outro';
+
+export interface Asset {
+  id: string;
+  name: string;
+  type: AssetType;
+  acquisition_value: number;
+  current_value: number;
+  acquisition_date: string | null;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Carteira de investimentos ─────────────────────────────────────────────────
+
+export type InvestmentType = 'renda_fixa' | 'renda_variavel' | 'fundo' | 'cripto' | 'outro';
+
+export interface Investment {
+  id: string;
+  name: string;
+  type: InvestmentType;
+  institution: string | null;
+  applied_amount: number;
+  current_value: number;
+  application_date: string | null;
+  maturity_date: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvestmentSummary {
+  total_applied: number;
+  total_current: number;
+  gain: number;
+  gain_pct: number;
+  by_type: { type: string; label: string; total: number; color: string }[];
+}
+
+// ── Previsão de saldo ─────────────────────────────────────────────────────────
+
+export interface ForecastPoint {
+  date: string;
+  balance: number;
+}
+
+// ── Importação de extratos ────────────────────────────────────────────────────
+
+export interface ImportPreviewRow {
+  date: string;
+  description: string;
+  amount: number;
+  type: TransactionType;
+  fitid: string | null;
+  duplicate: boolean;
+}
+
+export interface ImportPreview {
+  rows: ImportPreviewRow[];
+  format: 'csv' | 'ofx';
+  total: number;
+  duplicates: number;
+}

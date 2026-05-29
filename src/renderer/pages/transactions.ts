@@ -19,11 +19,22 @@ export async function render(el: HTMLElement): Promise<void> {
   ]);
 
   setTopbarActions(`
+    <button class="btn btn-secondary" id="btn-import">
+      <i class="ti ti-upload"></i> Importar extrato
+    </button>
+    <button class="btn btn-secondary" id="btn-export-csv">
+      <i class="ti ti-download"></i> Exportar CSV
+    </button>
     <button class="btn btn-primary" id="btn-new-tx">
       <i class="ti ti-plus"></i> Novo lançamento
     </button>
   `);
   document.getElementById('btn-new-tx')?.addEventListener('click', () => openTxModal(null, () => renderPage()));
+  document.getElementById('btn-export-csv')?.addEventListener('click', async () => {
+    const now2 = new Date();
+    await invoke('export:csv', { month: now2.getMonth() + 1, year: now2.getFullYear() });
+  });
+  document.getElementById('btn-import')?.addEventListener('click', () => openImportModal());
 
   async function renderPage(): Promise<void> {
     const txs = await invoke<TransactionWithDetails[]>('transactions:list', {
@@ -221,6 +232,112 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): voi
       else    { await invoke('transactions:create', payload); }
       onDone();
     },
+  });
+}
+
+function openImportModal(): void {
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:540px">
+      <div class="modal-header">
+        <span class="modal-title"><i class="ti ti-upload"></i> Importar extrato</span>
+        <button class="btn btn-ghost btn-sm modal-close"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.2);border-radius:8px;padding:12px;font-size:0.82rem;color:var(--text-2)">
+          <i class="ti ti-info-circle" style="color:var(--accent)"></i>
+          Formatos suportados: <strong>CSV</strong> (Nubank, Itaú, Bradesco, Santander) e <strong>OFX/QFX</strong>.
+        </div>
+        <div class="form-group">
+          <label class="form-label">Arquivo</label>
+          <input class="form-ctrl" id="imp-file" type="file" accept=".csv,.ofx,.qfx">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Conta de destino *</label>
+          <select class="form-ctrl" id="imp-account">
+            <option value="">— Selecione —</option>
+            ${accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Categoria padrão *</label>
+          <select class="form-ctrl" id="imp-category">
+            <option value="">— Selecione —</option>
+            ${categories.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div id="imp-preview"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-close">Cancelar</button>
+        <button class="btn btn-secondary" id="btn-imp-preview">
+          <i class="ti ti-eye"></i> Pré-visualizar
+        </button>
+        <button class="btn btn-primary" id="btn-imp-confirm" disabled>
+          <i class="ti ti-check"></i> Importar
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  let previewedRows: unknown[] = [];
+
+  overlay.querySelector('#btn-imp-preview')?.addEventListener('click', async () => {
+    const fileInput = overlay.querySelector<HTMLInputElement>('#imp-file')!;
+    const file = fileInput.files?.[0];
+    if (!file) { alert('Selecione um arquivo.'); return; }
+
+    const filePath = (file as File & { path?: string }).path ?? '';
+    if (!filePath) { alert('Não foi possível ler o caminho do arquivo.'); return; }
+
+    const preview = await invoke<{ rows: unknown[]; format: string; total: number; duplicates: number }>('import:preview', filePath);
+    previewedRows = preview.rows;
+
+    const previewEl = overlay.querySelector('#imp-preview')!;
+    previewEl.innerHTML = `
+      <div style="font-size:0.82rem;color:var(--text-2);margin-bottom:8px">
+        <strong>${preview.total}</strong> transações encontradas
+        ${preview.duplicates > 0 ? `· <span style="color:var(--warning)">${preview.duplicates} duplicata${preview.duplicates !== 1 ? 's' : ''} serão ignoradas</span>` : ''}
+        · Formato: <strong>${preview.format.toUpperCase()}</strong>
+      </div>
+      <div style="max-height:220px;overflow-y:auto;font-size:0.78rem;border:1px solid var(--border);border-radius:6px">
+        <table class="table" style="margin:0">
+          <thead><tr><th>Data</th><th>Descrição</th><th>Valor</th><th>Tipo</th></tr></thead>
+          <tbody>
+            ${(preview.rows as { date: string; description: string; amount: number; type: string; duplicate: boolean }[]).slice(0, 50).map(r => `
+              <tr style="${r.duplicate ? 'opacity:0.4' : ''}">
+                <td>${r.date}</td>
+                <td>${esc(r.description)}</td>
+                <td style="color:${r.type === 'income' ? 'var(--accent)' : 'var(--danger)'}">
+                  ${r.type === 'income' ? '+' : '-'}R$ ${r.amount.toFixed(2).replace('.', ',')}
+                </td>
+                <td>${r.duplicate ? '<span style="color:var(--warning)">Duplicata</span>' : (r.type === 'income' ? 'Receita' : 'Despesa')}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    (overlay.querySelector('#btn-imp-confirm') as HTMLButtonElement).disabled = preview.total === 0;
+  });
+
+  overlay.querySelector('#btn-imp-confirm')?.addEventListener('click', async () => {
+    const accountId  = (overlay.querySelector<HTMLSelectElement>('#imp-account')!).value;
+    const categoryId = (overlay.querySelector<HTMLSelectElement>('#imp-category')!).value;
+    if (!accountId || !categoryId) { alert('Selecione a conta e a categoria de destino.'); return; }
+
+    const result = await invoke<{ imported: number; skipped: number }>('import:confirm', {
+      rows: previewedRows,
+      accountId,
+      categoryId,
+    });
+
+    overlay.remove();
+    alert(`Importação concluída: ${result.imported} transações importadas, ${result.skipped} ignoradas.`);
+    await invoke('transactions:list', {});
   });
 }
 

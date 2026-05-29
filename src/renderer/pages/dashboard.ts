@@ -1,7 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate, getDaysUntilDue } from '../../shared/utils';
-import { createDonut } from '../components/charts';
-import type { Account, Bill, TransactionWithDetails, MonthlySummary } from '../../shared/types';
+import { createDonut, createAreaChart } from '../components/charts';
+import type { Account, Bill, TransactionWithDetails, MonthlySummary, ForecastPoint, InvestmentSummary } from '../../shared/types';
 
 export async function render(el: HTMLElement): Promise<void> {
   el.innerHTML = '<div class="loading"><i class="ti ti-loader-2"></i> Carregando...</div>';
@@ -10,24 +10,28 @@ export async function render(el: HTMLElement): Promise<void> {
   const month = now.getMonth() + 1;
   const year  = now.getFullYear();
 
-  const [accounts, summary, recent, bills, expenses] = await Promise.all([
+  const [accounts, summary, recent, bills, expenses, forecast, invSummary, assetSummary] = await Promise.all([
     invoke<Account[]>('accounts:list'),
     invoke<MonthlySummary>('transactions:getMonthlySummary', { month, year }),
     invoke<TransactionWithDetails[]>('transactions:list', { month, year, limit: 5 }),
     invoke<Bill[]>('bills:getUpcoming', 30),
     invoke<{ name: string; color: string; total: number }[]>('transactions:getExpensesByCategory', { month, year }),
+    invoke<ForecastPoint[]>('forecast:get', 30),
+    invoke<InvestmentSummary>('investments:getSummary'),
+    invoke<{ total: number }>('assets:getSummary'),
   ]);
 
-  const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
-  const donutSegs = expenses.map(e => ({ value: e.total, color: e.color, label: e.name }));
+  const totalBalance  = accounts.reduce((s, a) => s + a.balance, 0);
+  const netWorth      = totalBalance + invSummary.total_current + (assetSummary.total ?? 0);
+  const donutSegs     = expenses.map(e => ({ value: e.total, color: e.color, label: e.name }));
 
   el.innerHTML = `
     <!-- Stat cards -->
     <div class="grid-3" style="margin-bottom:20px">
       <div class="stat-card">
-        <div class="stat-label">Saldo total</div>
+        <div class="stat-label">Saldo em contas</div>
         <div class="stat-value">${formatCurrency(totalBalance)}</div>
-        <div class="stat-sub">${accounts.length} conta${accounts.length !== 1 ? 's' : ''} cadastrada${accounts.length !== 1 ? 's' : ''}</div>
+        <div class="stat-sub">${accounts.length} conta${accounts.length !== 1 ? 's' : ''} · patrimônio líquido: <strong>${formatCurrency(netWorth)}</strong></div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Receitas (${now.toLocaleDateString('pt-BR', { month: 'short' })})</div>
@@ -100,6 +104,20 @@ export async function render(el: HTMLElement): Promise<void> {
               </div>`
           }
         </div>
+      </div>
+    </div>
+
+    <!-- Forecast -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <span>Previsão de saldo — próximos 30 dias</span>
+        ${forecast.length > 0 && forecast[forecast.length - 1].balance < 0
+          ? `<span style="color:var(--danger);font-size:0.8rem"><i class="ti ti-alert-triangle"></i> Saldo negativo previsto</span>`
+          : ''}
+      </div>
+      <div class="card-hr"></div>
+      <div class="card-body" style="padding:12px 16px">
+        ${createAreaChart(forecast, 820, 140)}
       </div>
     </div>
 
