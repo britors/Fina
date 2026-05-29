@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as https from 'https';
 import { openDatabase, runMigrations, closeDatabase, dbPath } from './database';
 import { registerAccountHandlers } from './ipc/accounts';
 import { registerTransactionHandlers } from './ipc/transactions';
@@ -62,6 +63,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 960,
     minHeight: 600,
     show: false,
+    frame: false,
     backgroundColor: '#0F1117',
     autoHideMenuBar: true,
     icon: loadAppIcon(),
@@ -99,6 +101,47 @@ function registerHandlers(): void {
 
   ipcMain.handle('db:path', () => dbPath());
   ipcMain.handle('app:version', () => app.getVersion());
+
+  ipcMain.handle('window:minimize', (e) => {
+    BrowserWindow.fromWebContents(e.sender)?.minimize();
+  });
+  ipcMain.handle('window:toggleMaximize', (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    if (!win) return;
+    win.isMaximized() ? win.unmaximize() : win.maximize();
+  });
+  ipcMain.handle('window:close', (e) => {
+    BrowserWindow.fromWebContents(e.sender)?.close();
+  });
+
+  ipcMain.handle('app:checkUpdate', () => new Promise<object>((resolve) => {
+    const currentVersion = app.getVersion();
+    const isAur = app.getAppPath().startsWith('/usr/');
+    const options = {
+      hostname: 'api.github.com',
+      path: '/repos/britors/Fina/releases/latest',
+      headers: { 'User-Agent': 'fina-app' },
+    };
+    const req = https.get(options, (res) => {
+      let data = '';
+      res.on('data', (chunk: string) => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const latestVersion = (json.tag_name ?? '').replace(/^v/, '');
+          const hasUpdate = latestVersion !== '' && latestVersion !== currentVersion;
+          resolve({ currentVersion, latestVersion, hasUpdate, isAur, releaseUrl: json.html_url ?? '' });
+        } catch {
+          resolve({ currentVersion, latestVersion: '', hasUpdate: false, isAur, releaseUrl: '' });
+        }
+      });
+    });
+    req.on('error', () => resolve({ currentVersion, latestVersion: '', hasUpdate: false, isAur, releaseUrl: '' }));
+    req.setTimeout(5000, () => {
+      req.destroy();
+      resolve({ currentVersion, latestVersion: '', hasUpdate: false, isAur, releaseUrl: '' });
+    });
+  }));
 
   ipcMain.handle('dialog:openFile', () =>
     dialog.showOpenDialog({

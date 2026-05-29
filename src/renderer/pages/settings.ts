@@ -1,5 +1,6 @@
 import { invoke, send } from '../api';
 import { setTopbarActions } from '../components/topbar';
+import { applyAccent, applyTheme } from '../theme';
 
 type Settings = Record<string, string>;
 
@@ -104,8 +105,9 @@ function renderProfile(el: HTMLElement, s: Settings): void {
 }
 
 function renderAppearance(el: HTMLElement, s: Settings): void {
-  const accent = s.accent_color ?? '#1D9E75';
-  const colors = ['#1D9E75', '#3B82F6', '#8B5CF6', '#EF9F27', '#D85A30', '#EC4899'];
+  const accent    = s.accent_color ?? '#1D9E75';
+  const theme     = s.theme        ?? 'dark';
+  const colors    = ['#1D9E75', '#3B82F6', '#8B5CF6', '#EF9F27', '#D85A30', '#EC4899'];
 
   el.innerHTML = `
     <div class="settings-section-label">APARÊNCIA</div>
@@ -113,11 +115,11 @@ function renderAppearance(el: HTMLElement, s: Settings): void {
 
     <div class="settings-row">
       <div><div class="settings-row-label">Tema</div>
-           <div class="settings-row-sub">O Fina usa modo escuro por padrão</div></div>
+           <div class="settings-row-sub">Modo escuro ou claro para a interface</div></div>
       <div class="settings-row-right">
         <select class="form-ctrl" id="s-theme" style="width:150px">
-          <option value="dark" selected>Escuro</option>
-          <option value="light" disabled>Claro (em breve)</option>
+          <option value="dark"  ${theme === 'dark'  ? 'selected' : ''}>Escuro</option>
+          <option value="light" ${theme === 'light' ? 'selected' : ''}>Claro</option>
         </select>
       </div>
     </div>
@@ -135,10 +137,19 @@ function renderAppearance(el: HTMLElement, s: Settings): void {
     </div>
   `;
 
+  el.querySelector<HTMLSelectElement>('#s-theme')?.addEventListener('change', async (ev) => {
+    const val = (ev.target as HTMLSelectElement).value;
+    await invoke('settings:set', { key: 'theme', value: val });
+    s.theme = val;
+    applyTheme(val);
+  });
+
   el.querySelectorAll<HTMLElement>('[data-color]').forEach(dot => {
     dot.addEventListener('click', async () => {
-      await invoke('settings:set', { key: 'accent_color', value: dot.dataset.color! });
-      s.accent_color = dot.dataset.color!;
+      const color = dot.dataset.color!;
+      await invoke('settings:set', { key: 'accent_color', value: color });
+      s.accent_color = color;
+      applyAccent(color);
       renderAppearance(el, s);
     });
   });
@@ -205,8 +216,17 @@ function renderData(el: HTMLElement, _s: Settings, dbPath: string): void {
   });
 }
 
+type UpdateInfo = {
+  currentVersion: string;
+  latestVersion: string;
+  hasUpdate: boolean;
+  isAur: boolean;
+  releaseUrl: string;
+};
+
 async function renderAbout(el: HTMLElement): Promise<void> {
   const version = await invoke<string>('app:version');
+
   el.innerHTML = `
     <div class="settings-section-label">SOBRE O FINA</div>
     <div class="settings-hr"></div>
@@ -229,7 +249,54 @@ async function renderAbout(el: HTMLElement): Promise<void> {
       <div class="settings-row-label">Desenvolvido por</div>
       <div class="settings-row-right" style="font-weight:500">Rodrigo Brito</div>
     </div>
+
+    <div class="settings-section-label" style="margin-top:20px">ATUALIZAÇÃO</div>
+    <div class="settings-hr"></div>
+    <div class="settings-row" id="update-row">
+      <div>
+        <div class="settings-row-label">Verificar atualizações</div>
+        <div class="settings-row-sub" id="update-sub">Clique para verificar se há uma nova versão</div>
+      </div>
+      <div class="settings-row-right">
+        <button class="btn btn-ghost btn-sm" id="btn-check-update">Verificar</button>
+      </div>
+    </div>
   `;
+
+  el.querySelector('#btn-check-update')?.addEventListener('click', async () => {
+    const btn = el.querySelector<HTMLButtonElement>('#btn-check-update')!;
+    const sub = el.querySelector<HTMLElement>('#update-sub')!;
+    btn.disabled = true;
+    btn.textContent = 'Verificando…';
+
+    const info = await invoke<UpdateInfo>('app:checkUpdate').catch(() => null);
+
+    if (!info) {
+      sub.textContent = 'Não foi possível verificar. Verifique sua conexão.';
+      btn.textContent = 'Tentar novamente';
+      btn.disabled = false;
+      return;
+    }
+
+    if (info.isAur) {
+      sub.textContent = 'Instalado via AUR — atualize pelo gerenciador de pacotes.';
+      btn.textContent = 'Atualizar via AUR';
+      btn.disabled = true;
+      return;
+    }
+
+    if (info.hasUpdate) {
+      sub.textContent = `Nova versão disponível: v${info.latestVersion}`;
+      btn.textContent = 'Baixar atualização';
+      btn.disabled = false;
+      btn.className = 'btn btn-primary btn-sm';
+      btn.onclick = () => send('shell:openExternal', info.releaseUrl);
+    } else {
+      sub.textContent = `Você está na versão mais recente (v${info.currentVersion}).`;
+      btn.textContent = 'Atualizado';
+      btn.disabled = true;
+    }
+  });
 }
 
 function esc(s?: string): string {

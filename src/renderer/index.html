@@ -351,6 +351,42 @@
     /* ── Transitions ─────────────────────────── */
     .page-enter { animation: pageIn 0.18s ease; }
     @keyframes pageIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    /* ── Frameless window drag ───────────────── */
+    #topbar { -webkit-app-region: drag; }
+    #topbar * { -webkit-app-region: no-drag; }
+
+    /* ── Window controls ─────────────────────── */
+    .win-controls { display: flex; align-items: center; gap: 2px; margin-left: 8px; }
+    .wc-btn {
+      width: 34px; height: 28px; border-radius: 6px;
+      background: rgba(255,255,255,0.04); color: var(--text-2);
+      border: 0.5px solid transparent;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 13px; line-height: 1; letter-spacing: 0;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .wc-btn:hover { background: rgba(255,255,255,0.10); color: var(--text); border-color: var(--border); }
+    .wc-btn.wc-close:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+    /* ── Light theme ─────────────────────────── */
+    body.theme-light {
+      --bg:       #F0F2F5;
+      --surface:  #FFFFFF;
+      --surface2: #F5F7FA;
+      --text:     #111827;
+      --text-2:   #374151;
+      --text-3:   #6B7280;
+      --text-4:   #9CA3AF;
+      --border:   #E5E7EB;
+    }
+    body.theme-light .nav-item:hover  { background: rgba(0,0,0,0.04); }
+    body.theme-light .nav-item.active { background: var(--bg); }
+    body.theme-light .table tbody tr:hover td { background: rgba(0,0,0,0.025); }
+    body.theme-light .overlay { background: rgba(0,0,0,.35); }
+    body.theme-light .wc-btn:hover { background: rgba(0,0,0,0.07); color: var(--text); }
+    body.theme-light .user-avatar { background: var(--accent); color: #fff; }
+    body.theme-light ::-webkit-scrollbar-thumb { background: #CBD5E0; }
   </style>
 </head>
 <body>
