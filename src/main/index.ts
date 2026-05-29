@@ -15,8 +15,8 @@ if (!app.requestSingleInstanceLock()) {
 
 function createSplash(): BrowserWindow {
   const w = new BrowserWindow({
-    width: 520,
-    height: 300,
+    width: 700,
+    height: 400,
     frame: false,
     resizable: false,
     center: true,

@@ -28,7 +28,7 @@ function fullDateLabel(): string {
 }
 
 const ROUTES: Record<string, Route> = {
-  dashboard:    { title: () => `Bom ${greeting()}, Rodrigo 👋`,        subtitle: fullDateLabel,  render: renderDashboard    },
+  dashboard:    { title: 'Bem-vindo',                                   subtitle: fullDateLabel,  render: renderDashboard    },
   transactions: { title: 'Transações',                                  subtitle: monthLabel,     render: renderTransactions },
   accounts:     { title: 'Contas',                                                                render: renderAccounts     },
   budget:       { title: 'Orçamento',                                   subtitle: monthLabel,     render: renderBudget       },
