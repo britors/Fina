@@ -22,8 +22,8 @@
     category: "Office",
     synopsis: "Gerenciador de finanças pessoais",
     description: "Controle total das suas finanças: contas, transações, orçamentos, investimentos, metas e muito mais.",
-    // Coloque um PNG 512×512 em build/icon.png
-    icon: "build/icon.png"
+    // build/icon.svg é convertido automaticamente pelo electron-builder no Linux
+    icon: "build/icon.svg"
   },
 
   deb: {
@@ -36,7 +36,9 @@
 
   win: {
     target: [{ target: "nsis", arch: ["x64"] }],
-    // Coloque um ICO 256×256 em build/icon.ico
+    // Gere build/icon.ico a partir de build/icon.svg:
+    //   inkscape build/icon.svg -w 256 -h 256 -o build/icon.png
+    //   convert build/icon.png -define icon:auto-resize=256,128,64,48,32,16 build/icon.ico
     icon: "build/icon.ico"
   },
 

@@ -41,7 +41,19 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
 
   el.innerHTML = `
     <div class="sidebar-header">
-      <span class="sidebar-logo">Fina</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <svg width="32" height="32" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <circle cx="80" cy="80" r="78" fill="none" stroke="#1D9E75" stroke-width="2" opacity="0.3"/>
+          <circle cx="80" cy="80" r="68" fill="#0C2E22"/>
+          <rect x="30" y="98" width="18" height="26" rx="3" fill="#1D9E75" opacity="0.5"/>
+          <rect x="56" y="76" width="18" height="48" rx="3" fill="#1D9E75" opacity="0.75"/>
+          <rect x="82" y="54" width="18" height="70" rx="3" fill="#1D9E75"/>
+          <rect x="108" y="66" width="18" height="58" rx="3" fill="#1D9E75" opacity="0.85"/>
+          <polyline points="39,92 65,72 91,48 117,60" fill="none" stroke="#9FE1CB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="91" cy="48" r="5" fill="#9FE1CB"/>
+        </svg>
+        <span class="sidebar-logo">fina</span>
+      </div>
       <span class="sidebar-sub">Finanças pessoais</span>
     </div>
     <div class="sidebar-hr"></div>

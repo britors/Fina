@@ -21,8 +21,8 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install RPM tools
-        run: sudo apt-get install -y rpm
+      - name: Install RPM tools and icon utils
+        run: sudo apt-get install -y rpm inkscape imagemagick
 
       - name: Install dependencies
         run: npm ci
@@ -58,6 +58,12 @@ jobs:
 
       - name: Build app
         run: npm run build
+
+      - name: Generate icon.ico
+        run: |
+          choco install inkscape imagemagick --no-progress -y
+          inkscape build/icon.svg --export-type=png --export-width=256 --export-filename=build/icon_256.png
+          magick build/icon_256.png -define icon:auto-resize=256,128,64,48,32,16 build/icon.ico
 
       - name: Package (NSIS installer)
         run: npx electron-builder --win nsis --publish never
