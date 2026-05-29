@@ -2,6 +2,10 @@
   "name": "fina",
   "version": "8.9.4",
   "description": "Gerenciador de finanças pessoais",
+  "author": {
+    "name": "Rodrigo Brito",
+    "email": "rodrigo@w3ti.com.br"
+  },
   "main": "out/main/index.js",
   "scripts": {
     "build": "node esbuild.config.js",
