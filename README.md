@@ -4,100 +4,160 @@ Aplicativo desktop para controle de finanças pessoais, construído com **Electr
 
 ---
 
-## Tecnologias
+## Instalação
 
-| Camada | Tecnologia |
-|---|---|
-| Desktop | Electron 34 |
-| Linguagem | TypeScript 5 |
-| Banco de dados | SQLite via `better-sqlite3` |
-| Build | esbuild |
-| Testes | `node:test` (built-in) |
-| Ícones | Tabler Icons CDN |
-| Fontes | Inter (Google Fonts) |
+### Linux — Arch / Manjaro (AUR)
+
+```bash
+# Com yay
+yay -S fina
+
+# Com paru
+paru -S fina
+```
+
+### Linux — Debian / Ubuntu (.deb)
+
+```bash
+# Baixe o .deb da página de releases
+wget https://github.com/britors/Fina/releases/latest/download/fina_amd64.deb
+sudo dpkg -i fina_amd64.deb
+```
+
+### Linux — Fedora / openSUSE (.rpm)
+
+```bash
+# Baixe o .rpm da página de releases
+wget https://github.com/britors/Fina/releases/latest/download/fina_x86_64.rpm
+sudo rpm -i fina_x86_64.rpm
+# ou
+sudo dnf install fina_x86_64.rpm
+```
+
+### Windows
+
+Baixe o instalador `.exe` na [página de releases](https://github.com/britors/Fina/releases/latest) e execute-o.  
+Compatível com Windows 10/11 (x64).
 
 ---
 
-## Pré-requisitos
+## Releases
+
+Os pacotes são gerados automaticamente pelo GitHub Actions a cada tag `v*`.  
+Acesse: **[github.com/britors/Fina/releases](https://github.com/britors/Fina/releases)**
+
+| Plataforma | Arquivo | Gerado via |
+| --- | --- | --- |
+| Arch Linux | AUR (`fina`) | PKGBUILD — build from source |
+| Debian / Ubuntu | `.deb` | GitHub Actions → electron-builder |
+| Fedora / openSUSE | `.rpm` | GitHub Actions → electron-builder |
+| Windows 10/11 | `.exe` (NSIS) | GitHub Actions → electron-builder |
+
+### Criar um release
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+O workflow `.github/workflows/release.yml` dispara automaticamente, gera os pacotes e cria o release com os artefatos.
+
+---
+
+## Desenvolvimento
+
+### Pré-requisitos
 
 - **Node.js** ≥ 18 (testado com v24)
 - **npm** ≥ 9
 - Ferramentas de compilação nativa para `better-sqlite3`:
   - **Linux:** `gcc`, `make`, `python3` (`build-essential`)
-  - **macOS:** Xcode Command Line Tools
   - **Windows:** Visual C++ Build Tools
 
----
-
-## Instalação
+### Configuração
 
 ```bash
-# 1. Clone ou baixe o repositório
-cd /caminho/para/Fina
-
-# 2. Instale as dependências (already rebuilds better-sqlite3 via postinstall)
+git clone https://github.com/britors/Fina.git
+cd Fina
 npm install
-
-# 3. Compile o projeto
 npm run build
-```
-
----
-
-## Uso em desenvolvimento
-
-Abra dois terminais:
-
-```bash
-# Terminal 1 — watch (recompila ao salvar)
-npm run watch
-
-# Terminal 2 — inicia o Electron
 npm start
 ```
 
----
-
-## Scripts disponíveis
+### Scripts disponíveis
 
 | Comando | Descrição |
 |---|---|
 | `npm run build` | Compila main + preload + renderer |
 | `npm run watch` | Compilação contínua (dev) |
 | `npm start` | Abre o app Electron |
-| `npm run typecheck` | Verificação de tipos sem compilar |
-| `npm test` | Roda os testes unitários |
-| `npm run build:tests` | Compila apenas os testes |
+| `npm run typecheck` | Verificação de tipos |
+| `npm test` | Testes unitários |
+| `npm run dist` | Empacota para a plataforma atual |
+| `npm run dist:linux` | Gera `.deb` e `.rpm` |
+| `npm run dist:win` | Gera instalador `.exe` |
+
+---
+
+## Funcionalidades
+
+| Módulo | Descrição |
+|---|---|
+| Dashboard | Resumo financeiro, previsão de saldo 30 dias, indicadores de mercado |
+| Transações | Lançamentos com categorias, filtros e importação CSV/OFX |
+| Contas | Corrente, poupança, cartão de crédito, carteira |
+| Orçamento | Limites mensais por categoria com alertas |
+| Relatórios | Histórico de até 12 meses, exportação PDF e CSV |
+| Agenda | Contas a pagar e receber com recorrências automáticas |
+| Patrimônio | Imóveis, veículos, terrenos e outros bens |
+| Investimentos | Carteira com alocação e rendimento |
+| Metas | Planejamento com prazo e progresso |
+| Dívidas | Empréstimos, financiamentos e simulador de quitação |
+| Mercado | Câmbio (USD/EUR/BTC), bolsas (Ibovespa, S&P 500, Nasdaq) e Selic |
 
 ---
 
 ## Estrutura do projeto
 
-```
+```text
 src/
 ├── main/
-│   ├── index.ts          # Main process: janela, splash, IPC
-│   ├── preload.ts        # Context bridge (segurança)
-│   ├── database.ts       # SQLite (better-sqlite3) + migrations
-│   ├── ipc/              # Handlers IPC por domínio
+│   ├── index.ts              # Main process: janela, splash, IPC
+│   ├── preload.ts            # Context bridge (segurança)
+│   ├── database.ts           # SQLite + migrations
+│   ├── notifications.ts      # Notificações nativas
+│   ├── recurrences.ts        # Geração de recorrências no startup
+│   ├── ipc/                  # Handlers IPC por domínio
 │   │   ├── accounts.ts
 │   │   ├── transactions.ts
 │   │   ├── categories.ts
 │   │   ├── budgets.ts
 │   │   ├── bills.ts
-│   │   └── settings.ts
+│   │   ├── settings.ts
+│   │   ├── assets.ts
+│   │   ├── investments.ts
+│   │   ├── goals.ts
+│   │   ├── debts.ts
+│   │   ├── forecast.ts
+│   │   ├── market.ts
+│   │   ├── import.ts
+│   │   └── export.ts
+│   ├── import/
+│   │   ├── csv-parser.ts
+│   │   └── ofx-parser.ts
 │   └── migrations/
-│       └── 001_initial.sql   # Schema completo + seed data
+│       ├── 001_initial.sql
+│       ├── 002_assets_investments.sql
+│       └── 003_goals_debts.sql
 ├── renderer/
-│   ├── index.html        # Shell HTML + CSS (design system)
-│   ├── splash.html       # Tela de abertura (banner Fina)
-│   ├── index.ts          # Entry point
-│   ├── router.ts         # Roteador hash-based
-│   ├── api.ts            # Wrapper tipado do IPC
+│   ├── index.html            # Shell HTML + CSS (design system dark)
+│   ├── splash.html           # Tela de abertura
+│   ├── router.ts             # Roteador hash-based
+│   ├── api.ts                # Wrapper tipado do IPC
 │   ├── components/
 │   │   ├── sidebar.ts
 │   │   ├── topbar.ts
-│   │   ├── charts.ts     # SVG: donut + barras
+│   │   ├── charts.ts         # SVG: donut, barras, área
 │   │   └── modal.ts
 │   └── pages/
 │       ├── dashboard.ts
@@ -106,14 +166,15 @@ src/
 │       ├── budget.ts
 │       ├── reports.ts
 │       ├── settings.ts
-│       └── agenda.ts
+│       ├── agenda.ts
+│       ├── patrimonio.ts
+│       ├── investments.ts
+│       ├── goals.ts
+│       ├── debts.ts
+│       └── market.ts
 └── shared/
-    ├── types.ts          # Interfaces TypeScript compartilhadas
-    └── utils.ts          # Funções puras (formatação, cálculos)
-
-tests/
-├── accounts.test.ts
-└── transactions.test.ts
+    ├── types.ts              # Interfaces TypeScript compartilhadas
+    └── utils.ts              # Funções puras (formatação, cálculos)
 ```
 
 ---
@@ -125,7 +186,6 @@ O arquivo SQLite fica em:
 | Plataforma | Caminho |
 |---|---|
 | Linux | `~/.config/Fina/fina.db` |
-| macOS | `~/Library/Application Support/Fina/fina.db` |
 | Windows | `%APPDATA%\Fina\fina.db` |
 
 Para usar um caminho customizado:
@@ -136,49 +196,29 @@ FINA_DB_PATH=/meu/caminho/fina.db npm start
 
 ---
 
-## Entidades do banco
-
-| Tabela | Descrição |
-|---|---|
-| `accounts` | Contas (corrente, poupança, cartão, carteira) |
-| `categories` | Categorias de receita e despesa |
-| `transactions` | Lançamentos financeiros |
-| `budgets` | Orçamentos mensais por categoria |
-| `bills` | Contas a pagar/receber |
-| `app_settings` | Configurações do usuário |
-| `schema_migrations` | Controle de migrações executadas |
-
----
-
-## Paleta de cores (dark mode)
-
-| Token | Hex | Uso |
-|---|---|---|
-| `--bg` | `#0F1117` | Fundo geral |
-| `--surface` | `#1A1D27` | Cards, sidebar |
-| `--accent` | `#1D9E75` | Verde principal |
-| `--danger` | `#D85A30` | Vermelho/despesas |
-| `--warning` | `#EF9F27` | Amarelo/alertas |
-| `--border` | `#2A2D3A` | Bordas sutis |
-
----
-
 ## Testes
 
 ```bash
 npm test
-# 28 testes — 8 suites — 0 falhas
 ```
 
-Cobertura:
-- Cálculo de saldo total e crédito disponível
-- Filtragem de transações por intervalo de datas
-- Resumo mensal (receitas, despesas, saldo)
-- Percentual de orçamento (incluindo excedido)
-- Formatação de datas e moeda
+---
+
+## Tecnologias
+
+| Camada | Tecnologia |
+| --- | --- |
+| Desktop | Electron 34 |
+| Linguagem | TypeScript |
+| Banco de dados | SQLite via `better-sqlite3` |
+| Build | esbuild |
+| Empacotamento | electron-builder |
+| Testes | `node:test` (built-in) |
+| Ícones | Tabler Icons CDN |
+| Fontes | Inter (Google Fonts) |
 
 ---
 
 ## Licença
 
-MIT — uso pessoal e comercial livre.
+GPL-3.0 — veja [LICENSE](LICENSE).
