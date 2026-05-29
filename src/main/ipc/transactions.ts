@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
-import type { Transaction, TransactionFilters } from '../../shared/types';
+import type { Transaction, TransactionFilters, TransactionType } from '../../shared/types';
 
 const JOIN = `
   SELECT t.*, a.name as account_name,
@@ -10,6 +10,16 @@ const JOIN = `
   JOIN accounts a ON t.account_id = a.id
   JOIN categories c ON t.category_id = c.id
 `;
+
+function balanceDelta(type: TransactionType, amount: number): number {
+  return type === 'income' ? amount : -amount;
+}
+
+function adjustBalance(accountId: string, delta: number): void {
+  getDb()
+    .prepare(`UPDATE accounts SET balance = balance + ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(delta, accountId);
+}
 
 export function registerTransactionHandlers(): void {
   ipcMain.handle('transactions:list', (_e, filters: TransactionFilters = {}) => {
@@ -43,21 +53,52 @@ export function registerTransactionHandlers(): void {
 
   ipcMain.handle('transactions:create', (_e, data: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>) => {
     const id = randomUUID();
-    getDb().prepare(
-      'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,?)'
-    ).run(id, data.account_id, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0);
-    return getDb().prepare(`${JOIN} WHERE t.id = ?`).get(id);
+    const db = getDb();
+    db.transaction(() => {
+      db.prepare(
+        'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,?)'
+      ).run(id, data.account_id, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0);
+      if (data.status === 'confirmed') {
+        adjustBalance(data.account_id, balanceDelta(data.type, data.amount));
+      }
+    })();
+    return db.prepare(`${JOIN} WHERE t.id = ?`).get(id);
   });
 
   ipcMain.handle('transactions:update', (_e, { id, ...data }: Partial<Transaction> & { id: string }) => {
-    getDb().prepare(
-      `UPDATE transactions SET account_id=?, category_id=?, description=?, amount=?, type=?, date=?, status=?, notes=?, recurring=?, updated_at=datetime('now') WHERE id=?`
-    ).run(data.account_id, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, id);
-    return getDb().prepare(`${JOIN} WHERE t.id = ?`).get(id);
+    const db = getDb();
+    db.transaction(() => {
+      const old = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as Transaction | undefined;
+      db.prepare(
+        `UPDATE transactions SET account_id=?, category_id=?, description=?, amount=?, type=?, date=?, status=?, notes=?, recurring=?, updated_at=datetime('now') WHERE id=?`
+      ).run(data.account_id, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, id);
+
+      if (old) {
+        const wasConfirmed = old.status === 'confirmed';
+        const isConfirmed  = data.status === 'confirmed';
+
+        if (wasConfirmed) {
+          // Reverte o efeito anterior
+          adjustBalance(old.account_id, -balanceDelta(old.type, old.amount));
+        }
+        if (isConfirmed) {
+          // Aplica o novo efeito
+          adjustBalance(data.account_id!, balanceDelta(data.type!, data.amount!));
+        }
+      }
+    })();
+    return db.prepare(`${JOIN} WHERE t.id = ?`).get(id);
   });
 
   ipcMain.handle('transactions:delete', (_e, id: string) => {
-    getDb().prepare('DELETE FROM transactions WHERE id = ?').run(id);
+    const db = getDb();
+    db.transaction(() => {
+      const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as Transaction | undefined;
+      db.prepare('DELETE FROM transactions WHERE id = ?').run(id);
+      if (tx?.status === 'confirmed') {
+        adjustBalance(tx.account_id, -balanceDelta(tx.type, tx.amount));
+      }
+    })();
   });
 
   ipcMain.handle('transactions:getMonthlySummary', (_e, { month, year }: { month: number; year: number }) => {
