@@ -27,6 +27,16 @@ function copyAssets() {
   for (const f of fs.readdirSync('src/main/migrations')) {
     cp(`src/main/migrations/${f}`, `out/main/migrations/${f}`);
   }
+
+  // Ícone do app (usado pelo BrowserWindow em dev e pelo electron-builder em prod)
+  if (fs.existsSync('build/icon.svg')) {
+    fs.mkdirSync('out/build', { recursive: true });
+    cp('build/icon.svg', 'out/build/icon.svg');
+  }
+  if (fs.existsSync('build/icon.png')) {
+    fs.mkdirSync('out/build', { recursive: true });
+    cp('build/icon.png', 'out/build/icon.png');
+  }
 }
 
 async function buildTests() {

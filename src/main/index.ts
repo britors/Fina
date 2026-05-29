@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import { openDatabase, runMigrations, closeDatabase, dbPath } from './database';
 import { registerAccountHandlers } from './ipc/accounts';
 import { registerTransactionHandlers } from './ipc/transactions';
@@ -21,6 +22,19 @@ import { generateRecurrences } from './recurrences';
 if (!app.requestSingleInstanceLock()) {
   app.quit();
   process.exit(0);
+}
+
+function loadAppIcon(): Electron.NativeImage | undefined {
+  const candidates = [
+    path.join(__dirname, '../../build/icon.png'),
+    path.join(__dirname, '../../build/icon.svg'),
+    path.join(app.getAppPath(), 'build/icon.png'),
+    path.join(app.getAppPath(), 'build/icon.svg'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return nativeImage.createFromPath(p);
+  }
+  return undefined;
 }
 
 function createSplash(): BrowserWindow {
@@ -49,6 +63,7 @@ function createMainWindow(): BrowserWindow {
     show: false,
     backgroundColor: '#0F1117',
     autoHideMenuBar: true,
+    icon: loadAppIcon(),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
