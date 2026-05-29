@@ -20,6 +20,7 @@ const NAV: { section: string; items: { route: string; label: string; icon: strin
       { route: 'goals',        label: 'Metas',          icon: 'ti-target'        },
       { route: 'debts',        label: 'Dívidas',        icon: 'ti-receipt'       },
       { route: 'market',       label: 'Mercado',        icon: 'ti-chart-line'    },
+      { route: 'irpf',         label: 'IRPF',           icon: 'ti-file-invoice'  },
     ],
   },
   {

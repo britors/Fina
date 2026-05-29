@@ -10,6 +10,7 @@ import { render as renderInvestments  } from './pages/investments';
 import { render as renderGoals        } from './pages/goals';
 import { render as renderDebts        } from './pages/debts';
 import { render as renderMarket       } from './pages/market';
+import { render as renderIRPF         } from './pages/irpf';
 import { setActiveRoute               } from './components/sidebar';
 import { setTopbar                    } from './components/topbar';
 
@@ -45,6 +46,7 @@ const ROUTES: Record<string, Route> = {
   goals:        { title: 'Metas',         subtitle: 'Planejamento financeiro',                      render: renderGoals        },
   debts:        { title: 'Dívidas',       subtitle: 'Empréstimos e financiamentos',                 render: renderDebts        },
   market:       { title: 'Mercado',       subtitle: 'Câmbio, bolsas e indicadores',                 render: renderMarket       },
+  irpf:         { title: 'IRPF',          subtitle: 'Informe de rendimentos para declaração',        render: renderIRPF         },
 };
 
 export function initRouter(content: HTMLElement): void {

@@ -208,6 +208,23 @@ export interface DebtSimulation {
   savings_vs_minimum: number;
 }
 
+// ── IRPF ─────────────────────────────────────────────────────────────────────
+
+export interface IRPFReport {
+  year: number;
+  user_name: string;
+  rendimentos_tributaveis: { category: string; total: number }[];
+  total_rendimentos_tributaveis: number;
+  rendimentos_isentos: { category: string; total: number }[];
+  total_rendimentos_isentos: number;
+  deducoes: { categoria: string; total: number }[];
+  total_deducoes: number;
+  bens: { descricao: string; tipo: string; valor: number }[];
+  total_bens: number;
+  dividas: { descricao: string; credor: string; saldo: number }[];
+  total_dividas: number;
+}
+
 // ── Indicadores de mercado ────────────────────────────────────────────────────
 
 export interface MarketQuote {

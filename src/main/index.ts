@@ -16,6 +16,7 @@ import { registerExportHandlers } from './ipc/export';
 import { registerGoalHandlers } from './ipc/goals';
 import { registerDebtHandlers } from './ipc/debts';
 import { registerMarketHandlers } from './ipc/market';
+import { registerIRPFHandlers } from './ipc/irpf';
 import { startNotificationScheduler } from './notifications';
 import { generateRecurrences } from './recurrences';
 
@@ -94,6 +95,7 @@ function registerHandlers(): void {
   registerGoalHandlers();
   registerDebtHandlers();
   registerMarketHandlers();
+  registerIRPFHandlers();
 
   ipcMain.handle('db:path', () => dbPath());
   ipcMain.handle('app:version', () => app.getVersion());
