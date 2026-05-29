@@ -1,9 +1,39 @@
+# Dependências e build
 node_modules/
 out/
 dist/
+
+# Ícones gerados (build/generate-icons.js)
 build/icon.png
 build/icon.ico
+
+# AUR — arquivos gerados pelo makepkg
+aur/.SRCINFO
+aur/*.tar.gz
+aur/*.tar.zst
+aur/pkg/
+aur/src/
+
+# Banco de dados local
 *.db
 *.db-shm
 *.db-wal
+
+# Variáveis de ambiente
 .env
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript incremental build
+*.tsbuildinfo
+
+# Sistemas operacionais
+.DS_Store
+Thumbs.db
+
+# Editores
+.idea/
+*.swp
+*.swo
