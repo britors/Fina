@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, calculateBudgetPercentage } from '../../shared/utils';
 import { openModal } from '../components/modal';
+import { openCategoryModal } from '../components/categoryModal';
 import { setTopbarActions } from '../components/topbar';
 import type { BudgetWithProgress, Category } from '../../shared/types';
 
@@ -10,7 +11,7 @@ export async function render(el: HTMLElement): Promise<void> {
   let year  = now.getFullYear();
 
   setTopbarActions(`
-    <button class="btn btn-primary" id="btn-new-budget"><i class="ti ti-plus"></i> Nova categoria</button>
+    <button class="btn btn-primary" id="btn-new-budget"><i class="ti ti-plus"></i> Novo orçamento</button>
   `);
 
   async function renderPage(): Promise<void> {
@@ -68,7 +69,7 @@ export async function render(el: HTMLElement): Promise<void> {
       ${budgets.length === 0
         ? `<div class="empty"><i class="ti ti-target"></i>
             <div class="empty-title">Nenhum orçamento cadastrado</div>
-            <p>Clique em "Nova categoria" para definir limites.</p></div>`
+            <p>Clique em "Novo orçamento" para definir limites.</p></div>`
         : budgets.map(b => budgetRow(b)).join('')
       }
     `;
@@ -138,14 +139,22 @@ function budgetRow(b: BudgetWithProgress): string {
 
 async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void, month?: number, year?: number): Promise<void> {
   const cats = await invoke<Category[]>('categories:list', 'expense');
-  openModal({
+
+  function catOptions(list: Category[], selectedId?: string): string {
+    return list.map(c => `<option value="${c.id}" ${selectedId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+  }
+
+  const overlay = openModal({
     title: b ? 'Editar orçamento' : 'Novo orçamento',
     body: `
       <div class="form-group">
         <label class="form-label">Categoria</label>
-        <select class="form-ctrl" id="f-cat">
-          ${cats.map(c => `<option value="${c.id}" ${b?.category_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
-        </select>
+        <div style="display:flex;gap:8px">
+          <select class="form-ctrl" id="f-cat" style="flex:1">
+            ${catOptions(cats, b?.category_id)}
+          </select>
+          <button class="btn btn-ghost btn-sm" id="btn-new-cat" type="button"><i class="ti ti-plus"></i> Nova</button>
+        </div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -163,16 +172,26 @@ async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void,
       </div>
     `,
     onSave: async () => {
-      const cat   = (document.getElementById('f-cat')   as HTMLSelectElement).value;
-      const m     = parseInt((document.getElementById('f-month') as HTMLInputElement).value);
-      const y     = parseInt((document.getElementById('f-year')  as HTMLInputElement).value);
-      const limit = parseFloat((document.getElementById('f-limit') as HTMLInputElement).value);
+      const cat   = (overlay.querySelector('#f-cat')   as HTMLSelectElement).value;
+      const m     = parseInt((overlay.querySelector('#f-month') as HTMLInputElement).value);
+      const y     = parseInt((overlay.querySelector('#f-year')  as HTMLInputElement).value);
+      const limit = parseFloat((overlay.querySelector('#f-limit') as HTMLInputElement).value);
       if (!cat || isNaN(m) || isNaN(y) || isNaN(limit)) { alert('Preencha todos os campos.'); return false; }
       const payload = { category_id: cat, month: m, year: y, limit_amount: limit };
       if (b) { await invoke('budgets:update', { id: b.id, ...payload }); }
       else   { await invoke('budgets:create', payload); }
       onDone();
     },
+  });
+
+  overlay.querySelector('#btn-new-cat')?.addEventListener('click', () => {
+    openCategoryModal(null, async () => {
+      const updated = await invoke<Category[]>('categories:list', 'expense');
+      const sel = overlay.querySelector<HTMLSelectElement>('#f-cat')!;
+      const prev = sel.value;
+      sel.innerHTML = catOptions(updated, prev);
+      if (updated.length > 0 && !sel.value) sel.value = updated[updated.length - 1].id;
+    }, 'expense');
   });
 }
 

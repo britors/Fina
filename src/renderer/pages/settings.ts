@@ -1,6 +1,8 @@
 import { invoke, send } from '../api';
 import { setTopbarActions } from '../components/topbar';
 import { applyAccent, applyTheme } from '../theme';
+import { openCategoryModal } from '../components/categoryModal';
+import type { Category } from '../../shared/types';
 
 type Settings = Record<string, string>;
 
@@ -16,6 +18,7 @@ export async function render(el: HTMLElement): Promise<void> {
     { id: 'profile',       label: 'Perfil'           },
     { id: 'appearance',    label: 'Aparência'         },
     { id: 'notifications', label: 'Notificações'      },
+    { id: 'categories',    label: 'Categorias'        },
     { id: 'data',          label: 'Dados e backup'    },
     { id: 'about',         label: 'Sobre'             },
   ];
@@ -47,11 +50,12 @@ export async function render(el: HTMLElement): Promise<void> {
 }
 
 function renderSection(el: HTMLElement, id: string, s: Settings, dbPath: string): void {
-  if (id === 'profile')       renderProfile(el, s);
+  if (id === 'profile')            renderProfile(el, s);
   else if (id === 'appearance')    renderAppearance(el, s);
   else if (id === 'notifications') renderNotifications(el, s);
-  else if (id === 'data')     renderData(el, s, dbPath);
-  else if (id === 'about')    renderAbout(el);
+  else if (id === 'categories')    renderCategories(el);
+  else if (id === 'data')          renderData(el, s, dbPath);
+  else if (id === 'about')         renderAbout(el);
 }
 
 function renderProfile(el: HTMLElement, s: Settings): void {
@@ -296,6 +300,55 @@ async function renderAbout(el: HTMLElement): Promise<void> {
       btn.textContent = 'Atualizado';
       btn.disabled = true;
     }
+  });
+}
+
+async function renderCategories(el: HTMLElement): Promise<void> {
+  const cats = await invoke<Category[]>('categories:list');
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="settings-section-label" style="margin-bottom:0">CATEGORIAS</div>
+      <button class="btn btn-primary btn-sm" id="btn-add-cat"><i class="ti ti-plus"></i> Nova</button>
+    </div>
+    <div class="settings-hr" style="margin-top:8px"></div>
+    ${cats.length === 0 ? `<div style="color:var(--text-3);padding:12px 0;font-size:12px">Nenhuma categoria cadastrada.</div>` : ''}
+    ${cats.map(c => `
+      <div class="settings-row">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="cat-dot" style="background:${c.color}22">
+            <i class="ti ${c.icon}" style="color:${c.color};font-size:15px"></i>
+          </div>
+          <div>
+            <div class="settings-row-label">${esc(c.name)}</div>
+            <div class="settings-row-sub">${c.type === 'income' ? 'Receita' : 'Despesa'}</div>
+          </div>
+        </div>
+        <div class="settings-row-right">
+          <button class="btn btn-ghost btn-sm" data-edit-cat="${c.id}">Editar</button>
+          <button class="btn btn-danger btn-sm" data-del-cat="${c.id}">✕</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+
+  el.querySelector('#btn-add-cat')?.addEventListener('click', () =>
+    openCategoryModal(null, () => renderCategories(el))
+  );
+
+  el.querySelectorAll<HTMLElement>('[data-edit-cat]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cat = cats.find(c => c.id === btn.dataset.editCat);
+      if (cat) openCategoryModal(cat, () => renderCategories(el));
+    });
+  });
+
+  el.querySelectorAll<HTMLElement>('[data-del-cat]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Remover esta categoria? Transações vinculadas podem ser afetadas.')) return;
+      await invoke('categories:delete', btn.dataset.delCat);
+      renderCategories(el);
+    });
   });
 }
 
