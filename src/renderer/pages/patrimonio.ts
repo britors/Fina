@@ -190,8 +190,14 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>`;
 
     document.body.appendChild(overlay);
-    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    const close = (): void => {
+      overlay.remove();
+      document.body.focus();
+    };
+
+    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', close));
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
     overlay.querySelector('#btn-save-asset')?.addEventListener('click', async () => {
       const name = (overlay.querySelector<HTMLInputElement>('#f-name')!).value.trim();
@@ -211,7 +217,7 @@ export async function render(el: HTMLElement): Promise<void> {
       } else {
         await invoke('assets:create', payload);
       }
-      overlay.remove();
+      close();
       await load();
       await renderPage();
     });

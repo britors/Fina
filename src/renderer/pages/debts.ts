@@ -225,8 +225,14 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>`;
 
     document.body.appendChild(overlay);
-    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    const close = (): void => {
+      overlay.remove();
+      document.body.focus();
+    };
+
+    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', close));
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
     overlay.querySelector('#btn-save-debt')?.addEventListener('click', async () => {
       const description = (overlay.querySelector<HTMLInputElement>('#f-desc')!).value.trim();
@@ -246,7 +252,7 @@ export async function render(el: HTMLElement): Promise<void> {
       };
       if (debt) { await invoke('debts:update', { id: debt.id, ...payload }); }
       else       { await invoke('debts:create', payload); }
-      overlay.remove();
+      close();
       await load();
       await renderPage();
     });
@@ -279,8 +285,14 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>`;
 
     document.body.appendChild(overlay);
-    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    const close = (): void => {
+      overlay.remove();
+      document.body.focus();
+    };
+
+    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', close));
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
     overlay.querySelector('#btn-sim-calc')?.addEventListener('click', async () => {
       const extra = parseFloat((overlay.querySelector<HTMLInputElement>('#sim-extra')!).value) || 0;

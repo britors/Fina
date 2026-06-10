@@ -191,8 +191,14 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>`;
 
     document.body.appendChild(overlay);
-    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    const close = (): void => {
+      overlay.remove();
+      document.body.focus();
+    };
+
+    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', close));
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
     overlay.querySelector('#btn-save-goal')?.addEventListener('click', async () => {
       const name = (overlay.querySelector<HTMLInputElement>('#f-name')!).value.trim();
@@ -208,7 +214,7 @@ export async function render(el: HTMLElement): Promise<void> {
       };
       if (goal) { await invoke('goals:update', { id: goal.id, ...payload }); }
       else       { await invoke('goals:create', payload); }
-      overlay.remove();
+      close();
       await load();
       await renderPage();
     });

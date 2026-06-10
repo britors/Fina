@@ -22,7 +22,12 @@ export function openModal(opts: ModalOptions): HTMLElement {
     </div>
   `;
 
-  const close = (): void => { overlay.remove(); };
+  const close = (): void => {
+    overlay.remove();
+    // No Windows, janelas frameless podem perder o foco se o elemento focado for removido.
+    // Garantimos que o foco volte para o corpo do documento.
+    document.body.focus();
+  };
 
   overlay.querySelector<HTMLButtonElement>('.modal-close')!.addEventListener('click', close);
   overlay.querySelector<HTMLButtonElement>('[data-close]')!.addEventListener('click', close);
