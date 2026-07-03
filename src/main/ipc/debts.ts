@@ -14,9 +14,11 @@ function simulatePayoff(balance: number, rate: number, minPayment: number, extra
 
   while (remaining > 0.01 && months < 600) {
     const interest = remaining * monthly;
-    remaining = remaining + interest - payment;
+    const owed = remaining + interest;
+    const actualPayment = Math.min(payment, owed);
+    remaining = owed - actualPayment;
     if (remaining < 0) remaining = 0;
-    totalPaid += Math.min(payment, remaining + payment);
+    totalPaid += actualPayment;
     months++;
   }
 
@@ -26,9 +28,11 @@ function simulatePayoff(balance: number, rate: number, minPayment: number, extra
   let baseMonths = 0;
   while (baseRemaining > 0.01 && baseMonths < 600) {
     const interest = baseRemaining * monthly;
-    baseRemaining = baseRemaining + interest - minPayment;
+    const owed = baseRemaining + interest;
+    const actualPayment = Math.min(minPayment, owed);
+    baseRemaining = owed - actualPayment;
     if (baseRemaining < 0) baseRemaining = 0;
-    basePaid += Math.min(minPayment, baseRemaining + minPayment);
+    basePaid += actualPayment;
     baseMonths++;
   }
 
