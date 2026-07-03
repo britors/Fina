@@ -81,6 +81,8 @@ export interface Bill {
 export interface TransactionFilters {
   month?: number;
   year?: number;
+  dateFrom?: string;
+  dateTo?: string;
   account_id?: string;
   category_id?: string;
   type?: TransactionType;

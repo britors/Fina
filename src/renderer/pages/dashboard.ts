@@ -3,37 +3,66 @@ import { formatCurrency, formatDate, getDaysUntilDue } from '../../shared/utils'
 import { createDonut, createAreaChart } from '../components/charts';
 import type { Account, Bill, TransactionWithDetails, MonthlySummary, ForecastPoint, InvestmentSummary, Goal, MarketQuote } from '../../shared/types';
 
+function monthLabel(month: number, year: number): string {
+  return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+}
+
 export async function render(el: HTMLElement): Promise<void> {
-  el.innerHTML = '<div class="loading"><i class="ti ti-loader-2"></i> Carregando...</div>';
-
   const now = new Date();
-  const month = now.getMonth() + 1;
-  const year  = now.getFullYear();
+  let fromMonth = now.getMonth() + 1;
+  let fromYear  = now.getFullYear();
+  let toMonth   = now.getMonth() + 1;
+  let toYear    = now.getFullYear();
+  let firstLoad = true;
 
-  const [accounts, summary, recent, bills, expenses, forecast, invSummary, assetSummary, goals, debtSummary, quotes] = await Promise.all([
-    invoke<Account[]>('accounts:list'),
-    invoke<MonthlySummary>('transactions:getMonthlySummary', { month, year }),
-    invoke<TransactionWithDetails[]>('transactions:list', { month, year, limit: 5 }),
-    invoke<Bill[]>('bills:getUpcoming', 30),
-    invoke<{ name: string; color: string; total: number }[]>('transactions:getExpensesByCategory', { month, year }),
-    invoke<ForecastPoint[]>('forecast:get', 30),
-    invoke<InvestmentSummary>('investments:getSummary'),
-    invoke<{ total: number }>('assets:getSummary'),
-    invoke<Goal[]>('goals:list'),
-    invoke<{ total_debt: number }>('debts:getSummary'),
-    invoke<MarketQuote[]>('market:getQuotes'),
-  ]);
+  async function load(): Promise<void> {
+    if (firstLoad) {
+      el.innerHTML = '<div class="loading"><i class="ti ti-loader-2"></i> Carregando...</div>';
+      firstLoad = false;
+    }
 
-  const totalBalance  = accounts.reduce((s, a) => s + a.balance, 0);
-  const netWorth      = totalBalance + invSummary.total_current + (assetSummary.total ?? 0) - (debtSummary.total_debt ?? 0);
-  const donutSegs     = expenses.map(e => ({ value: e.total, color: e.color, label: e.name }));
-  const urgentGoals   = goals.filter(g => {
-    if (!g.target_date) return false;
-    const days = Math.ceil((new Date(g.target_date + 'T12:00').getTime() - Date.now()) / 86400_000);
-    return days <= 60 && g.current_amount < g.target_amount;
-  }).slice(0, 3);
+    const dateFrom = `${fromYear}-${String(fromMonth).padStart(2, '0')}-01`;
+    const lastDay  = new Date(toYear, toMonth, 0).getDate();
+    const dateTo   = `${toYear}-${String(toMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const periodLabel = (fromMonth === toMonth && fromYear === toYear)
+      ? monthLabel(fromMonth, fromYear)
+      : `${monthLabel(fromMonth, fromYear)} – ${monthLabel(toMonth, toYear)}`;
 
-  el.innerHTML = `
+    const [accounts, summary, recent, bills, expenses, forecast, invSummary, assetSummary, goals, debtSummary, quotes] = await Promise.all([
+      invoke<Account[]>('accounts:list'),
+      invoke<MonthlySummary>('transactions:getSummaryRange', { dateFrom, dateTo }),
+      invoke<TransactionWithDetails[]>('transactions:list', { dateFrom, dateTo, limit: 5 }),
+      invoke<Bill[]>('bills:getUpcoming', 30),
+      invoke<{ name: string; color: string; total: number }[]>('transactions:getExpensesByCategoryRange', { dateFrom, dateTo }),
+      invoke<ForecastPoint[]>('forecast:get', 30),
+      invoke<InvestmentSummary>('investments:getSummary'),
+      invoke<{ total: number }>('assets:getSummary'),
+      invoke<Goal[]>('goals:list'),
+      invoke<{ total_debt: number }>('debts:getSummary'),
+      invoke<MarketQuote[]>('market:getQuotes'),
+    ]);
+
+    const totalBalance  = accounts.reduce((s, a) => s + a.balance, 0);
+    const netWorth       = totalBalance + invSummary.total_current + (assetSummary.total ?? 0) - (debtSummary.total_debt ?? 0);
+    const donutSegs      = expenses.map(e => ({ value: e.total, color: e.color, label: e.name }));
+    const urgentGoals    = goals.filter(g => {
+      if (!g.target_date) return false;
+      const days = Math.ceil((new Date(g.target_date + 'T12:00').getTime() - Date.now()) / 86400_000);
+      return days <= 60 && g.current_amount < g.target_amount;
+    }).slice(0, 3);
+
+    el.innerHTML = `
+    <!-- Filtro de período -->
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 20px;flex-wrap:wrap">
+        <span style="font-size:0.8rem;color:var(--text-2)">Período</span>
+        <input class="form-ctrl" id="dash-from" type="month" value="${fromYear}-${String(fromMonth).padStart(2, '0')}" style="width:auto">
+        <span style="color:var(--text-3)">até</span>
+        <input class="form-ctrl" id="dash-to" type="month" value="${toYear}-${String(toMonth).padStart(2, '0')}" style="width:auto">
+        <button class="btn btn-ghost btn-sm" id="dash-reset">Mês atual</button>
+      </div>
+    </div>
+
     <!-- Stat cards -->
     <div class="grid-3" style="margin-bottom:20px">
       <div class="stat-card">
@@ -42,12 +71,12 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="stat-sub">${accounts.length} conta${accounts.length !== 1 ? 's' : ''} · patrimônio líquido: <strong>${formatCurrency(netWorth)}</strong></div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Receitas (${now.toLocaleDateString('pt-BR', { month: 'short' })})</div>
+        <div class="stat-label">Receitas (${periodLabel})</div>
         <div class="stat-value stat-green">${formatCurrency(summary.income)}</div>
-        <div class="stat-sub">↑ mês atual</div>
+        <div class="stat-sub">↑ período selecionado</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Despesas (${now.toLocaleDateString('pt-BR', { month: 'short' })})</div>
+        <div class="stat-label">Despesas (${periodLabel})</div>
         <div class="stat-value stat-red">${formatCurrency(summary.expense)}</div>
         <div class="stat-sub">Saldo: <strong style="color:${summary.balance >= 0 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(summary.balance)}</strong></div>
       </div>
@@ -63,7 +92,7 @@ export async function render(el: HTMLElement): Promise<void> {
         </div>
         <div class="card-hr"></div>
         ${recent.length === 0
-          ? '<div class="empty" style="padding:32px"><i class="ti ti-receipt-off"></i><div class="empty-title">Nenhuma transação este mês</div></div>'
+          ? '<div class="empty" style="padding:32px"><i class="ti ti-receipt-off"></i><div class="empty-title">Nenhuma transação no período</div></div>'
           : `<table class="table">
               <tbody>
                 ${recent.map(t => `
@@ -98,7 +127,7 @@ export async function render(el: HTMLElement): Promise<void> {
             ? '<div class="empty" style="padding:24px"><i class="ti ti-chart-pie-off"></i><div class="empty-title">Sem despesas</div></div>'
             : `<div class="chart-container">
                 ${createDonut(donutSegs, 150,
-                  now.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+                  periodLabel,
                   formatCurrency(summary.expense))}
                 <div class="chart-legend" style="max-width:140px">
                   ${donutSegs.slice(0, 5).map(s => `
@@ -218,6 +247,23 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
     </div>
   `;
+
+    el.querySelector<HTMLInputElement>('#dash-from')?.addEventListener('change', e => {
+      const [y, m] = (e.target as HTMLInputElement).value.split('-').map(Number);
+      if (y && m) { fromYear = y; fromMonth = m; load(); }
+    });
+    el.querySelector<HTMLInputElement>('#dash-to')?.addEventListener('change', e => {
+      const [y, m] = (e.target as HTMLInputElement).value.split('-').map(Number);
+      if (y && m) { toYear = y; toMonth = m; load(); }
+    });
+    el.querySelector('#dash-reset')?.addEventListener('click', () => {
+      fromMonth = now.getMonth() + 1; fromYear = now.getFullYear();
+      toMonth   = now.getMonth() + 1; toYear   = now.getFullYear();
+      load();
+    });
+  }
+
+  await load();
 }
 
 function billDueBadge(dueDate: string, status: string): string {
