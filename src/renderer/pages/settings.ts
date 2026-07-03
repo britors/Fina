@@ -207,16 +207,35 @@ function renderData(el: HTMLElement, _s: Settings, dbPath: string): void {
     <div class="settings-hr"></div>
     <div class="settings-row">
       <div><div class="settings-row-label">Exportar dados</div>
-           <div class="settings-row-sub">Copia o arquivo SQLite para outro local</div></div>
+           <div class="settings-row-sub">Salva um backup completo (.fin) com todos os seus dados</div></div>
       <div class="settings-row-right">
         <button class="btn btn-ghost btn-sm" id="btn-export">Exportar</button>
       </div>
     </div>
+    <div class="settings-row">
+      <div><div class="settings-row-label">Importar dados</div>
+           <div class="settings-row-sub">Restaura um backup (.fin) — substitui todos os dados atuais</div></div>
+      <div class="settings-row-right">
+        <button class="btn btn-ghost btn-sm" id="btn-import-backup">Importar</button>
+      </div>
+    </div>
   `;
 
-  el.querySelector('#btn-export')?.addEventListener('click', () => {
-    send('shell:openExternal', 'https://github.com');
-    alert(`Copie manualmente o arquivo:\n${dbPath}`);
+  el.querySelector('#btn-export')?.addEventListener('click', async () => {
+    const savedPath = await invoke<string | null>('backup:export');
+    if (savedPath) alert(`Backup salvo em:\n${savedPath}`);
+  });
+
+  el.querySelector('#btn-import-backup')?.addEventListener('click', async () => {
+    if (!confirm('Importar um backup substituirá TODOS os dados atuais do app. Esta ação não pode ser desfeita. Deseja continuar?')) return;
+    try {
+      const result = await invoke<{ imported: boolean }>('backup:import');
+      if (result.imported) {
+        alert('Backup importado com sucesso. O aplicativo será reiniciado.');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível importar o backup.');
+    }
   });
 }
 

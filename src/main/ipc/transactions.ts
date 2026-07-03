@@ -40,13 +40,18 @@ export function registerTransactionHandlers(): void {
     const conds: string[] = ['1=1'];
     const params: unknown[] = [];
 
-    if (filters.month != null) {
-      conds.push("CAST(strftime('%m', t.date) AS INTEGER) = ?");
-      params.push(filters.month);
-    }
-    if (filters.year != null) {
-      conds.push("CAST(strftime('%Y', t.date) AS INTEGER) = ?");
-      params.push(filters.year);
+    if (filters.dateFrom || filters.dateTo) {
+      if (filters.dateFrom) { conds.push('t.date >= ?'); params.push(filters.dateFrom); }
+      if (filters.dateTo)   { conds.push('t.date <= ?'); params.push(filters.dateTo); }
+    } else {
+      if (filters.month != null) {
+        conds.push("CAST(strftime('%m', t.date) AS INTEGER) = ?");
+        params.push(filters.month);
+      }
+      if (filters.year != null) {
+        conds.push("CAST(strftime('%Y', t.date) AS INTEGER) = ?");
+        params.push(filters.year);
+      }
     }
     if (filters.account_id)  { conds.push('t.account_id = ?');  params.push(filters.account_id); }
     if (filters.category_id) { conds.push('t.category_id = ?'); params.push(filters.category_id); }
@@ -172,5 +177,31 @@ export function registerTransactionHandlers(): void {
       HAVING total > 0
       ORDER BY total DESC
     `).all(month, year);
+  });
+
+  // Variante por intervalo de datas (dateFrom/dateTo, formato YYYY-MM-DD), usada
+  // pelo filtro de período "de/até" do dashboard principal.
+  ipcMain.handle('transactions:getSummaryRange', (_e, { dateFrom, dateTo }: { dateFrom: string; dateTo: string }) => {
+    const row = getDb().prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END), 0) as income,
+        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expense
+      FROM transactions
+      WHERE date >= ? AND date <= ?
+    `).get(dateFrom, dateTo) as { income: number; expense: number };
+    return { ...row, balance: row.income - row.expense };
+  });
+
+  ipcMain.handle('transactions:getExpensesByCategoryRange', (_e, { dateFrom, dateTo }: { dateFrom: string; dateTo: string }) => {
+    return getDb().prepare(`
+      SELECT c.name, c.color, COALESCE(SUM(t.amount), 0) as total
+      FROM categories c
+      LEFT JOIN transactions t ON t.category_id = c.id AND t.type = 'expense'
+        AND t.date >= ? AND t.date <= ?
+      WHERE c.type = 'expense'
+      GROUP BY c.id
+      HAVING total > 0
+      ORDER BY total DESC
+    `).all(dateFrom, dateTo);
   });
 }
