@@ -14,6 +14,7 @@ import { registerInvestmentHandlers } from './ipc/investments';
 import { registerForecastHandlers } from './ipc/forecast';
 import { registerImportHandlers } from './ipc/import';
 import { registerExportHandlers } from './ipc/export';
+import { registerBackupHandlers } from './ipc/backup';
 import { registerGoalHandlers } from './ipc/goals';
 import { registerDebtHandlers } from './ipc/debts';
 import { registerMarketHandlers } from './ipc/market';
@@ -94,6 +95,7 @@ function registerHandlers(): void {
   registerForecastHandlers();
   registerImportHandlers();
   registerExportHandlers();
+  registerBackupHandlers();
   registerGoalHandlers();
   registerDebtHandlers();
   registerMarketHandlers();
