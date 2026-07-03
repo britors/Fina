@@ -2,6 +2,21 @@
 
 Aplicativo desktop para controle de finanças pessoais, construído com **Electron + TypeScript + SQLite**.
 
+O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
+
+## Destaques da versão 10
+
+- Menu lateral reorganizado em grupos e submenus.
+- Manual do usuário dentro do aplicativo.
+- Diagnóstico financeiro com classificação da situação atual.
+- Plano mensal sugerido com direcionamento da margem disponível.
+- Plano de saída das dívidas com comparação de estratégias.
+- Reserva de emergência com cálculo de objetivo e contribuição mensal.
+- Alertas financeiros inteligentes.
+- Simulador de patrimônio futuro.
+- Jornada financeira guiada.
+- Assistente IA com suporte a ChatGPT/OpenAI e Gemini/Google, desativado por padrão e com envio apenas de dados agregados mediante consentimento.
+
 ---
 
 ## Instalação
@@ -104,6 +119,10 @@ npm start
 | Módulo | Descrição |
 |---|---|
 | Dashboard | Resumo financeiro, previsão de saldo 30 dias, indicadores de mercado |
+| Diagnóstico | Leitura da situação financeira, classificação e próximos passos |
+| Plano mensal | Sugestão de uso da renda para dívidas, reserva, metas e investimentos |
+| Alertas | Riscos e oportunidades calculados a partir dos dados financeiros |
+| Assistente IA | Análise educacional usando ChatGPT/OpenAI ou Gemini/Google com consentimento explícito |
 | Transações | Lançamentos com categorias, filtros e importação CSV/OFX |
 | Contas | Corrente, poupança, cartão de crédito, carteira |
 | Orçamento | Limites mensais por categoria com alertas |
@@ -111,9 +130,25 @@ npm start
 | Agenda | Contas a pagar e receber com recorrências automáticas |
 | Patrimônio | Imóveis, veículos, terrenos e outros bens |
 | Investimentos | Carteira com alocação e rendimento |
+| Simulador | Projeção de patrimônio futuro por aporte, prazo e rendimento |
 | Metas | Planejamento com prazo e progresso |
 | Dívidas | Empréstimos, financiamentos e simulador de quitação |
+| Plano de saída | Estratégias de quitação de dívidas e economia de juros |
+| Reserva | Cálculo de reserva de emergência de 3, 6 ou 12 meses |
+| Jornada | Passos guiados para sair da desorganização e crescer patrimônio |
 | Mercado | Câmbio (USD/EUR/BTC), bolsas (Ibovespa, S&P 500, Nasdaq) e Selic |
+| IRPF | Informe auxiliar com rendimentos, deduções, bens e dívidas |
+| Manual | Guia de uso das telas e funções dentro do app |
+
+---
+
+## Privacidade e IA
+
+Os dados financeiros ficam em um banco SQLite local no computador do usuário. O Fina não envia dados financeiros para servidores próprios.
+
+A integração com IA é opcional, fica desativada por padrão e só funciona quando o usuário configura uma chave de API e confirma o consentimento. Quando usada, o Fina envia ao provedor escolhido apenas um resumo agregado e minimizado, evitando por padrão nome, e-mail, bancos, descrições de transações, observações pessoais e dados linha a linha.
+
+Leia [PRIVACY.md](PRIVACY.md) para detalhes sobre dados locais, backups, integrações de mercado e uso de IA.
 
 ---
 
@@ -128,6 +163,7 @@ src/
 │   ├── notifications.ts      # Notificações nativas
 │   ├── recurrences.ts        # Geração de recorrências no startup
 │   ├── ipc/                  # Handlers IPC por domínio
+│   │   ├── ai.ts
 │   │   ├── accounts.ts
 │   │   ├── transactions.ts
 │   │   ├── categories.ts
@@ -161,6 +197,10 @@ src/
 │   │   └── modal.ts
 │   └── pages/
 │       ├── dashboard.ts
+│       ├── diagnostico.ts
+│       ├── planoMensal.ts
+│       ├── alertas.ts
+│       ├── assistente.ts
 │       ├── transactions.ts
 │       ├── accounts.ts
 │       ├── budget.ts
@@ -169,8 +209,12 @@ src/
 │       ├── agenda.ts
 │       ├── patrimonio.ts
 │       ├── investments.ts
+│       ├── simuladorPatrimonio.ts
 │       ├── goals.ts
 │       ├── debts.ts
+│       ├── planoDividas.ts
+│       ├── reserva.ts
+│       ├── jornada.ts
 │       └── market.ts
 └── shared/
     ├── types.ts              # Interfaces TypeScript compartilhadas
