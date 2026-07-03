@@ -21,6 +21,7 @@ import { registerMarketHandlers } from './ipc/market';
 import { registerIRPFHandlers } from './ipc/irpf';
 import { startNotificationScheduler } from './notifications';
 import { generateRecurrences } from './recurrences';
+import { runAutoBackup, startAutoBackupScheduler } from './autobackup';
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -166,6 +167,7 @@ app.whenReady().then(async () => {
   try {
     openDatabase();
     runMigrations();
+    runAutoBackup('on_open');
   } catch (err) {
     console.error('[DB] Erro na inicialização:', err);
   }
@@ -184,6 +186,7 @@ app.whenReady().then(async () => {
       console.log(`[Recorrências] ${rec.transactions} transações, ${rec.bills} contas geradas`);
     }
     startNotificationScheduler();
+    startAutoBackupScheduler();
   });
 
   app.on('activate', () => {
@@ -195,4 +198,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => closeDatabase());
+app.on('before-quit', () => {
+  runAutoBackup('on_close');
+  closeDatabase();
+});

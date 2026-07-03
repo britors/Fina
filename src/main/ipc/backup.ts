@@ -18,19 +18,39 @@ function isValidFinaBackup(filePath: string): boolean {
   }
 }
 
+// Grava uma cópia consistente e autocontida do banco no caminho informado.
+// Reaproveitada pela exportação manual e pelo auto-backup.
+export function performBackup(filePath: string): void {
+  // VACUUM INTO exige que o arquivo de destino ainda não exista.
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  getDb().prepare('VACUUM INTO ?').run(filePath);
+}
+
+export function backupFileName(): string {
+  const d = new Date();
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}.fin`;
+}
+
 export function registerBackupHandlers(): void {
   ipcMain.handle('backup:export', async () => {
     const { filePath } = await dialog.showSaveDialog({
       title: 'Exportar backup',
-      defaultPath: `fina-backup-${new Date().toISOString().slice(0, 10)}.fin`,
+      defaultPath: backupFileName(),
       filters: [{ name: 'Backup Fina', extensions: ['fin'] }],
     });
     if (!filePath) return null;
 
-    // VACUUM INTO exige que o arquivo de destino ainda não exista.
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    getDb().prepare('VACUUM INTO ?').run(filePath);
+    performBackup(filePath);
     return filePath;
+  });
+
+  ipcMain.handle('backup:chooseFolder', async () => {
+    const { filePaths } = await dialog.showOpenDialog({
+      title: 'Escolher pasta para o auto-backup',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return filePaths?.[0] ?? null;
   });
 
   ipcMain.handle('backup:import', async () => {
