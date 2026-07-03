@@ -33,9 +33,9 @@ export function openModal(opts: ModalOptions): HTMLElement {
   overlay.querySelector<HTMLButtonElement>('[data-close]')!.addEventListener('click', close);
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
-  overlay.querySelector<HTMLButtonElement>('[data-save]')!.addEventListener('click', () => {
+  overlay.querySelector<HTMLButtonElement>('[data-save]')!.addEventListener('click', async () => {
     if (opts.onSave) {
-      const keep = opts.onSave(overlay);
+      const keep = await opts.onSave(overlay);
       if (keep !== false) close();
     } else {
       close();
