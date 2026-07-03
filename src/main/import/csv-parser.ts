@@ -53,8 +53,13 @@ function splitCsvLine(line: string): string[] {
   const result: string[] = [];
   let cur = '';
   let inQuote = false;
-  for (const ch of line) {
-    if (ch === '"') { inQuote = !inQuote; continue; }
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuote && line[i + 1] === '"') { cur += '"'; i++; continue; } // aspas escapadas ("")
+      inQuote = !inQuote;
+      continue;
+    }
     if ((ch === ',' || ch === ';') && !inQuote) { result.push(cur.trim()); cur = ''; continue; }
     cur += ch;
   }
