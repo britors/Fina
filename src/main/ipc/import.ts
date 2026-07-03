@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { getDb } from '../database';
 import { parseOFX } from '../import/ofx-parser';
 import { parseCSV } from '../import/csv-parser';
+import { adjustBalance, balanceDelta } from './transactions';
 import type { ImportPreview, ImportPreviewRow, TransactionType } from '../../shared/types';
 
 function txHash(date: string, amount: number, description: string): string {
@@ -65,6 +66,7 @@ export function registerImportHandlers(): void {
         insert.run(randomUUID(), payload.accountId, payload.categoryId,
                    row.description, row.amount, row.type as TransactionType,
                    row.date, notes);
+        adjustBalance(payload.accountId, balanceDelta(row.type as TransactionType, row.amount));
         imported++;
       }
     });

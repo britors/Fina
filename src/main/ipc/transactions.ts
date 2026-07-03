@@ -11,11 +11,11 @@ const JOIN = `
   JOIN categories c ON t.category_id = c.id
 `;
 
-function balanceDelta(type: TransactionType, amount: number): number {
+export function balanceDelta(type: TransactionType, amount: number): number {
   return type === 'income' ? amount : -amount;
 }
 
-function adjustBalance(accountId: string, delta: number): void {
+export function adjustBalance(accountId: string, delta: number): void {
   getDb()
     .prepare(`UPDATE accounts SET balance = balance + ?, updated_at = datetime('now') WHERE id = ?`)
     .run(delta, accountId);
