@@ -3,6 +3,7 @@ export type TransactionType = 'income' | 'expense' | 'transfer';
 export type TransactionStatus = 'confirmed' | 'pending';
 export type CategoryType = 'income' | 'expense';
 export type BillStatus = 'pending' | 'paid' | 'overdue';
+export type BillInterval = 'weekly' | 'biweekly' | 'monthly' | 'bimonthly' | 'quarterly' | 'semiannual' | 'annual';
 
 export interface Account {
   id: string;
@@ -249,4 +250,13 @@ export interface MarketQuote {
   currency: string;
   updated_at: string;
   stale: boolean;
+}
+
+// ── Auto-atualização (electron-updater, apenas Windows) ────────────────────────
+
+export interface UpdateStatus {
+  state: 'checking' | 'available' | 'up-to-date' | 'downloading' | 'downloaded' | 'error';
+  version?: string;
+  percent?: number;
+  message?: string;
 }

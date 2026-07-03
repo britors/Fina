@@ -15,3 +15,7 @@ export async function invoke<T>(channel: string, data?: unknown): Promise<T> {
 export function send(channel: string, data?: unknown): void {
   window.api.send(channel, data);
 }
+
+export function on(channel: string, cb: (...args: unknown[]) => void): void {
+  window.api.on(channel, cb);
+}

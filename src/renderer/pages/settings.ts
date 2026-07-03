@@ -1,8 +1,8 @@
-import { invoke, send } from '../api';
+import { invoke, send, on } from '../api';
 import { setTopbarActions } from '../components/topbar';
 import { applyAccent, applyTheme } from '../theme';
 import { openCategoryModal } from '../components/categoryModal';
-import type { Category } from '../../shared/types';
+import type { Category, UpdateStatus } from '../../shared/types';
 
 type Settings = Record<string, string>;
 
@@ -296,6 +296,22 @@ type UpdateInfo = {
   releaseUrl: string;
 };
 
+// O box de atualização é recriado a cada visita à página; o listener do
+// electron-updater fica registrado uma única vez e só redesenha o box
+// se ele ainda estiver montado (evita empilhar listeners a cada navegação).
+let updateBoxEl: HTMLElement | null = null;
+let lastUpdateStatus: UpdateStatus | null = null;
+let updateListenerBound = false;
+
+function bindUpdateListener(): void {
+  if (updateListenerBound) return;
+  updateListenerBound = true;
+  on('updater:status', (status) => {
+    lastUpdateStatus = status as UpdateStatus;
+    if (updateBoxEl) renderAutoUpdateBox(updateBoxEl, lastUpdateStatus);
+  });
+}
+
 async function renderAbout(el: HTMLElement): Promise<void> {
   const version = await invoke<string>('app:version');
 
@@ -324,6 +340,80 @@ async function renderAbout(el: HTMLElement): Promise<void> {
 
     <div class="settings-section-label" style="margin-top:20px">ATUALIZAÇÃO</div>
     <div class="settings-hr"></div>
+    <div id="update-box"></div>
+  `;
+
+  const box = el.querySelector<HTMLElement>('#update-box')!;
+  const supported = await invoke<boolean>('updater:supported').catch(() => false);
+
+  if (supported) {
+    updateBoxEl = box;
+    bindUpdateListener();
+    renderAutoUpdateBox(box, lastUpdateStatus);
+    if (!lastUpdateStatus) void invoke('updater:check');
+  } else {
+    updateBoxEl = null;
+    renderManualUpdateBox(box);
+  }
+}
+
+/** Windows: download e instalação automáticos via electron-updater. */
+function renderAutoUpdateBox(el: HTMLElement, status: UpdateStatus | null): void {
+  const row = (sub: string, right: string) => `
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Verificar atualizações</div>
+        <div class="settings-row-sub">${sub}</div>
+      </div>
+      <div class="settings-row-right">${right}</div>
+    </div>
+  `;
+  const btn = (label: string, id: string, opts: { primary?: boolean; disabled?: boolean } = {}) =>
+    `<button class="btn ${opts.primary ? 'btn-primary' : 'btn-ghost'} btn-sm" id="${id}" ${opts.disabled ? 'disabled' : ''}>${label}</button>`;
+
+  switch (status?.state) {
+    case 'checking':
+      el.innerHTML = row('Verificando se há uma nova versão…', btn('Verificando…', 'btn-update', { disabled: true }));
+      break;
+
+    case 'available':
+      el.innerHTML = row(`Nova versão disponível: v${status.version}`, btn('Baixar agora', 'btn-update', { primary: true }));
+      el.querySelector('#btn-update')?.addEventListener('click', () => void invoke('updater:download'));
+      break;
+
+    case 'downloading': {
+      const pct = Math.round(status.percent ?? 0);
+      el.innerHTML = `
+        ${row(`Baixando atualização… ${pct}%`, '')}
+        <div class="prog-track"><div class="prog-fill prog-ok" style="width:${pct}%"></div></div>
+      `;
+      break;
+    }
+
+    case 'downloaded':
+      el.innerHTML = row('Atualização pronta para instalar.', btn('Reiniciar e instalar', 'btn-update', { primary: true }));
+      el.querySelector('#btn-update')?.addEventListener('click', () => void invoke('updater:install'));
+      break;
+
+    case 'error':
+      el.innerHTML = row(status.message || 'Erro ao verificar atualizações.', btn('Tentar novamente', 'btn-update'));
+      el.querySelector('#btn-update')?.addEventListener('click', () => void invoke('updater:check'));
+      break;
+
+    case 'up-to-date':
+      el.innerHTML = row('Você está na versão mais recente.', btn('Verificar', 'btn-update'));
+      el.querySelector('#btn-update')?.addEventListener('click', () => void invoke('updater:check'));
+      break;
+
+    default:
+      el.innerHTML = row('Clique para verificar se há uma nova versão', btn('Verificar', 'btn-update'));
+      el.querySelector('#btn-update')?.addEventListener('click', () => void invoke('updater:check'));
+  }
+}
+
+/** Linux (deb/rpm/AUR): não há instalação automática — só aponta para a release no GitHub. */
+function renderManualUpdateBox(el: HTMLElement): void {
+  el.innerHTML = `
     <div class="settings-row" id="update-row">
       <div>
         <div class="settings-row-label">Verificar atualizações</div>

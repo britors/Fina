@@ -20,6 +20,7 @@ import { registerDebtHandlers } from './ipc/debts';
 import { registerMarketHandlers } from './ipc/market';
 import { registerIRPFHandlers } from './ipc/irpf';
 import { registerAIHandlers } from './ipc/ai';
+import { initUpdater } from './updater';
 import { startNotificationScheduler } from './notifications';
 import { generateRecurrences } from './recurrences';
 import { runAutoBackup, startAutoBackupScheduler } from './autobackup';
@@ -180,6 +181,7 @@ app.whenReady().then(async () => {
   await new Promise<void>(r => setTimeout(r, Math.max(0, 1800 - elapsed)));
 
   const win = createMainWindow();
+  initUpdater(win);
   win.once('ready-to-show', () => {
     win.show();
     splash.destroy();

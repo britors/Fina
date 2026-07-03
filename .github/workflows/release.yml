@@ -74,7 +74,27 @@ jobs:
       - name: Package (NSIS installer)
         run: npx electron-builder --win nsis --publish never
 
+      - name: Validate updater metadata matches the built installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(sed -n 's/^path: //p' dist/latest.yml | head -n1 | tr -d '\r')"
+          if [ -z "$expected" ]; then
+            echo "Erro: não foi possível ler o campo 'path' em dist/latest.yml"
+            exit 1
+          fi
+          if [ ! -f "dist/$expected" ]; then
+            echo "Erro: latest.yml aponta para '$expected', mas o arquivo não foi gerado em dist/."
+            echo "Artefatos gerados:"
+            ls -1 dist
+            exit 1
+          fi
+          echo "OK: latest.yml e o instalador estão alinhados ($expected)."
+
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.exe
+          files: |
+            dist/*.exe
+            dist/*.yml
+            dist/*.blockmap

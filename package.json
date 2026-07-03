@@ -6,6 +6,10 @@
     "name": "Rodrigo Brito",
     "email": "rodrigo@w3ti.com.br"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/britors/Fina.git"
+  },
   "main": "out/main/index.js",
   "scripts": {
     "build": "node esbuild.config.js",
@@ -23,15 +27,16 @@
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
     "@resvg/resvg-js": "^2.6.2",
-    "electron-builder": "^25.1.8",
-    "png-to-ico": "^2.1.8",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^25.9.1",
     "electron": "^34.5.8",
+    "electron-builder": "^25.1.8",
     "esbuild": "^0.28.0",
+    "png-to-ico": "^2.1.8",
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0"
+    "better-sqlite3": "^12.10.0",
+    "electron-updater": "^6.8.9"
   }
 }
