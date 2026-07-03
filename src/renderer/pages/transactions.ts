@@ -158,7 +158,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
 function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): void {
   const today = new Date().toISOString().split('T')[0];
-  openModal({
+  const overlay = openModal({
     title: tx ? 'Editar transação' : 'Nova transação',
     body: `
       <div class="form-group">
@@ -193,6 +193,13 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): voi
           </select>
         </div>
       </div>
+      <div class="form-group" id="f-to-account-group" style="display:${tx?.type === 'transfer' ? '' : 'none'}">
+        <label class="form-label">Conta destino</label>
+        <select class="form-ctrl" id="f-to-account">
+          <option value="">— Selecione —</option>
+          ${accounts.map(a => `<option value="${a.id}" ${tx?.to_account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+        </select>
+      </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Data</label>
@@ -212,25 +219,39 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): voi
       </div>
     `,
     onSave: async () => {
-      const desc     = (document.getElementById('f-desc')     as HTMLInputElement).value.trim();
-      const amount   = parseFloat((document.getElementById('f-amount')   as HTMLInputElement).value);
-      const type     = (document.getElementById('f-type')     as HTMLSelectElement).value;
-      const account  = (document.getElementById('f-account')  as HTMLSelectElement).value;
-      const category = (document.getElementById('f-category') as HTMLSelectElement).value;
-      const date     = (document.getElementById('f-date')     as HTMLInputElement).value;
-      const status   = (document.getElementById('f-status')   as HTMLSelectElement).value;
-      const notes    = (document.getElementById('f-notes')    as HTMLTextAreaElement).value.trim();
+      const desc      = (document.getElementById('f-desc')     as HTMLInputElement).value.trim();
+      const amount    = parseFloat((document.getElementById('f-amount')   as HTMLInputElement).value);
+      const type      = (document.getElementById('f-type')     as HTMLSelectElement).value;
+      const account   = (document.getElementById('f-account')  as HTMLSelectElement).value;
+      const toAccount = (document.getElementById('f-to-account') as HTMLSelectElement | null)?.value ?? '';
+      const category  = (document.getElementById('f-category') as HTMLSelectElement).value;
+      const date      = (document.getElementById('f-date')     as HTMLInputElement).value;
+      const status    = (document.getElementById('f-status')   as HTMLSelectElement).value;
+      const notes     = (document.getElementById('f-notes')    as HTMLTextAreaElement).value.trim();
 
       if (!desc || isNaN(amount) || !date || !account || !category) {
         alert('Preencha todos os campos obrigatórios.');
         return false;
       }
+      if (type === 'transfer' && (!toAccount || toAccount === account)) {
+        alert('Selecione uma conta de destino diferente da conta de origem.');
+        return false;
+      }
 
-      const payload = { description: desc, amount, type, account_id: account, category_id: category, date, status, notes: notes || null, recurring: 0 };
+      const payload = {
+        description: desc, amount, type, account_id: account,
+        to_account_id: type === 'transfer' ? toAccount : null,
+        category_id: category, date, status, notes: notes || null, recurring: 0,
+      };
       if (tx) { await invoke('transactions:update', { id: tx.id, ...payload }); }
       else    { await invoke('transactions:create', payload); }
       onDone();
     },
+  });
+
+  overlay.querySelector('#f-type')?.addEventListener('change', e => {
+    const isTransfer = (e.target as HTMLSelectElement).value === 'transfer';
+    (overlay.querySelector('#f-to-account-group') as HTMLElement).style.display = isTransfer ? '' : 'none';
   });
 }
 

@@ -28,6 +28,7 @@ export interface Category {
 export interface Transaction {
   id: string;
   account_id: string;
+  to_account_id: string | null;
   category_id: string;
   description: string;
   amount: number;
