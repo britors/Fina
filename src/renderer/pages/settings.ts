@@ -195,7 +195,19 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
   });
 }
 
-function renderData(el: HTMLElement, _s: Settings, dbPath: string): void {
+const AUTOBACKUP_TRIGGERS: { value: string; label: string }[] = [
+  { value: 'off',      label: 'Desativado' },
+  { value: 'on_open',  label: 'Ao abrir o programa' },
+  { value: 'on_close', label: 'Ao fechar o programa' },
+  { value: 'daily',    label: 'Diariamente' },
+  { value: 'weekly',   label: 'Semanalmente' },
+  { value: 'monthly',  label: 'Mensalmente' },
+];
+
+function renderData(el: HTMLElement, s: Settings, dbPath: string): void {
+  const trigger = s.autobackup_trigger ?? 'off';
+  const folder  = s.autobackup_folder ?? '';
+
   el.innerHTML = `
     <div class="settings-section-label">BANCO DE DADOS</div>
     <div class="settings-hr"></div>
@@ -219,6 +231,24 @@ function renderData(el: HTMLElement, _s: Settings, dbPath: string): void {
         <button class="btn btn-ghost btn-sm" id="btn-import-backup">Importar</button>
       </div>
     </div>
+    <div class="settings-section-label" style="margin-top:20px">AUTO-BACKUP</div>
+    <div class="settings-hr"></div>
+    <div class="settings-row">
+      <div><div class="settings-row-label">Quando fazer backup</div>
+           <div class="settings-row-sub">Gera um arquivo .fin automaticamente na pasta escolhida</div></div>
+      <div class="settings-row-right">
+        <select class="form-ctrl" id="autobackup-trigger" style="width:auto">
+          ${AUTOBACKUP_TRIGGERS.map(t => `<option value="${t.value}" ${trigger === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div><div class="settings-row-label">Pasta de destino</div>
+           <div class="settings-row-sub" style="word-break:break-all;max-width:380px">${folder ? esc(folder) : 'Nenhuma pasta selecionada'}</div></div>
+      <div class="settings-row-right">
+        <button class="btn btn-ghost btn-sm" id="btn-autobackup-folder">Escolher pasta</button>
+      </div>
+    </div>
   `;
 
   el.querySelector('#btn-export')?.addEventListener('click', async () => {
@@ -236,6 +266,23 @@ function renderData(el: HTMLElement, _s: Settings, dbPath: string): void {
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Não foi possível importar o backup.');
     }
+  });
+
+  el.querySelector<HTMLSelectElement>('#autobackup-trigger')?.addEventListener('change', e => {
+    const value = (e.target as HTMLSelectElement).value;
+    invoke('settings:set', { key: 'autobackup_trigger', value });
+    s.autobackup_trigger = value;
+    if (value !== 'off' && !s.autobackup_folder) {
+      alert('Escolha também uma pasta de destino para o auto-backup funcionar.');
+    }
+  });
+
+  el.querySelector('#btn-autobackup-folder')?.addEventListener('click', async () => {
+    const chosen = await invoke<string | null>('backup:chooseFolder');
+    if (!chosen) return;
+    await invoke('settings:set', { key: 'autobackup_folder', value: chosen });
+    s.autobackup_folder = chosen;
+    renderData(el, s, dbPath);
   });
 }
 
