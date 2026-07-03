@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, getDaysUntilDue } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { createDonut } from '../components/charts';
 import type { Investment, InvestmentSummary, InvestmentType } from '../../shared/types';
@@ -88,7 +88,7 @@ export async function render(el: HTMLElement): Promise<void> {
                   const diff = inv.current_value - inv.applied_amount;
                   const pct  = inv.applied_amount > 0 ? (diff / inv.applied_amount * 100).toFixed(1) : '—';
                   const meta = TYPE_META[inv.type];
-                  const maturityWarning = inv.maturity_date ? daysUntil(inv.maturity_date) : null;
+                  const maturityWarning = inv.maturity_date ? getDaysUntilDue(inv.maturity_date) : null;
                   return `<tr>
                     <td>
                       <div style="font-weight:500">${esc(inv.name)}</div>
@@ -262,8 +262,4 @@ export async function render(el: HTMLElement): Promise<void> {
 
 function esc(s: string | null | undefined): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function daysUntil(dateStr: string): number {
-  return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400_000);
 }

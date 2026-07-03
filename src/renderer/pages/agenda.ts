@@ -15,9 +15,10 @@ export async function render(el: HTMLElement): Promise<void> {
 
   async function renderPage(): Promise<void> {
     const bills = await invoke<Bill[]>('bills:list');
+    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
     const overdue  = bills.filter(b => b.status === 'overdue');
     const upcoming = bills.filter(b => b.status === 'pending');
-    const paid     = bills.filter(b => b.status === 'paid');
+    const paid     = bills.filter(b => b.status === 'paid' && b.due_date.slice(0, 7) === currentMonth);
 
     el.innerHTML = `
       <div class="grid-3" style="margin-bottom:20px">

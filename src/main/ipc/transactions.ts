@@ -11,14 +11,28 @@ const JOIN = `
   JOIN categories c ON t.category_id = c.id
 `;
 
-function balanceDelta(type: TransactionType, amount: number): number {
+export function balanceDelta(type: TransactionType, amount: number): number {
   return type === 'income' ? amount : -amount;
 }
 
-function adjustBalance(accountId: string, delta: number): void {
+export function adjustBalance(accountId: string, delta: number): void {
   getDb()
     .prepare(`UPDATE accounts SET balance = balance + ?, updated_at = datetime('now') WHERE id = ?`)
     .run(delta, accountId);
+}
+
+// Transferências movem dinheiro entre duas contas: debita a origem e credita o
+// destino, em vez de simplesmente desaparecer como uma despesa comum.
+function applyBalanceEffect(
+  tx: { account_id: string; to_account_id?: string | null; type: TransactionType; amount: number },
+  sign: 1 | -1,
+): void {
+  if (tx.type === 'transfer' && tx.to_account_id) {
+    adjustBalance(tx.account_id, -tx.amount * sign);
+    adjustBalance(tx.to_account_id, tx.amount * sign);
+  } else {
+    adjustBalance(tx.account_id, balanceDelta(tx.type, tx.amount) * sign);
+  }
 }
 
 export function registerTransactionHandlers(): void {
@@ -52,26 +66,32 @@ export function registerTransactionHandlers(): void {
   );
 
   ipcMain.handle('transactions:create', (_e, data: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>) => {
+    if (data.type === 'transfer' && (!data.to_account_id || data.to_account_id === data.account_id)) {
+      throw new Error('Selecione uma conta de destino diferente da conta de origem para a transferência.');
+    }
     const id = randomUUID();
     const db = getDb();
     db.transaction(() => {
       db.prepare(
-        'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,?)'
-      ).run(id, data.account_id, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0);
+        'INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
+      ).run(id, data.account_id, data.to_account_id ?? null, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0);
       if (data.status === 'confirmed') {
-        adjustBalance(data.account_id, balanceDelta(data.type, data.amount));
+        applyBalanceEffect(data, 1);
       }
     })();
     return db.prepare(`${JOIN} WHERE t.id = ?`).get(id);
   });
 
   ipcMain.handle('transactions:update', (_e, { id, ...data }: Partial<Transaction> & { id: string }) => {
+    if (data.type === 'transfer' && (!data.to_account_id || data.to_account_id === data.account_id)) {
+      throw new Error('Selecione uma conta de destino diferente da conta de origem para a transferência.');
+    }
     const db = getDb();
     db.transaction(() => {
       const old = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as Transaction | undefined;
       db.prepare(
-        `UPDATE transactions SET account_id=?, category_id=?, description=?, amount=?, type=?, date=?, status=?, notes=?, recurring=?, updated_at=datetime('now') WHERE id=?`
-      ).run(data.account_id, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, id);
+        `UPDATE transactions SET account_id=?, to_account_id=?, category_id=?, description=?, amount=?, type=?, date=?, status=?, notes=?, recurring=?, updated_at=datetime('now') WHERE id=?`
+      ).run(data.account_id, data.to_account_id ?? null, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, id);
 
       if (old) {
         const wasConfirmed = old.status === 'confirmed';
@@ -79,11 +99,16 @@ export function registerTransactionHandlers(): void {
 
         if (wasConfirmed) {
           // Reverte o efeito anterior
-          adjustBalance(old.account_id, -balanceDelta(old.type, old.amount));
+          applyBalanceEffect(old, -1);
         }
         if (isConfirmed) {
           // Aplica o novo efeito
-          adjustBalance(data.account_id!, balanceDelta(data.type!, data.amount!));
+          applyBalanceEffect({
+            account_id: data.account_id!,
+            to_account_id: data.to_account_id,
+            type: data.type!,
+            amount: data.amount!,
+          }, 1);
         }
       }
     })();
@@ -96,7 +121,7 @@ export function registerTransactionHandlers(): void {
       const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as Transaction | undefined;
       db.prepare('DELETE FROM transactions WHERE id = ?').run(id);
       if (tx?.status === 'confirmed') {
-        adjustBalance(tx.account_id, -balanceDelta(tx.type, tx.amount));
+        applyBalanceEffect(tx, -1);
       }
     })();
   });

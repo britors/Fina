@@ -11,19 +11,22 @@ function normalize(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 }
 
-function parseDate(raw: string): string {
-  // DD/MM/YYYY ou YYYY-MM-DD ou DD-MM-YYYY
+function parseDate(raw: string): string | null {
+  // DD/MM/YYYY, YYYY-MM-DD (com ou sem horário), ou DD-MM-YYYY. Dia/mês com 1 ou 2 dígitos.
   const clean = raw.trim();
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) {
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(clean)) {
     const [d, m, y] = clean.split('/');
-    return `${y}-${m}-${d}`;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
-  if (/^\d{2}-\d{2}-\d{4}$/.test(clean)) {
+  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(clean)) {
+    const [y, m, d] = clean.slice(0, 10).split('-');
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(clean)) {
     const [d, m, y] = clean.split('-');
-    return `${y}-${m}-${d}`;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
-  return new Date().toISOString().slice(0, 10);
+  return null;
 }
 
 function parseMoney(raw: string): number {
@@ -50,8 +53,13 @@ function splitCsvLine(line: string): string[] {
   const result: string[] = [];
   let cur = '';
   let inQuote = false;
-  for (const ch of line) {
-    if (ch === '"') { inQuote = !inQuote; continue; }
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuote && line[i + 1] === '"') { cur += '"'; i++; continue; } // aspas escapadas ("")
+      inQuote = !inQuote;
+      continue;
+    }
     if ((ch === ',' || ch === ';') && !inQuote) { result.push(cur.trim()); cur = ''; continue; }
     cur += ch;
   }
@@ -97,8 +105,11 @@ export function parseCSV(content: string): ImportPreviewRow[] {
 
     if (!amount) continue;
 
+    const date = parseDate(rawDate);
+    if (!date) continue; // data ausente ou em formato não reconhecido: não importa a linha com data adivinhada
+
     rows.push({
-      date: parseDate(rawDate),
+      date,
       description: desc,
       amount,
       type,

@@ -10,7 +10,7 @@ import {
 import type { Transaction } from '../src/shared/types';
 
 const base: Transaction = {
-  id: '', account_id: 'acc-1', category_id: 'cat-1',
+  id: '', account_id: 'acc-1', to_account_id: null, category_id: 'cat-1',
   description: 'Test', amount: 100, type: 'expense',
   date: '', status: 'confirmed', notes: null, recurring: 0,
   created_at: '', updated_at: '',
