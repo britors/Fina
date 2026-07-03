@@ -26,6 +26,7 @@ const NAV: { section: string; items: { route: string; label: string; icon: strin
   {
     section: 'SISTEMA',
     items: [
+      { route: 'manual',   label: 'Manual',         icon: 'ti-book'     },
       { route: 'settings', label: 'Configurações', icon: 'ti-settings' },
     ],
   },

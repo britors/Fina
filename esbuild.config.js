@@ -22,6 +22,7 @@ function copyAssets() {
   fs.mkdirSync('out/renderer', { recursive: true });
   cp('src/renderer/index.html', 'out/renderer/index.html');
   cp('src/renderer/splash.html', 'out/renderer/splash.html');
+  cp('MANUAL_USUARIO.md', 'out/MANUAL_USUARIO.md');
 
   fs.mkdirSync('out/main/migrations', { recursive: true });
   for (const f of fs.readdirSync('src/main/migrations')) {
