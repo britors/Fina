@@ -7,10 +7,16 @@ import type { Account, Category, TransactionWithDetails, TransactionType } from 
 let accounts: Account[]  = [];
 let categories: Category[] = [];
 
+function monthLabel(month: number, year: number): string {
+  return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+}
+
 export async function render(el: HTMLElement): Promise<void> {
   const now = new Date();
-  let month = now.getMonth() + 1;
-  let year  = now.getFullYear();
+  let fromMonth = now.getMonth() + 1;
+  let fromYear  = now.getFullYear();
+  let toMonth   = now.getMonth() + 1;
+  let toYear    = now.getFullYear();
   let typeFilter: TransactionType | '' = '';
 
   [accounts, categories] = await Promise.all([
@@ -31,13 +37,23 @@ export async function render(el: HTMLElement): Promise<void> {
   `);
   document.getElementById('btn-new-tx')?.addEventListener('click', () => openTxModal(null, () => renderPage()));
   document.getElementById('btn-export-csv')?.addEventListener('click', async () => {
-    await invoke('export:csv', { month, year });
+    const dateFrom = `${fromYear}-${String(fromMonth).padStart(2, '0')}-01`;
+    const lastDay  = new Date(toYear, toMonth, 0).getDate();
+    const dateTo   = `${toYear}-${String(toMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    await invoke('export:csv', { dateFrom, dateTo, type: typeFilter || undefined });
   });
   document.getElementById('btn-import')?.addEventListener('click', () => openImportModal());
 
   async function renderPage(): Promise<void> {
+    const dateFrom = `${fromYear}-${String(fromMonth).padStart(2, '0')}-01`;
+    const lastDay  = new Date(toYear, toMonth, 0).getDate();
+    const dateTo   = `${toYear}-${String(toMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const periodLabel = (fromMonth === toMonth && fromYear === toYear)
+      ? monthLabel(fromMonth, fromYear)
+      : `${monthLabel(fromMonth, fromYear)} – ${monthLabel(toMonth, toYear)}`;
+
     const txs = await invoke<TransactionWithDetails[]>('transactions:list', {
-      month, year, type: typeFilter || undefined, limit: 200,
+      dateFrom, dateTo, type: typeFilter || undefined, limit: 200,
     });
     const summary = calculateMonthlySummary(txs);
 
@@ -48,24 +64,26 @@ export async function render(el: HTMLElement): Promise<void> {
         <span class="chip ${typeFilter === 'income' ? 'active' : ''}" data-type="income">Receitas</span>
         <span class="chip ${typeFilter === 'expense' ? 'active' : ''}" data-type="expense">Despesas</span>
         <div style="flex:1"></div>
-        <!-- Month picker -->
-        <input type="month" class="form-ctrl" style="width:160px"
-          id="month-picker"
-          value="${year}-${String(month).padStart(2,'0')}">
+        <!-- Period filter -->
+        <span style="font-size:0.8rem;color:var(--text-2)">Período</span>
+        <input class="form-ctrl" id="tx-from" type="month" value="${fromYear}-${String(fromMonth).padStart(2, '0')}" style="width:auto">
+        <span style="color:var(--text-3)">até</span>
+        <input class="form-ctrl" id="tx-to" type="month" value="${toYear}-${String(toMonth).padStart(2, '0')}" style="width:auto">
+        <button class="btn btn-ghost btn-sm" id="tx-reset">Mês atual</button>
       </div>
 
       <!-- Summary -->
       <div class="grid-3" style="margin-bottom:16px">
         <div class="stat-card">
-          <div class="stat-label">Total de receitas</div>
+          <div class="stat-label">Total de receitas (${periodLabel})</div>
           <div class="stat-value stat-green">+${formatCurrency(summary.income)}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Total de despesas</div>
+          <div class="stat-label">Total de despesas (${periodLabel})</div>
           <div class="stat-value stat-red">-${formatCurrency(summary.expense)}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Saldo do mês</div>
+          <div class="stat-label">Saldo do período</div>
           <div class="stat-value" style="color:${summary.balance >= 0 ? 'var(--accent)' : 'var(--danger)'}">
             ${summary.balance >= 0 ? '+' : ''}${formatCurrency(summary.balance)}
           </div>
@@ -129,10 +147,18 @@ export async function render(el: HTMLElement): Promise<void> {
       });
     });
 
-    // Month picker
-    el.querySelector<HTMLInputElement>('#month-picker')?.addEventListener('change', e => {
+    // Period filter
+    el.querySelector<HTMLInputElement>('#tx-from')?.addEventListener('change', e => {
       const [y, m] = (e.target as HTMLInputElement).value.split('-').map(Number);
-      year = y; month = m;
+      if (y && m) { fromYear = y; fromMonth = m; renderPage(); }
+    });
+    el.querySelector<HTMLInputElement>('#tx-to')?.addEventListener('change', e => {
+      const [y, m] = (e.target as HTMLInputElement).value.split('-').map(Number);
+      if (y && m) { toYear = y; toMonth = m; renderPage(); }
+    });
+    el.querySelector('#tx-reset')?.addEventListener('click', () => {
+      fromMonth = now.getMonth() + 1; fromYear = now.getFullYear();
+      toMonth   = now.getMonth() + 1; toYear   = now.getFullYear();
       renderPage();
     });
 

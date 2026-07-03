@@ -14,11 +14,13 @@ export function registerExportHandlers(): void {
 
   // ── CSV de transações ─────────────────────────────────────────────────────
   ipcMain.handle('export:csv', async (_e, filters: {
-    month?: number; year?: number; account_id?: string; type?: string;
+    month?: number; year?: number; dateFrom?: string; dateTo?: string; account_id?: string; type?: string;
   } = {}) => {
     const { filePath } = await dialog.showSaveDialog({
       title: 'Exportar transações',
-      defaultPath: `transacoes-${filters.year ?? new Date().getFullYear()}-${String(filters.month ?? new Date().getMonth() + 1).padStart(2, '0')}.csv`,
+      defaultPath: filters.dateFrom || filters.dateTo
+        ? `transacoes-${filters.dateFrom ?? ''}${filters.dateFrom && filters.dateTo ? '_a_' : ''}${filters.dateTo ?? ''}.csv`
+        : `transacoes-${filters.year ?? new Date().getFullYear()}-${String(filters.month ?? new Date().getMonth() + 1).padStart(2, '0')}.csv`,
       filters: [{ name: 'CSV', extensions: ['csv'] }],
     });
     if (!filePath) return null;
@@ -33,8 +35,13 @@ export function registerExportHandlers(): void {
     `;
     const params: (string | number)[] = [];
 
-    if (filters.month) { q += ` AND strftime('%m',t.date) = ?`; params.push(String(filters.month).padStart(2, '0')); }
-    if (filters.year)  { q += ` AND strftime('%Y',t.date) = ?`; params.push(String(filters.year)); }
+    if (filters.dateFrom || filters.dateTo) {
+      if (filters.dateFrom) { q += ` AND t.date >= ?`; params.push(filters.dateFrom); }
+      if (filters.dateTo)   { q += ` AND t.date <= ?`; params.push(filters.dateTo); }
+    } else {
+      if (filters.month) { q += ` AND strftime('%m',t.date) = ?`; params.push(String(filters.month).padStart(2, '0')); }
+      if (filters.year)  { q += ` AND strftime('%Y',t.date) = ?`; params.push(String(filters.year)); }
+    }
     if (filters.account_id) { q += ` AND t.account_id = ?`; params.push(filters.account_id); }
     if (filters.type)  { q += ` AND t.type = ?`; params.push(filters.type); }
     q += ' ORDER BY t.date DESC';
