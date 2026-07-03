@@ -10,7 +10,7 @@ A navegação principal fica no menu lateral esquerdo. O menu é organizado em g
 
 Os grupos do menu são:
 
-- `Visão geral`: Dashboard, diagnóstico financeiro, plano mensal e alertas.
+- `Visão geral`: Dashboard, diagnóstico financeiro, plano mensal, alertas e Assistente IA.
 - `Movimentação`: transações, contas, agenda e orçamento.
 - `Dívidas e proteção`: controle de dívidas, plano de saída e reserva.
 - `Patrimônio e crescimento`: patrimônio, investimentos, metas, simulador e jornada.
@@ -202,6 +202,60 @@ O Fina pode avisar quando:
 Cada alerta mostra o motivo e uma ação sugerida. Use essa tela como uma revisão rápida antes de tomar decisões no mês.
 
 Mantenha transações, orçamentos e dívidas atualizados para que os alertas sejam mais úteis.
+
+## Assistente IA
+
+A tela `Assistente IA` permite fazer perguntas sobre sua situação financeira usando um provedor de IA configurado por você.
+
+A integração fica desligada por padrão. Ela só funciona depois que você ativa a IA, salva uma chave de API e confirma o consentimento de envio de dados.
+
+### Provedores
+
+O Fina permite configurar:
+
+- `ChatGPT / OpenAI`.
+- `Gemini / Google`.
+
+Você informa sua própria chave de API e pode escolher o modelo usado pelo provedor.
+
+### Privacidade dos dados
+
+Antes de enviar uma pergunta, o Fina mostra quais dados podem ser enviados.
+
+Enviado somente com consentimento:
+
+- renda e despesas agregadas;
+- despesas por categoria;
+- saldos totais por tipo de conta;
+- dívidas por tipo e status;
+- orçamentos do mês;
+- metas, investimentos e bens agregados.
+
+Não enviado por padrão:
+
+- nome;
+- e-mail;
+- nomes de bancos;
+- descrições de transações;
+- observações pessoais;
+- dados linha a linha;
+- chaves de API.
+
+### Consentimento por pergunta
+
+Mesmo com a IA ativada, cada pergunta exige confirmação de envio do resumo financeiro agregado para o provedor escolhido.
+
+Se você não marcar a confirmação, a pergunta não é enviada.
+
+### Limitações
+
+As respostas da IA são apenas informativas e educacionais. Elas não substituem conferência dos dados, planejamento próprio nem orientação profissional financeira, fiscal, jurídica ou de investimento.
+
+### Chave de API
+
+A chave é salva criptografada fora do banco de dados do Fina. Ela não aparece nos backups, exports, relatórios ou interface depois de salva.
+
+Você pode remover a chave salva a qualquer momento na própria tela do assistente ou em `Configurações > IA`.
 
 ## Transações
 
@@ -941,6 +995,23 @@ Ao criar ou editar categoria, informe:
 - Cor.
 
 Categorias são usadas em transações, orçamentos, relatórios e gráficos.
+
+### IA
+
+Permite configurar o Assistente IA.
+
+Campos e opções disponíveis:
+
+- `Ativar IA`: liga ou desliga a integração.
+- `Provedor`: escolhe ChatGPT/OpenAI ou Gemini/Google.
+- `Modelo`: define o modelo usado.
+- `Chave de API`: salva ou substitui a chave do provedor.
+- `Remover`: remove a chave salva.
+- `Consentimento de envio`: registra que você entende que dados agregados poderão ser enviados quando solicitar uma análise.
+
+O Fina avisa se a criptografia segura do sistema não estiver disponível. Nesse caso, a chave de API não é salva.
+
+Mesmo com essa configuração ativa, o envio de dados exige confirmação na tela `Assistente IA`.
 
 ### Dados e backup
 

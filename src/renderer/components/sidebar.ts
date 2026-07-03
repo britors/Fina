@@ -25,6 +25,7 @@ const NAV: NavGroup[] = [
       { route: 'diagnostico',  label: 'Diagnóstico', icon: 'ti-stethoscope'       },
       { route: 'plano-mensal', label: 'Plano mensal', icon: 'ti-calendar-stats'   },
       { route: 'alertas',      label: 'Alertas',     icon: 'ti-alert-triangle'    },
+      { route: 'assistente',   label: 'Assistente IA', icon: 'ti-sparkles'        },
     ],
   },
   {

@@ -19,6 +19,7 @@ export async function render(el: HTMLElement): Promise<void> {
     { id: 'appearance',    label: 'Aparência'         },
     { id: 'notifications', label: 'Notificações'      },
     { id: 'categories',    label: 'Categorias'        },
+    { id: 'ai',            label: 'IA'                },
     { id: 'data',          label: 'Dados e backup'    },
     { id: 'about',         label: 'Sobre'             },
   ];
@@ -54,6 +55,7 @@ function renderSection(el: HTMLElement, id: string, s: Settings, dbPath: string)
   else if (id === 'appearance')    renderAppearance(el, s);
   else if (id === 'notifications') renderNotifications(el, s);
   else if (id === 'categories')    renderCategories(el);
+  else if (id === 'ai')            renderAI(el);
   else if (id === 'data')          renderData(el, s, dbPath);
   else if (id === 'about')         renderAbout(el);
 }
@@ -422,6 +424,110 @@ async function renderCategories(el: HTMLElement): Promise<void> {
   });
 }
 
+type AISettings = {
+  enabled: boolean;
+  provider: 'openai' | 'gemini';
+  model: string;
+  consent: boolean;
+  hasKey: boolean;
+  encryptionAvailable: boolean;
+};
+
+async function renderAI(el: HTMLElement): Promise<void> {
+  let ai = await invoke<AISettings>('ai:getSettings');
+
+  el.innerHTML = `
+    <div class="settings-section-label">ASSISTENTE DE IA</div>
+    <div class="settings-hr"></div>
+    ${!ai.encryptionAvailable ? `
+      <div class="alert alert-error" style="margin-top:14px">
+        A criptografia segura do sistema não está disponível. A chave de API não poderá ser salva.
+      </div>
+    ` : ''}
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Ativar IA</div>
+        <div class="settings-row-sub">A integração fica desligada até você ativar explicitamente</div>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle">
+          <input type="checkbox" id="ai-enabled" ${ai.enabled ? 'checked' : ''}>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Provedor</div>
+        <div class="settings-row-sub">Escolha quem receberá o resumo financeiro agregado</div>
+      </div>
+      <div class="settings-row-right">
+        <select class="form-ctrl" id="ai-provider" style="width:180px">
+          <option value="openai" ${ai.provider === 'openai' ? 'selected' : ''}>ChatGPT / OpenAI</option>
+          <option value="gemini" ${ai.provider === 'gemini' ? 'selected' : ''}>Gemini / Google</option>
+        </select>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Modelo</div>
+        <div class="settings-row-sub">Modelo usado nas respostas do assistente</div>
+      </div>
+      <div class="settings-row-right">
+        <input class="form-ctrl" id="ai-model" value="${esc(ai.model)}" style="width:180px">
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Chave de API</div>
+        <div class="settings-row-sub">${ai.hasKey ? 'Chave salva de forma criptografada fora do banco de dados' : 'Nenhuma chave salva'}</div>
+      </div>
+      <div class="settings-row-right">
+        <input class="form-ctrl" id="ai-key" type="password" placeholder="${ai.hasKey ? 'Nova chave' : 'Chave de API'}" style="width:220px">
+        <button class="btn btn-ghost btn-sm" id="ai-clear-key">Remover</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Consentimento de envio</div>
+        <div class="settings-row-sub">Dados agregados só são enviados quando você confirma o uso</div>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle">
+          <input type="checkbox" id="ai-consent" ${ai.consent ? 'checked' : ''}>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+    <div style="background:rgba(239,159,39,.08);border:1px solid rgba(239,159,39,.25);border-radius:8px;padding:12px 16px;font-size:0.8rem;color:var(--text-2);line-height:1.6;margin-top:16px">
+      O Fina envia apenas um resumo financeiro agregado quando você solicita uma análise. Por padrão, não envia nome, e-mail, bancos, descrições de transações, observações pessoais nem dados linha a linha.
+    </div>
+    <div style="margin-top:16px;display:flex;justify-content:flex-end">
+      <button class="btn btn-primary" id="ai-save">Salvar IA</button>
+    </div>
+  `;
+
+  el.querySelector('#ai-save')?.addEventListener('click', async () => {
+    const provider = el.querySelector<HTMLSelectElement>('#ai-provider')!.value as 'openai' | 'gemini';
+    const model = el.querySelector<HTMLInputElement>('#ai-model')!.value.trim();
+    const enabled = el.querySelector<HTMLInputElement>('#ai-enabled')!.checked;
+    const consent = el.querySelector<HTMLInputElement>('#ai-consent')!.checked;
+    const apiKey = el.querySelector<HTMLInputElement>('#ai-key')!.value.trim();
+    ai = await invoke<AISettings>('ai:saveSettings', { provider, model, enabled, consent });
+    if (apiKey) ai = await invoke<AISettings>('ai:setApiKey', { provider, apiKey });
+    alert('Configurações de IA salvas.');
+    renderAI(el);
+  });
+
+  el.querySelector('#ai-clear-key')?.addEventListener('click', async () => {
+    if (!confirm('Remover a chave de API salva para o provedor atual?')) return;
+    ai = await invoke<AISettings>('ai:clearApiKey', ai.provider);
+    renderAI(el);
+  });
+}
+
 function esc(s?: string): string {
-  return (s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return (s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g, '&quot;');
 }

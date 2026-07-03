@@ -1,5 +1,6 @@
 import { render as renderDashboard    } from './pages/dashboard';
 import { render as renderAlertas      } from './pages/alertas';
+import { render as renderAssistente   } from './pages/assistente';
 import { render as renderDiagnostico  } from './pages/diagnostico';
 import { render as renderPlanoMensal  } from './pages/planoMensal';
 import { render as renderTransactions } from './pages/transactions';
@@ -44,6 +45,7 @@ function fullDateLabel(): string {
 const ROUTES: Record<string, Route> = {
   dashboard:    { title: 'Bem-vindo',                                   subtitle: fullDateLabel,  render: renderDashboard    },
   alertas:      { title: 'Alertas',      subtitle: 'Riscos e oportunidades financeiras',           render: renderAlertas      },
+  assistente:   { title: 'Assistente IA', subtitle: 'Análise educacional com dados minimizados',    render: renderAssistente   },
   diagnostico:  { title: 'Diagnóstico',  subtitle: 'Situação financeira e próximos passos',        render: renderDiagnostico  },
   'plano-mensal': { title: 'Plano mensal', subtitle: 'Sugestão de uso da renda do mês',             render: renderPlanoMensal  },
   transactions: { title: 'Transações',                                  subtitle: monthLabel,     render: renderTransactions },
