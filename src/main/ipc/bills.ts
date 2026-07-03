@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
+import { adjustBalance } from './transactions';
 import type { Bill } from '../../shared/types';
 
 function autoMarkOverdue(): void {
@@ -45,9 +46,14 @@ export function registerBillHandlers(): void {
   });
 
   ipcMain.handle('bills:markAsPaid', (_e, id: string) => {
-    getDb().prepare(
-      `UPDATE bills SET status='paid', updated_at=datetime('now') WHERE id=?`
-    ).run(id);
-    return getDb().prepare('SELECT * FROM bills WHERE id = ?').get(id);
+    const db = getDb();
+    db.transaction(() => {
+      const bill = db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined;
+      if (bill && bill.status !== 'paid' && bill.account_id) {
+        adjustBalance(bill.account_id, -bill.amount);
+      }
+      db.prepare(`UPDATE bills SET status='paid', updated_at=datetime('now') WHERE id=?`).run(id);
+    })();
+    return db.prepare('SELECT * FROM bills WHERE id = ?').get(id);
   });
 }
