@@ -58,11 +58,12 @@ export function generateRecurrences(): RecurrenceResult {
   for (const bill of recurringBills) {
     if (checkBillLog.get(bill.id, month, year)) continue;
 
-    // Avança a data original 1 mês
-    const orig = new Date(bill.due_date);
-    orig.setMonth(month - 1);
-    orig.setFullYear(year);
-    const newDue = orig.toISOString().slice(0, 10);
+    // Avança a data original para o mesmo dia no mês/ano de referência,
+    // limitando ao último dia do mês quando ele não existir (ex: dia 31 em fevereiro).
+    const origDay   = Number(bill.due_date.slice(8, 10));
+    const lastDay   = new Date(year, month, 0).getDate();
+    const day       = Math.min(origDay, lastDay);
+    const newDue    = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
     insertBill.run(randomUUID(), bill.description, bill.amount, newDue, 'pending', bill.account_id);
     insertBillLog.run(bill.id, 'bill', month, year);
