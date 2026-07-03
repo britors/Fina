@@ -10,7 +10,7 @@ export async function render(el: HTMLElement): Promise<void> {
   accounts = await invoke<Account[]>('accounts:list');
 
   setTopbarActions(`
-    <button class="btn btn-primary" id="btn-new-bill"><i class="ti ti-plus"></i> Nova conta</button>
+    <button class="btn btn-primary" id="btn-new-bill"><i class="ti ti-plus"></i> Nova conta à pagar</button>
   `);
 
   async function renderPage(): Promise<void> {
@@ -59,7 +59,7 @@ export async function render(el: HTMLElement): Promise<void> {
     });
     el.querySelectorAll<HTMLElement>('[data-del-bill]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (!confirm('Remover esta conta?')) return;
+        if (!confirm('Remover esta conta à pagar ')) return;
         await invoke('bills:delete', btn.dataset.delBill);
         renderPage();
       });
@@ -117,7 +117,7 @@ function billSection(title: string, bills: Bill[], isOverdue: boolean): string {
 function openBillModal(b: Bill | null, onDone: () => void): void {
   const today = new Date().toISOString().split('T')[0];
   openModal({
-    title: b ? 'Editar conta' : 'Nova conta a pagar',
+    title: b ? 'Editar conta à pagar' : 'Nova conta à pagar',
     body: `
       <div class="form-group">
         <label class="form-label">Descrição</label>

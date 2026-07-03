@@ -15,10 +15,15 @@ export function balanceDelta(type: TransactionType, amount: number): number {
   return type === 'income' ? amount : -amount;
 }
 
+// Para cartão de crédito, "balance" representa a fatura (dívida), não caixa:
+// uma despesa deve aumentar o valor devido, e não diminuí-lo como numa conta
+// corrente. Por isso o delta é invertido para contas do tipo credit_card.
 export function adjustBalance(accountId: string, delta: number): void {
-  getDb()
-    .prepare(`UPDATE accounts SET balance = balance + ?, updated_at = datetime('now') WHERE id = ?`)
-    .run(delta, accountId);
+  const db = getDb();
+  const account = db.prepare('SELECT type FROM accounts WHERE id = ?').get(accountId) as { type: string } | undefined;
+  const signedDelta = account?.type === 'credit_card' ? -delta : delta;
+  db.prepare(`UPDATE accounts SET balance = balance + ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(signedDelta, accountId);
 }
 
 // Transferências movem dinheiro entre duas contas: debita a origem e credita o

@@ -53,7 +53,7 @@ const ROUTES: Record<string, Route> = {
   budget:       { title: 'Orçamento',                                   subtitle: monthLabel,     render: renderBudget       },
   reports:      { title: 'Relatórios',    subtitle: 'Últimos 6 meses',                           render: renderReports      },
   settings:     { title: 'Configurações', subtitle: 'Personalize o Fina de acordo com suas preferências', render: renderSettings },
-  agenda:       { title: 'Agenda',        subtitle: 'Contas a pagar e receber',                   render: renderAgenda       },
+  agenda:       { title: 'Contas à pagar',        subtitle: 'Contas a pagar e receber',                   render: renderAgenda       },
   patrimonio:   { title: 'Patrimônio',    subtitle: 'Imóveis, veículos e outros bens',             render: renderPatrimonio   },
   investments:  { title: 'Investimentos', subtitle: 'Carteira e rendimentos',                      render: renderInvestments  },
   'simulador-patrimonio': { title: 'Simulador', subtitle: 'Projeção de patrimônio futuro',          render: renderSimuladorPatrimonio },

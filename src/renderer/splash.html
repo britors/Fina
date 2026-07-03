@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self';">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -55,6 +55,7 @@
       animation: pop 0.45s cubic-bezier(0.34,1.56,0.64,1) both;
     }
     .icon-wrap svg { width: 88px; height: 88px; display: block; }
+    .icon-wrap img { height: 108px; width: auto; display: block; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.35)); }
 
     .brand {
       font-size: 58px;
@@ -210,16 +211,7 @@
   <!-- Left: branding -->
   <div class="left">
     <div class="icon-wrap">
-      <svg viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="80" cy="80" r="78" fill="none" stroke="#1D9E75" stroke-width="2" opacity="0.3"/>
-        <circle cx="80" cy="80" r="68" fill="#0C2E22"/>
-        <rect x="30" y="98" width="18" height="26" rx="3" fill="#1D9E75" opacity="0.5"/>
-        <rect x="56" y="76" width="18" height="48" rx="3" fill="#1D9E75" opacity="0.75"/>
-        <rect x="82" y="54" width="18" height="70" rx="3" fill="#1D9E75"/>
-        <rect x="108" y="66" width="18" height="58" rx="3" fill="#1D9E75" opacity="0.85"/>
-        <polyline points="39,92 65,72 91,48 117,60" fill="none" stroke="#9FE1CB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="91" cy="48" r="5" fill="#9FE1CB"/>
-      </svg>
+      <img src="assets/mascot.png" alt="Mascote Fina">
     </div>
 
     <div class="brand">fina</div>

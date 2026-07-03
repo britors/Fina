@@ -42,7 +42,7 @@ export async function render(el: HTMLElement): Promise<void> {
       invoke<MarketQuote[]>('market:getQuotes'),
     ]);
 
-    const totalBalance  = accounts.reduce((s, a) => s + a.balance, 0);
+    const totalBalance  = accounts.reduce((s, a) => s + (a.type === 'credit_card' ? -a.balance : a.balance), 0);
     const netWorth       = totalBalance + invSummary.total_current + (assetSummary.total ?? 0) - (debtSummary.total_debt ?? 0);
     const donutSegs      = expenses.map(e => ({ value: e.total, color: e.color, label: e.name }));
     const urgentGoals    = goals.filter(g => {

@@ -11,9 +11,9 @@ export async function render(el: HTMLElement): Promise<void> {
 
   async function renderPage(): Promise<void> {
     const accounts = await invoke<Account[]>('accounts:list');
-    const total    = accounts.reduce((s, a) => s + a.balance, 0);
     const inAcc    = accounts.filter(a => a.type !== 'credit_card').reduce((s, a) => s + a.balance, 0);
     const debt     = accounts.filter(a => a.type === 'credit_card').reduce((s, a) => s + a.balance, 0);
+    const total    = inAcc - debt;
 
     el.innerHTML = `
       <!-- Total banner -->
@@ -73,6 +73,10 @@ function accountCard(a: Account): string {
   };
   const color = a.color ?? typeColors[a.type] ?? '#9CA3AF';
   const isCredit = a.type === 'credit_card';
+  // Fatura (crédito) é dívida positiva; conta corrente/poupança/carteira usam
+  // saldo negativo para representar uso do limite (cheque especial).
+  const usedLimit = isCredit ? a.balance : Math.max(0, -a.balance);
+  const isNegative = isCredit ? a.balance > 0 : a.balance < 0;
 
   return `
     <div class="account-card">
@@ -90,17 +94,17 @@ function accountCard(a: Account): string {
       </div>
       <div class="account-name">${esc(a.name)}</div>
       <div class="account-bal-label">${isCredit ? 'Fatura atual' : 'Saldo disponível'}</div>
-      <div class="account-balance" style="color:${isCredit ? 'var(--danger)' : 'var(--text)'}">
+      <div class="account-balance" style="color:${isNegative ? 'var(--danger)' : 'var(--text)'}">
         ${isCredit ? '-' : ''}${formatCurrency(a.balance)}
       </div>
-      ${isCredit && a.credit_limit ? `
+      ${a.credit_limit ? `
         <div class="prog-track" style="margin-top:10px">
-          <div class="prog-fill ${a.balance / a.credit_limit > 0.8 ? 'prog-over' : 'prog-ok'}"
-            style="width:${Math.min((a.balance / a.credit_limit) * 100, 100).toFixed(1)}%"></div>
+          <div class="prog-fill ${usedLimit / a.credit_limit > 0.8 ? 'prog-over' : 'prog-ok'}"
+            style="width:${Math.min((usedLimit / a.credit_limit) * 100, 100).toFixed(1)}%"></div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-3);margin-top:4px">
           <span>Limite: ${formatCurrency(a.credit_limit)}</span>
-          <span>Disponível: ${formatCurrency(a.credit_limit - a.balance)}</span>
+          <span>Disponível: ${formatCurrency(a.credit_limit - usedLimit)}</span>
         </div>
       ` : ''}
       <div class="account-hr"></div>

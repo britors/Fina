@@ -136,7 +136,7 @@ export async function render(el: HTMLElement): Promise<void> {
     el.querySelectorAll<HTMLElement>('.btn-bill').forEach(btn =>
       btn.addEventListener('click', async () => {
         await invoke('debts:createBill', btn.dataset.id!);
-        alert('Parcela adicionada em Agenda.');
+        alert('Parcela adicionada em Contas à pagar.');
       })
     );
     el.querySelectorAll<HTMLElement>('.btn-sim').forEach(btn =>
@@ -301,7 +301,7 @@ export async function render(el: HTMLElement): Promise<void> {
         invoke<DebtSimulation>('debts:simulate', { balance: debt.outstanding_balance, rate: debt.interest_rate, min_payment: debt.installment_amount, extra_payment: extra }),
       ]);
 
-      const res = overlay.querySelector('#sim-result')!;
+      const res = overlay.querySelector<HTMLElement>('#sim-result')!;
       res.style.display = 'block';
       res.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">

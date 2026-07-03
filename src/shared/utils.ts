@@ -20,7 +20,7 @@ export function getCurrentYearMonth(): { month: number; year: number } {
 }
 
 export function calculateTotalBalance(accounts: Account[]): number {
-  return accounts.reduce((sum, acc) => sum + acc.balance, 0);
+  return accounts.reduce((sum, acc) => sum + (acc.type === 'credit_card' ? -acc.balance : acc.balance), 0);
 }
 
 export function calculateAvailableCredit(account: Account): number {
