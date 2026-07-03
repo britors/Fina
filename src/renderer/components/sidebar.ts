@@ -1,36 +1,104 @@
 import { invoke } from '../api';
 
-const NAV: { section: string; items: { route: string; label: string; icon: string }[] }[] = [
+interface NavItem {
+  route: string;
+  label: string;
+  icon: string;
+}
+
+interface NavGroup {
+  id: string;
+  label: string;
+  icon: string;
+  items: NavItem[];
+}
+
+const STORAGE_KEY = 'fina.sidebar.openGroups';
+
+const NAV: NavGroup[] = [
   {
-    section: 'PRINCIPAL',
+    id: 'overview',
+    label: 'Visão geral',
+    icon: 'ti-layout-dashboard',
     items: [
-      { route: 'dashboard',    label: 'Dashboard',    icon: 'ti-layout-dashboard' },
-      { route: 'transactions', label: 'Transações',   icon: 'ti-arrows-transfer'  },
-      { route: 'accounts',     label: 'Contas',       icon: 'ti-building-bank'    },
-      { route: 'budget',       label: 'Orçamento',    icon: 'ti-target'           },
+      { route: 'dashboard',    label: 'Dashboard',   icon: 'ti-layout-dashboard' },
+      { route: 'diagnostico',  label: 'Diagnóstico', icon: 'ti-stethoscope'       },
+      { route: 'plano-mensal', label: 'Plano mensal', icon: 'ti-calendar-stats'   },
+      { route: 'alertas',      label: 'Alertas',     icon: 'ti-alert-triangle'    },
     ],
   },
   {
-    section: 'ANÁLISE',
+    id: 'movement',
+    label: 'Movimentação',
+    icon: 'ti-arrows-transfer',
     items: [
-      { route: 'reports',      label: 'Relatórios',    icon: 'ti-chart-bar'     },
-      { route: 'agenda',       label: 'Agenda',         icon: 'ti-calendar'      },
-      { route: 'patrimonio',   label: 'Patrimônio',     icon: 'ti-home'          },
-      { route: 'investments',  label: 'Investimentos',  icon: 'ti-trending-up'   },
-      { route: 'goals',        label: 'Metas',          icon: 'ti-target'        },
-      { route: 'debts',        label: 'Dívidas',        icon: 'ti-receipt'       },
-      { route: 'market',       label: 'Mercado',        icon: 'ti-chart-line'    },
-      { route: 'irpf',         label: 'IRPF',           icon: 'ti-file-invoice'  },
+      { route: 'transactions', label: 'Transações', icon: 'ti-arrows-transfer' },
+      { route: 'accounts',     label: 'Contas',     icon: 'ti-building-bank'   },
+      { route: 'agenda',       label: 'Agenda',     icon: 'ti-calendar'        },
+      { route: 'budget',       label: 'Orçamento',  icon: 'ti-target'          },
     ],
   },
   {
-    section: 'SISTEMA',
+    id: 'debt-protection',
+    label: 'Dívidas e proteção',
+    icon: 'ti-shield-dollar',
+    items: [
+      { route: 'debts',          label: 'Dívidas',          icon: 'ti-receipt'    },
+      { route: 'plano-dividas',  label: 'Plano de saída',   icon: 'ti-route'      },
+      { route: 'reserva',        label: 'Reserva',          icon: 'ti-shield'     },
+    ],
+  },
+  {
+    id: 'wealth',
+    label: 'Patrimônio e crescimento',
+    icon: 'ti-trending-up',
+    items: [
+      { route: 'patrimonio',  label: 'Patrimônio',    icon: 'ti-home'        },
+      { route: 'investments', label: 'Investimentos', icon: 'ti-trending-up' },
+      { route: 'goals',       label: 'Metas',         icon: 'ti-target'      },
+      { route: 'simulador-patrimonio', label: 'Simulador', icon: 'ti-chart-area-line' },
+      { route: 'jornada',     label: 'Jornada',       icon: 'ti-map-2'       },
+    ],
+  },
+  {
+    id: 'analysis',
+    label: 'Análise',
+    icon: 'ti-chart-bar',
+    items: [
+      { route: 'reports', label: 'Relatórios', icon: 'ti-chart-bar'    },
+      { route: 'market',  label: 'Mercado',    icon: 'ti-chart-line'   },
+      { route: 'irpf',    label: 'IRPF',       icon: 'ti-file-invoice' },
+    ],
+  },
+  {
+    id: 'system',
+    label: 'Sistema',
+    icon: 'ti-settings',
     items: [
       { route: 'manual',   label: 'Manual',         icon: 'ti-book'     },
       { route: 'settings', label: 'Configurações', icon: 'ti-settings' },
     ],
   },
 ];
+
+function groupForRoute(route: string): string | null {
+  return NAV.find(group => group.items.some(item => item.route === route))?.id ?? null;
+}
+
+function readOpenGroups(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return new Set(['overview', 'movement']);
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.filter(v => typeof v === 'string')) : new Set(['overview', 'movement']);
+  } catch {
+    return new Set(['overview', 'movement']);
+  }
+}
+
+function writeOpenGroups(groups: Set<string>): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify([...groups]));
+}
 
 export async function initSidebar(el: HTMLElement): Promise<void> {
   let userName = 'Usuário';
@@ -40,6 +108,11 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
   } catch { /* noop */ }
 
   const initials = userName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  const currentRoute = window.location.hash.replace(/^#/, '') || 'dashboard';
+  const openGroups = readOpenGroups();
+  const activeGroup = groupForRoute(currentRoute);
+  if (activeGroup) openGroups.add(activeGroup);
+  writeOpenGroups(openGroups);
 
   el.innerHTML = `
     <div class="sidebar-header">
@@ -60,15 +133,23 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
     </div>
     <div class="sidebar-hr"></div>
     <nav class="sidebar-nav">
-      ${NAV.map(sec => `
-        <div class="nav-section">
-          <div class="nav-section-label">${sec.section}</div>
-          ${sec.items.map(it => `
+      ${NAV.map(group => `
+        <div class="nav-section ${openGroups.has(group.id) ? 'open' : ''}" data-group="${group.id}">
+          <button class="nav-group" type="button" data-toggle-group="${group.id}" aria-expanded="${openGroups.has(group.id) ? 'true' : 'false'}">
+            <span class="nav-group-main">
+              <i class="ti ${group.icon}"></i>
+              ${group.label}
+            </span>
+            <i class="ti ti-chevron-down nav-group-chevron"></i>
+          </button>
+          <div class="nav-subitems">
+          ${group.items.map(it => `
             <a class="nav-item" data-route="${it.route}" href="#${it.route}">
               <i class="ti ${it.icon}"></i>
               ${it.label}
             </a>
           `).join('')}
+          </div>
         </div>
       `).join('')}
     </nav>
@@ -83,9 +164,39 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
       </div>
     </div>
   `;
+
+  el.querySelectorAll<HTMLElement>('[data-toggle-group]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.toggleGroup!;
+      const groups = readOpenGroups();
+      const section = el.querySelector<HTMLElement>(`[data-group="${id}"]`);
+      const isOpen = groups.has(id);
+      if (isOpen) groups.delete(id);
+      else groups.add(id);
+      writeOpenGroups(groups);
+      section?.classList.toggle('open', !isOpen);
+      btn.setAttribute('aria-expanded', String(!isOpen));
+    });
+  });
 }
 
 export function setActiveRoute(route: string): void {
+  const activeGroup = groupForRoute(route);
+  if (activeGroup) {
+    const groups = readOpenGroups();
+    groups.add(activeGroup);
+    writeOpenGroups(groups);
+  }
+
+  document.querySelectorAll<HTMLElement>('.nav-section').forEach(el => {
+    const isActiveGroup = el.dataset.group === activeGroup;
+    if (isActiveGroup) {
+      el.classList.add('open');
+      el.querySelector<HTMLElement>('.nav-group')?.setAttribute('aria-expanded', 'true');
+    }
+    el.classList.toggle('active-group', isActiveGroup);
+  });
+
   document.querySelectorAll<HTMLElement>('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.route === route);
   });

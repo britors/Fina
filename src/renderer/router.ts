@@ -1,4 +1,7 @@
 import { render as renderDashboard    } from './pages/dashboard';
+import { render as renderAlertas      } from './pages/alertas';
+import { render as renderDiagnostico  } from './pages/diagnostico';
+import { render as renderPlanoMensal  } from './pages/planoMensal';
 import { render as renderTransactions } from './pages/transactions';
 import { render as renderAccounts     } from './pages/accounts';
 import { render as renderBudget       } from './pages/budget';
@@ -7,8 +10,12 @@ import { render as renderSettings     } from './pages/settings';
 import { render as renderAgenda       } from './pages/agenda';
 import { render as renderPatrimonio   } from './pages/patrimonio';
 import { render as renderInvestments  } from './pages/investments';
+import { render as renderJornada      } from './pages/jornada';
+import { render as renderSimuladorPatrimonio } from './pages/simuladorPatrimonio';
 import { render as renderGoals        } from './pages/goals';
 import { render as renderDebts        } from './pages/debts';
+import { render as renderPlanoDividas } from './pages/planoDividas';
+import { render as renderReserva      } from './pages/reserva';
 import { render as renderMarket       } from './pages/market';
 import { render as renderIRPF         } from './pages/irpf';
 import { render as renderManual       } from './pages/manual';
@@ -36,6 +43,9 @@ function fullDateLabel(): string {
 
 const ROUTES: Record<string, Route> = {
   dashboard:    { title: 'Bem-vindo',                                   subtitle: fullDateLabel,  render: renderDashboard    },
+  alertas:      { title: 'Alertas',      subtitle: 'Riscos e oportunidades financeiras',           render: renderAlertas      },
+  diagnostico:  { title: 'Diagnóstico',  subtitle: 'Situação financeira e próximos passos',        render: renderDiagnostico  },
+  'plano-mensal': { title: 'Plano mensal', subtitle: 'Sugestão de uso da renda do mês',             render: renderPlanoMensal  },
   transactions: { title: 'Transações',                                  subtitle: monthLabel,     render: renderTransactions },
   accounts:     { title: 'Contas',                                                                render: renderAccounts     },
   budget:       { title: 'Orçamento',                                   subtitle: monthLabel,     render: renderBudget       },
@@ -44,8 +54,12 @@ const ROUTES: Record<string, Route> = {
   agenda:       { title: 'Agenda',        subtitle: 'Contas a pagar e receber',                   render: renderAgenda       },
   patrimonio:   { title: 'Patrimônio',    subtitle: 'Imóveis, veículos e outros bens',             render: renderPatrimonio   },
   investments:  { title: 'Investimentos', subtitle: 'Carteira e rendimentos',                      render: renderInvestments  },
+  'simulador-patrimonio': { title: 'Simulador', subtitle: 'Projeção de patrimônio futuro',          render: renderSimuladorPatrimonio },
+  jornada:      { title: 'Jornada',       subtitle: 'Passos guiados para evoluir financeiramente',  render: renderJornada      },
   goals:        { title: 'Metas',         subtitle: 'Planejamento financeiro',                      render: renderGoals        },
   debts:        { title: 'Dívidas',       subtitle: 'Empréstimos e financiamentos',                 render: renderDebts        },
+  'plano-dividas': { title: 'Plano de saída', subtitle: 'Estratégias para quitar dívidas',           render: renderPlanoDividas },
+  reserva:      { title: 'Reserva',       subtitle: 'Proteção para emergências',                     render: renderReserva      },
   market:       { title: 'Mercado',       subtitle: 'Câmbio, bolsas e indicadores',                 render: renderMarket       },
   irpf:         { title: 'IRPF',          subtitle: 'Informe de rendimentos para declaração',        render: renderIRPF         },
   manual:       { title: 'Manual',        subtitle: 'Guia de uso do Fina',                           render: renderManual       },
