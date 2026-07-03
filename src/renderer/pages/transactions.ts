@@ -31,8 +31,7 @@ export async function render(el: HTMLElement): Promise<void> {
   `);
   document.getElementById('btn-new-tx')?.addEventListener('click', () => openTxModal(null, () => renderPage()));
   document.getElementById('btn-export-csv')?.addEventListener('click', async () => {
-    const now2 = new Date();
-    await invoke('export:csv', { month: now2.getMonth() + 1, year: now2.getFullYear() });
+    await invoke('export:csv', { month, year });
   });
   document.getElementById('btn-import')?.addEventListener('click', () => openImportModal());
 
