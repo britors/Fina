@@ -37,12 +37,21 @@ function addInterval(dueDate: string, interval: BillInterval, multiplier: number
 }
 
 export function registerBillHandlers(): void {
-  ipcMain.handle('bills:list', (_e, filters: { status?: string } = {}) => {
+  ipcMain.handle('bills:list', (_e, filters: { status?: string; dateFrom?: string; dateTo?: string; category_id?: string } = {}) => {
     autoMarkOverdue();
-    if (filters.status) {
-      return getDb().prepare('SELECT * FROM bills WHERE status = ? ORDER BY due_date').all(filters.status);
-    }
-    return getDb().prepare('SELECT * FROM bills ORDER BY due_date').all();
+    const conds: string[] = ['1=1'];
+    const params: unknown[] = [];
+    if (filters.status)      { conds.push('b.status = ?');      params.push(filters.status); }
+    if (filters.dateFrom)    { conds.push('b.due_date >= ?');   params.push(filters.dateFrom); }
+    if (filters.dateTo)      { conds.push('b.due_date <= ?');   params.push(filters.dateTo); }
+    if (filters.category_id) { conds.push('b.category_id = ?'); params.push(filters.category_id); }
+    return getDb().prepare(`
+      SELECT b.*, c.name as category_name, c.icon as category_icon, c.color as category_color
+      FROM bills b
+      LEFT JOIN categories c ON b.category_id = c.id
+      WHERE ${conds.join(' AND ')}
+      ORDER BY b.due_date
+    `).all(...params);
   });
 
   ipcMain.handle('bills:getUpcoming', (_e, days = 30) => {
@@ -55,8 +64,8 @@ export function registerBillHandlers(): void {
   ipcMain.handle('bills:create', (_e, data: Omit<Bill, 'id' | 'created_at' | 'updated_at'>) => {
     const id = randomUUID();
     getDb().prepare(
-      'INSERT INTO bills (id, description, amount, due_date, status, account_id, recurring) VALUES (?,?,?,?,?,?,?)'
-    ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', data.account_id ?? null, data.recurring ? 1 : 0);
+      'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring) VALUES (?,?,?,?,?,?,?,?)'
+    ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', data.account_id ?? null, data.category_id ?? null, data.recurring ? 1 : 0);
     return getDb().prepare('SELECT * FROM bills WHERE id = ?').get(id);
   });
 
@@ -75,8 +84,8 @@ export function registerBillHandlers(): void {
         const newId = randomUUID();
         const newDue = addInterval(bill.due_date, interval, i);
         db.prepare(
-          'INSERT INTO bills (id, description, amount, due_date, status, account_id, recurring) VALUES (?,?,?,?,?,?,0)'
-        ).run(newId, bill.description, bill.amount, newDue, 'pending', bill.account_id);
+          'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring) VALUES (?,?,?,?,?,?,?,0)'
+        ).run(newId, bill.description, bill.amount, newDue, 'pending', bill.account_id, bill.category_id);
         createdIds.push(newId);
       }
     })();
@@ -86,8 +95,8 @@ export function registerBillHandlers(): void {
 
   ipcMain.handle('bills:update', (_e, { id, ...data }: Partial<Bill> & { id: string }) => {
     getDb().prepare(
-      `UPDATE bills SET description=?, amount=?, due_date=?, status=?, account_id=?, recurring=?, updated_at=datetime('now') WHERE id=?`
-    ).run(data.description, data.amount, data.due_date, data.status, data.account_id ?? null, data.recurring ? 1 : 0, id);
+      `UPDATE bills SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, updated_at=datetime('now') WHERE id=?`
+    ).run(data.description, data.amount, data.due_date, data.status, data.account_id ?? null, data.category_id ?? null, data.recurring ? 1 : 0, id);
     return getDb().prepare('SELECT * FROM bills WHERE id = ?').get(id);
   });
 
@@ -102,7 +111,10 @@ export function registerBillHandlers(): void {
   // o molde usado por generateRecurrences() para gerar as próximas
   // ocorrências, então continuam existindo (apenas com status='paid') em
   // vez de serem apagadas, senão a recorrência para de funcionar.
-  ipcMain.handle('bills:markAsPaid', (_e, { id, category_id, date }: { id: string; category_id: string; date?: string }) => {
+  // category_id é opcional: se a conta já tiver uma categoria definida, ela é
+  // reaproveitada automaticamente no lançamento gerado; só é obrigatório
+  // informar uma quando a conta não tem categoria (ex: bills mais antigas).
+  ipcMain.handle('bills:markAsPaid', (_e, { id, category_id, date }: { id: string; category_id?: string; date?: string }) => {
     const db = getDb();
     const bill = db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined;
     if (!bill) return null;
@@ -110,7 +122,8 @@ export function registerBillHandlers(): void {
     if (!bill.account_id) {
       throw new Error('Defina uma conta para esta despesa antes de marcá-la como paga.');
     }
-    if (!category_id) {
+    const finalCategoryId = category_id || bill.category_id;
+    if (!finalCategoryId) {
       throw new Error('Selecione uma categoria para o lançamento.');
     }
 
@@ -126,7 +139,7 @@ export function registerBillHandlers(): void {
       const txId = randomUUID();
       db.prepare(
         'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,0)'
-      ).run(txId, bill.account_id, category_id, bill.description, bill.amount, 'expense', paidAt, 'confirmed', null);
+      ).run(txId, bill.account_id, finalCategoryId, bill.description, bill.amount, 'expense', paidAt, 'confirmed', null);
       adjustBalance(bill.account_id!, -bill.amount);
       db.prepare('DELETE FROM bills WHERE id = ?').run(id);
     })();

@@ -74,9 +74,16 @@ export interface Bill {
   due_date: string;
   status: BillStatus;
   account_id: string | null;
+  category_id: string | null;
   recurring: 0 | 1;
   created_at: string;
   updated_at: string;
+}
+
+export interface BillWithCategory extends Bill {
+  category_name: string | null;
+  category_icon: string | null;
+  category_color: string | null;
 }
 
 export interface TransactionFilters {

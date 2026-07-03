@@ -2,7 +2,7 @@ import { invoke } from '../api';
 import { formatCurrency, formatDate, getDaysUntilDue } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { setTopbarActions } from '../components/topbar';
-import type { Account, Bill, BillInterval, BillStatus, Category } from '../../shared/types';
+import type { Account, Bill, BillInterval, BillStatus, BillWithCategory, Category } from '../../shared/types';
 
 const INTERVAL_LABELS: Record<BillInterval, string> = {
   weekly:     'Semanal',
@@ -21,18 +21,39 @@ export async function render(el: HTMLElement): Promise<void> {
   accounts = await invoke<Account[]>('accounts:list');
   expenseCategories = await invoke<Category[]>('categories:list', 'expense');
 
+  // Filtros de/até (vencimento) e categoria — padrão sempre limpo (sem filtro).
+  let filterFrom = '';
+  let filterTo = '';
+  let filterCategory = '';
+
   setTopbarActions(`
     <button class="btn btn-primary" id="btn-new-bill"><i class="ti ti-plus"></i> Nova conta à pagar</button>
   `);
 
   async function renderPage(): Promise<void> {
-    const bills = await invoke<Bill[]>('bills:list');
+    const bills = await invoke<BillWithCategory[]>('bills:list', {
+      dateFrom: filterFrom || undefined,
+      dateTo: filterTo || undefined,
+      category_id: filterCategory || undefined,
+    });
     const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
     const overdue  = bills.filter(b => b.status === 'overdue');
     const upcoming = bills.filter(b => b.status === 'pending');
     const paid     = bills.filter(b => b.status === 'paid' && b.due_date.slice(0, 7) === currentMonth);
 
     el.innerHTML = `
+      <div class="filters" style="margin-bottom:16px">
+        <span style="font-size:0.8rem;color:var(--text-2)">De</span>
+        <input class="form-ctrl" id="bill-from" type="date" value="${filterFrom}" style="width:auto">
+        <span style="color:var(--text-3)">até</span>
+        <input class="form-ctrl" id="bill-to" type="date" value="${filterTo}" style="width:auto">
+        <select class="form-ctrl" id="bill-category" style="width:auto">
+          <option value="">Todas as categorias</option>
+          ${expenseCategories.map(c => `<option value="${c.id}" ${filterCategory === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" id="bill-filter-reset">Limpar filtros</button>
+      </div>
+
       <div class="grid-3" style="margin-bottom:20px">
         <div class="stat-card">
           <div class="stat-label">Pendentes</div>
@@ -55,6 +76,23 @@ export async function render(el: HTMLElement): Promise<void> {
       ${billSection('A pagar', upcoming, false)}
       ${billSection('Pagas', paid, false)}
     `;
+
+    el.querySelector<HTMLInputElement>('#bill-from')?.addEventListener('change', e => {
+      filterFrom = (e.target as HTMLInputElement).value;
+      renderPage();
+    });
+    el.querySelector<HTMLInputElement>('#bill-to')?.addEventListener('change', e => {
+      filterTo = (e.target as HTMLInputElement).value;
+      renderPage();
+    });
+    el.querySelector<HTMLSelectElement>('#bill-category')?.addEventListener('change', e => {
+      filterCategory = (e.target as HTMLSelectElement).value;
+      renderPage();
+    });
+    el.querySelector('#bill-filter-reset')?.addEventListener('click', () => {
+      filterFrom = ''; filterTo = ''; filterCategory = '';
+      renderPage();
+    });
 
     el.querySelectorAll<HTMLElement>('[data-pay]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -89,7 +127,7 @@ export async function render(el: HTMLElement): Promise<void> {
   await renderPage();
 }
 
-function billSection(title: string, bills: Bill[], isOverdue: boolean): string {
+function billSection(title: string, bills: BillWithCategory[], isOverdue: boolean): string {
   if (bills.length === 0) return '';
   return `
     <div style="margin-bottom:20px">
@@ -99,6 +137,7 @@ function billSection(title: string, bills: Bill[], isOverdue: boolean): string {
           <thead>
             <tr>
               <th>DESCRIÇÃO</th>
+              <th>CATEGORIA</th>
               <th>VENCIMENTO</th>
               <th>STATUS</th>
               <th style="text-align:right">VALOR</th>
@@ -112,6 +151,7 @@ function billSection(title: string, bills: Bill[], isOverdue: boolean): string {
               const badgeCls = b.status === 'paid' ? 'badge-confirmed' : b.status === 'overdue' ? 'badge-overdue' : days <= 3 ? 'badge-pending' : 'badge-ok';
               return `<tr>
                 <td><div class="desc-main">${esc(b.description)}</div></td>
+                <td>${b.category_name ? `<span class="badge" style="background:${alpha(b.category_color!,0.12)};color:${b.category_color}">${esc(b.category_name)}</span>` : '<span style="color:var(--text-3)">—</span>'}</td>
                 <td style="color:var(--text-2)">${formatDate(b.due_date)}</td>
                 <td><span class="badge ${badgeCls}">${statusLabel}</span></td>
                 <td style="text-align:right;font-weight:500;color:${b.status==='overdue'?'var(--danger)':'var(--text)'}">
@@ -161,6 +201,15 @@ function openBillModal(b: Bill | null, onDone: () => void): void {
             ${accounts.map(a => `<option value="${a.id}" ${b?.account_id===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}
           </select>
         </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Categoria</label>
+          <select class="form-ctrl" id="f-category">
+            <option value="">— Sem categoria —</option>
+            ${expenseCategories.map(c => `<option value="${c.id}" ${b?.category_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+          </select>
+        </div>
         <div class="form-group">
           <label class="form-label">Status</label>
           <select class="form-ctrl" id="f-status">
@@ -176,9 +225,10 @@ function openBillModal(b: Bill | null, onDone: () => void): void {
       const amount = parseFloat((document.getElementById('f-amount') as HTMLInputElement).value);
       const due    = (document.getElementById('f-due')     as HTMLInputElement).value;
       const acc    = (document.getElementById('f-account') as HTMLSelectElement).value;
+      const cat    = (document.getElementById('f-category') as HTMLSelectElement).value;
       const status = (document.getElementById('f-status')  as HTMLSelectElement).value as BillStatus;
       if (!desc || isNaN(amount) || !due) { alert('Preencha todos os campos.'); return false; }
-      const payload = { description: desc, amount, due_date: due, status, account_id: acc || null, recurring: 0 as const };
+      const payload = { description: desc, amount, due_date: due, status, account_id: acc || null, category_id: cat || null, recurring: 0 as const };
       if (b) { await invoke('bills:update', { id: b.id, ...payload }); }
       else   { await invoke('bills:create', payload); }
       onDone();
@@ -186,12 +236,14 @@ function openBillModal(b: Bill | null, onDone: () => void): void {
   });
 }
 
-function openPayBillModal(b: Bill, onDone: () => void): void {
+function openPayBillModal(b: BillWithCategory, onDone: () => void): void {
   if (!b.account_id) {
     alert('Defina uma conta para esta despesa (em "Editar") antes de marcá-la como paga.');
     return;
   }
-  if (expenseCategories.length === 0) {
+  // Se a conta já tem categoria definida, ela é reaproveitada automaticamente
+  // no lançamento — só pedimos para escolher quando não há uma.
+  if (!b.category_id && expenseCategories.length === 0) {
     alert('Cadastre uma categoria de despesa antes de marcar contas como pagas.');
     return;
   }
@@ -207,12 +259,18 @@ function openPayBillModal(b: Bill, onDone: () => void): void {
         <strong>${esc(b.description)}</strong> — ${formatCurrency(b.amount)}${account ? ` · ${esc(account.name)}` : ''}
       </p>
       <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Categoria</label>
-          <select class="form-ctrl" id="f-pay-category">
-            ${expenseCategories.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
-          </select>
-        </div>
+        ${b.category_id
+          ? `<div class="form-group">
+               <label class="form-label">Categoria</label>
+               <div style="padding:8px 0;color:var(--text)">${esc(b.category_name)}</div>
+             </div>`
+          : `<div class="form-group">
+               <label class="form-label">Categoria</label>
+               <select class="form-ctrl" id="f-pay-category">
+                 ${expenseCategories.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+               </select>
+             </div>`
+        }
         <div class="form-group">
           <label class="form-label">Data do pagamento</label>
           <input class="form-ctrl" id="f-pay-date" type="date" value="${today}">
@@ -220,7 +278,7 @@ function openPayBillModal(b: Bill, onDone: () => void): void {
       </div>
     `,
     onSave: async () => {
-      const category_id = (document.getElementById('f-pay-category') as HTMLSelectElement).value;
+      const category_id = b.category_id ?? (document.getElementById('f-pay-category') as HTMLSelectElement).value;
       const date = (document.getElementById('f-pay-date') as HTMLInputElement).value;
       try {
         await invoke('bills:markAsPaid', { id: b.id, category_id, date });
@@ -269,6 +327,11 @@ function openDuplicateBillModal(b: Bill, onDone: () => void): void {
       onDone();
     },
   });
+}
+
+function alpha(hex: string, a: number): string {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
 }
 
 function esc(s?: string | null): string {
