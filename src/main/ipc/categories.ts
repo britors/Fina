@@ -34,6 +34,11 @@ export function registerCategoryHandlers(): void {
   });
 
   ipcMain.handle('categories:delete', (_e, id: string) => {
-    getDb().prepare('DELETE FROM categories WHERE id = ?').run(id);
+    const db = getDb();
+    const inUse = db.prepare('SELECT 1 FROM transactions WHERE category_id = ? LIMIT 1').get(id);
+    if (inUse) {
+      throw new Error('Esta categoria possui transações vinculadas e não pode ser removida.');
+    }
+    db.prepare('DELETE FROM categories WHERE id = ?').run(id);
   });
 }

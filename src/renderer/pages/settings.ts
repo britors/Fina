@@ -346,8 +346,12 @@ async function renderCategories(el: HTMLElement): Promise<void> {
   el.querySelectorAll<HTMLElement>('[data-del-cat]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!confirm('Remover esta categoria? Transações vinculadas podem ser afetadas.')) return;
-      await invoke('categories:delete', btn.dataset.delCat);
-      renderCategories(el);
+      try {
+        await invoke('categories:delete', btn.dataset.delCat);
+        renderCategories(el);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Não foi possível remover a categoria.');
+      }
     });
   });
 }
