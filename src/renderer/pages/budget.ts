@@ -17,7 +17,8 @@ export async function render(el: HTMLElement): Promise<void> {
   async function renderPage(): Promise<void> {
     const budgets = await invoke<BudgetWithProgress[]>('budgets:list', { month, year });
 
-    const totalLimit = budgets.reduce((s, b) => s + b.limit_amount, 0);
+    const totalCarried = budgets.reduce((s, b) => s + b.carried_in, 0);
+    const totalLimit = budgets.reduce((s, b) => s + b.limit_amount, 0) + totalCarried;
     const totalSpent = budgets.reduce((s, b) => s + b.spent, 0);
     const globalPct  = calculateBudgetPercentage(totalSpent, totalLimit);
 
@@ -33,7 +34,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="stat-card">
           <div class="stat-label">Orçamento total</div>
           <div class="stat-value">${formatCurrency(totalLimit)}</div>
-          <div class="stat-sub">Definido para o mês</div>
+          <div class="stat-sub">${totalCarried > 0 ? `Inclui ${formatCurrency(totalCarried)} de envelopes trazidos do mês anterior` : 'Definido para o mês'}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Gasto até agora</div>
@@ -102,7 +103,8 @@ export async function render(el: HTMLElement): Promise<void> {
 
 function budgetRow(b: BudgetWithProgress): string {
   const pct = b.percentage;
-  const exceeded = b.spent > b.limit_amount;
+  const effectiveLimit = b.limit_amount + b.carried_in;
+  const exceeded = b.spent > effectiveLimit;
   const cls = exceeded ? 'prog-over' : pct > 80 ? 'prog-warn' : 'prog-ok';
   const badgeCls = exceeded ? 'badge-exceeded' : pct > 80 ? 'badge-warn' : 'badge-ok';
   const badgeLabel = exceeded ? 'Excedido' : pct > 80 ? 'Atenção' : 'No limite';
@@ -116,13 +118,14 @@ function budgetRow(b: BudgetWithProgress): string {
           </div>
           <div>
             <div class="budget-row-name">${esc(b.category_name)}</div>
+            ${b.carry_over ? `<div class="budget-row-spent"><i class="ti ti-repeat"></i> Envelope: mantém saldo para o próximo mês${b.carried_in > 0 ? ` · +${formatCurrency(b.carried_in)} trazido do mês anterior` : ''}</div>` : ''}
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
           <span class="badge ${badgeCls}">${badgeLabel}</span>
           <div class="budget-row-right">
             <div style="color:${exceeded ? 'var(--danger)' : 'var(--text)'}">${formatCurrency(b.spent)}</div>
-            <div class="budget-row-spent">de ${formatCurrency(b.limit_amount)}</div>
+            <div class="budget-row-spent">de ${formatCurrency(effectiveLimit)}</div>
           </div>
           <div style="display:flex;gap:6px">
             <button class="btn btn-ghost btn-sm" data-edit-budget="${b.id}">Editar</button>
@@ -170,14 +173,21 @@ async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void,
         <label class="form-label">Limite (R$)</label>
         <input class="form-ctrl" id="f-limit" type="number" step="0.01" value="${b?.limit_amount ?? ''}">
       </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:400">
+          <input type="checkbox" id="f-carry-over" ${b?.carry_over ? 'checked' : ''}>
+          Modo envelope: manter o saldo não gasto para o próximo mês
+        </label>
+      </div>
     `,
     onSave: async () => {
       const cat   = (overlay.querySelector('#f-cat')   as HTMLSelectElement).value;
       const m     = parseInt((overlay.querySelector('#f-month') as HTMLInputElement).value);
       const y     = parseInt((overlay.querySelector('#f-year')  as HTMLInputElement).value);
       const limit = parseFloat((overlay.querySelector('#f-limit') as HTMLInputElement).value);
+      const carryOver = (overlay.querySelector('#f-carry-over') as HTMLInputElement).checked;
       if (!cat || isNaN(m) || isNaN(y) || isNaN(limit)) { alert('Preencha todos os campos.'); return false; }
-      const payload = { category_id: cat, month: m, year: y, limit_amount: limit };
+      const payload = { category_id: cat, month: m, year: y, limit_amount: limit, carry_over: (carryOver ? 1 : 0) as 0 | 1 };
       if (b) { await invoke('budgets:update', { id: b.id, ...payload }); }
       else   { await invoke('budgets:create', payload); }
       onDone();
