@@ -2,10 +2,14 @@ import { invoke } from '../api';
 import { formatCurrency, accountTypeLabel, isCreditLikeAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { setTopbarActions } from '../components/topbar';
-import type { Account, AccountType } from '../../shared/types';
+import type { Account, AccountCurrency, AccountType } from '../../shared/types';
+
+const CURRENCY_LABELS: Record<AccountCurrency, string> = { BRL: 'Real (R$)', USD: 'Dólar (US$)', EUR: 'Euro (€)' };
+const CURRENCY_SYMBOLS: Record<AccountCurrency, string> = { BRL: 'R$', USD: 'US$', EUR: '€' };
 
 export async function render(el: HTMLElement): Promise<void> {
   setTopbarActions(`
+    <button class="btn btn-ghost" id="btn-refresh-rates"><i class="ti ti-refresh"></i> Atualizar cotações</button>
     <button class="btn btn-primary" id="btn-new-acc"><i class="ti ti-plus"></i> Novo meio</button>
   `);
 
@@ -64,6 +68,11 @@ export async function render(el: HTMLElement): Promise<void> {
   }
 
   document.getElementById('btn-new-acc')?.addEventListener('click', () => openAccModal(null, renderPage));
+  document.getElementById('btn-refresh-rates')?.addEventListener('click', async () => {
+    await invoke('accounts:refreshExchangeRates');
+    await renderPage();
+    alert('Cotações atualizadas.');
+  });
   await renderPage();
 }
 
@@ -93,10 +102,13 @@ function accountCard(a: Account): string {
         </div>
       </div>
       <div class="account-name">${esc(a.name)}</div>
-      <div class="account-bal-label">${isCredit ? 'Fatura atual' : 'Saldo disponível'}</div>
+      <div class="account-bal-label">${isCredit ? 'Fatura atual' : 'Saldo disponível'}${a.currency !== 'BRL' ? ` · convertido de ${CURRENCY_SYMBOLS[a.currency]}` : ''}</div>
       <div class="account-balance" style="color:${isNegative ? 'var(--danger)' : 'var(--text)'}">
         ${isCredit ? formatDebt(a.balance) : formatCurrency(a.balance)}
       </div>
+      ${a.currency !== 'BRL' && a.original_balance != null ? `
+        <div style="font-size:12px;color:var(--text-3);margin-top:2px">${CURRENCY_SYMBOLS[a.currency]} ${a.original_balance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      ` : ''}
       ${a.credit_limit ? `
         <div class="prog-track" style="margin-top:10px">
           <div class="prog-fill ${usedLimit / a.credit_limit > 0.8 ? 'prog-over' : 'prog-ok'}"
@@ -116,7 +128,8 @@ function accountCard(a: Account): string {
 }
 
 function openAccModal(acc: Account | null, onDone: () => void): void {
-  openModal({
+  const currency = acc?.currency ?? 'BRL';
+  const overlay = openModal({
     title: acc ? 'Editar meio de pagamento' : 'Novo meio de pagamento',
     body: `
       <div class="form-group">
@@ -137,10 +150,23 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
           <input class="form-ctrl" id="f-bank" value="${esc(acc?.bank_name ?? '')}" placeholder="Ex: Nubank">
         </div>
       </div>
+      <div class="form-group">
+        <label class="form-label">Moeda da conta</label>
+        <select class="form-ctrl" id="f-currency">
+          ${(['BRL','USD','EUR'] as AccountCurrency[]).map(c =>
+            `<option value="${c}" ${currency === c ? 'selected' : ''}>${CURRENCY_LABELS[c]}</option>`
+          ).join('')}
+        </select>
+        <div class="form-hint" style="font-size:11px;color:var(--text-3);margin-top:4px">Contas em moeda estrangeira têm o saldo convertido automaticamente para R$ usando a cotação do painel de Mercado.</div>
+      </div>
       <div class="form-row">
-        <div class="form-group">
+        <div class="form-group" id="f-balance-brl-group">
           <label class="form-label">Saldo (R$)</label>
           <input class="form-ctrl" id="f-balance" type="number" step="0.01" value="${acc?.balance ?? 0}">
+        </div>
+        <div class="form-group" id="f-balance-foreign-group" style="display:none">
+          <label class="form-label" id="f-balance-foreign-label">Saldo original</label>
+          <input class="form-ctrl" id="f-original-balance" type="number" step="0.01" value="${acc?.original_balance ?? ''}">
         </div>
         <div class="form-group">
           <label class="form-label">Limite de crédito (R$)</label>
@@ -149,20 +175,47 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
       </div>
     `,
     onSave: async () => {
-      const name    = (document.getElementById('f-name')    as HTMLInputElement).value.trim();
-      const type    = (document.getElementById('f-type')    as HTMLSelectElement).value as AccountType;
-      const bank    = (document.getElementById('f-bank')    as HTMLInputElement).value.trim();
-      const balance = parseFloat((document.getElementById('f-balance') as HTMLInputElement).value);
-      const limit   = parseFloat((document.getElementById('f-limit')   as HTMLInputElement).value);
+      const name       = (document.getElementById('f-name')     as HTMLInputElement).value.trim();
+      const type       = (document.getElementById('f-type')     as HTMLSelectElement).value as AccountType;
+      const bank       = (document.getElementById('f-bank')     as HTMLInputElement).value.trim();
+      const curr       = (document.getElementById('f-currency') as HTMLSelectElement).value as AccountCurrency;
+      const balance    = parseFloat((document.getElementById('f-balance') as HTMLInputElement).value);
+      const original   = parseFloat((document.getElementById('f-original-balance') as HTMLInputElement).value);
+      const limit      = parseFloat((document.getElementById('f-limit') as HTMLInputElement).value);
 
       if (!name) { alert('Informe o nome do meio de pagamento.'); return false; }
+      if (curr !== 'BRL' && isNaN(original)) { alert('Informe o saldo na moeda da conta.'); return false; }
 
-      const payload = { name, type, bank_name: bank || null, balance: isNaN(balance) ? 0 : balance, credit_limit: isNaN(limit) ? null : limit, color: acc?.color ?? null };
-      if (acc) { await invoke('accounts:update', { id: acc.id, ...payload }); }
-      else     { await invoke('accounts:create', payload); }
+      const payload = {
+        name, type, bank_name: bank || null,
+        currency: curr,
+        balance: isNaN(balance) ? 0 : balance,
+        original_balance: curr === 'BRL' ? null : original,
+        credit_limit: isNaN(limit) ? null : limit,
+        color: acc?.color ?? null,
+      };
+      try {
+        if (acc) { await invoke('accounts:update', { id: acc.id, ...payload }); }
+        else     { await invoke('accounts:create', payload); }
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Não foi possível salvar o meio de pagamento.');
+        return false;
+      }
       onDone();
     },
   });
+
+  function toggleCurrencyFields(): void {
+    const curr = (overlay.querySelector('#f-currency') as HTMLSelectElement).value as AccountCurrency;
+    const isForeign = curr !== 'BRL';
+    (overlay.querySelector('#f-balance-brl-group') as HTMLElement).style.display = isForeign ? 'none' : '';
+    (overlay.querySelector('#f-balance-foreign-group') as HTMLElement).style.display = isForeign ? '' : 'none';
+    if (isForeign) {
+      overlay.querySelector('#f-balance-foreign-label')!.textContent = `Saldo original (${CURRENCY_SYMBOLS[curr]})`;
+    }
+  }
+  overlay.querySelector('#f-currency')?.addEventListener('change', toggleCurrencyFields);
+  toggleCurrencyFields();
 }
 
 function esc(s?: string | null): string {
