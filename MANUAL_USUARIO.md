@@ -13,7 +13,7 @@ Os grupos do menu são:
 - `Visão geral`: Dashboard, diagnóstico financeiro, score, revisão semanal, decisões, plano mensal, alertas e Assistente IA.
 - `Movimentação`: transações, meios de pagamento, agenda, despesas fixas, calendário e orçamento.
 - `Dívidas e proteção`: controle de dívidas, plano de saída, renegociação e reserva.
-- `Patrimônio e crescimento`: patrimônio, investimentos, metas, simulador e jornada.
+- `Patrimônio e crescimento`: patrimônio, investimentos, metas, simulador, aposentadoria e jornada.
 - `Análise`: relatórios, mercado e IRPF.
 - `Sistema`: manual e configurações.
 
@@ -274,6 +274,7 @@ O Fina pode avisar quando:
 - A reserva de emergência está baixa.
 - Um orçamento foi excedido ou está quase no limite.
 - Uma categoria de despesa cresceu muito em relação ao mês anterior.
+- Uma despesa fixa/assinatura aumentou de preço em relação ao valor anterior.
 - Há margem positiva para reserva, quitação de dívidas ou investimentos.
 
 ### Como usar
@@ -342,6 +343,7 @@ A tela `Transações` é usada para registrar e consultar receitas, despesas e t
 
 ### Botões da tela
 
+- `Escanear comprovante`: lê o valor, a data e o estabelecimento de uma foto de comprovante ou nota fiscal e abre o cadastro de novo lançamento já preenchido com esses dados para revisão. O reconhecimento roda localmente no computador; a imagem não é enviada para nenhum servidor.
 - `Importar extrato`: importa transações a partir de arquivos CSV, OFX ou QFX.
 - `Exportar CSV`: exporta as transações filtradas para um arquivo CSV.
 - `Novo lançamento`: abre o cadastro de uma nova transação.
@@ -403,6 +405,8 @@ Ao clicar em `Novo lançamento` ou `Editar`, preencha:
 
 Use `Salvar` para gravar. Use `Cancelar` para sair sem salvar.
 
+Ao usar `Escanear comprovante`, os valores extraídos são um palpite inicial — a leitura depende da nitidez da foto. Confira sempre os dados antes de salvar.
+
 ### Importar extrato
 
 Ao clicar em `Importar extrato`:
@@ -423,6 +427,7 @@ A tela `Meios de pagamento` gerencia contas bancárias, cartões, vales e cartei
 ### Botão da tela
 
 - `Novo meio`: cadastra um novo meio de pagamento.
+- `Atualizar cotações`: recalcula o saldo em reais de todas as contas em moeda estrangeira usando a cotação mais recente.
 
 ### Resumo
 
@@ -455,8 +460,11 @@ Campos disponíveis:
 - `Nome do meio de pagamento`: nome que identifica o meio.
 - `Tipo`: conta corrente, poupança, cartão de crédito, vale refeição, vale alimentação ou carteira.
 - `Banco`: nome da instituição.
-- `Saldo`: saldo inicial ou atual.
+- `Moeda da conta`: Real (padrão), Dólar ou Euro.
+- `Saldo` (contas em Real) ou `Saldo original` (contas em moeda estrangeira, no valor na própria moeda).
 - `Limite de crédito`: usado principalmente para cartões e vales.
+
+Contas em Dólar ou Euro têm o saldo convertido automaticamente para Real usando a cotação do painel `Mercado`, tanto ao salvar quanto ao clicar em `Atualizar cotações`. O cartão do meio de pagamento mostra o valor convertido e, abaixo, o valor na moeda original.
 
 ## Orçamento
 
@@ -504,6 +512,7 @@ Campos disponíveis:
 - `Mês`: mês do orçamento.
 - `Ano`: ano do orçamento.
 - `Limite`: valor máximo planejado.
+- `Modo envelope`: quando marcado, o saldo não gasto no mês é transportado para o mês seguinte em vez de resetar a zero. O saldo trazido acumula enquanto o modo estiver ativo em meses seguidos, e aparece somado ao limite na linha do orçamento.
 
 ## Relatórios
 
@@ -582,6 +591,34 @@ Campos disponíveis:
 - `Vencimento`: data de vencimento.
 - `Meio de pagamento`: meio relacionado, opcional.
 - `Status`: pendente, pago ou vencido.
+
+## Despesas fixas
+
+A tela `Fixas` controla assinaturas, mensalidades e outros compromissos recorrentes.
+
+### Botão da tela
+
+- `Nova fixa`: cadastra uma nova despesa fixa.
+
+### Resumo
+
+O topo mostra:
+
+- `Fixas ativas`: quantidade de assinaturas e recorrências cadastradas.
+- `Compromisso mensal`: soma dos valores das recorrências ativas.
+- `Próximo vencimento`: data e descrição da próxima despesa fixa a vencer.
+
+### Nova fixa ou edição
+
+Campos disponíveis:
+
+- `Descrição`: nome da assinatura ou despesa fixa.
+- `Valor`: valor cobrado a cada ciclo.
+- `Vencimento base`: data usada como referência para gerar as próximas ocorrências.
+- `Meio de pagamento` e `Categoria`.
+- `Intervalo de renovação`: semanal, quinzenal, mensal, bimestral, trimestral, semestral ou anual. O Fina gera automaticamente a próxima ocorrência respeitando esse intervalo, com alguma antecedência antes do vencimento.
+
+Quando o valor de uma despesa fixa aumenta em relação ao valor anterior, a linha mostra um aviso de aumento de preço, e o mesmo alerta aparece na tela `Alertas` e nas notificações (se ativado em Configurações).
 
 ## Patrimônio
 
@@ -715,6 +752,34 @@ Clique em `Simular` para recalcular.
 O gráfico mostra a evolução do patrimônio ao longo do prazo. Abaixo dele, o Fina destaca valores intermediários, como ano 1, metade do prazo e valor final.
 
 Use essa tela para comparar o impacto de aumentar aporte, prazo ou rendimento esperado.
+
+## Aposentadoria
+
+A tela `Aposentadoria` projeta o patrimônio acumulado até a aposentadoria e a renda mensal que ele sustenta ao longo da expectativa de vida.
+
+### Cartões principais
+
+A tela mostra:
+
+- `Patrimônio na aposentadoria`: valor estimado na idade de aposentadoria informada.
+- `Renda mensal sustentável`: quanto esse patrimônio sustenta por mês, considerando que o saldo se esgota ao fim da expectativa de vida (não é uma renda perpétua).
+- `Falta por mês` ou `Margem acima da meta`: diferença entre a renda sustentável e a renda mensal desejada.
+
+### Cenário
+
+Você pode alterar:
+
+- `Idade atual` e `Idade de aposentadoria`.
+- `Expectativa de vida`.
+- `Patrimônio atual` e `Aporte mensal`.
+- `Rendimento anual até se aposentar` e `Rendimento anual na aposentadoria`.
+- `Renda mensal desejada`.
+
+Clique em `Simular` para recalcular.
+
+### Acúmulo até a aposentadoria
+
+O gráfico mostra a evolução do patrimônio até a idade de aposentadoria. Se a renda sustentável ficar abaixo da desejada, a tela sugere o aporte mensal extra necessário para fechar a diferença.
 
 ## Jornada
 
@@ -1088,6 +1153,7 @@ Permite ativar ou desativar:
 
 - `Contas a vencer`: alerta antes do vencimento.
 - `Orçamento excedido`: alerta ao ultrapassar limites.
+- `Assinatura aumentou de preço`: alerta quando uma despesa fixa/assinatura sobe de valor em relação ao último valor registrado.
 - `Resumo semanal`: opção de resumo semanal.
 
 Use os interruptores para ligar ou desligar cada aviso.
@@ -1102,6 +1168,8 @@ Quando quiser enviar alertas por e-mail, preencha também os dados de SMTP:
 - Destinatário dos alertas.
 
 Essas informações permitem que o Fina envie avisos usando uma conta de e-mail configurada por você.
+
+Também é possível enviar os mesmos alertas por webhook: ative `Enviar alertas por webhook` e informe a `URL do webhook`. O Fina faz um POST em JSON (`title`, `body`, `source`, `sentAt`) para essa URL a cada alerta gerado.
 
 ### Categorias
 
@@ -1175,6 +1243,21 @@ Opções de auto-backup:
 - Mensalmente.
 
 Para o auto-backup funcionar, escolha também uma pasta de destino.
+
+Ainda na mesma tela, duas funções adicionais:
+
+- **Sincronização entre dispositivos**: aponta o Fina para uma pasta gerenciada por um serviço de nuvem próprio (Dropbox, Google Drive etc.). `Enviar agora` grava o estado atual do banco num arquivo dentro dessa pasta; `Receber agora` substitui os dados deste dispositivo pela versão da pasta e reinicia o app. Quando há uma versão mais recente disponível na pasta, a tela mostra um aviso. Não há mesclagem automática entre edições feitas em dois dispositivos ao mesmo tempo — é o mesmo cuidado de qualquer sincronização baseada em arquivo.
+- **Serviço em segundo plano** (Linux e Windows): ativa um timer do systemd (Linux) ou uma Tarefa Agendada (Windows) que roda o Fina sem abrir janela, a cada hora, para gerar recorrências e verificar alertas mesmo com o aplicativo fechado. Não funciona se a criptografia do banco estiver ativada, pois a senha mestre só pode ser informada na tela de desbloqueio.
+
+### Segurança
+
+Permite proteger o arquivo do banco de dados com uma senha mestre.
+
+- **Ativar criptografia**: informe e confirme uma senha mestre. É obrigatório marcar que você entende que não há como recuperar os dados caso esqueça a senha — não existe recuperação.
+- **Trocar senha**: informe a senha atual e a nova senha (com confirmação) para um banco já criptografado.
+- **Desativar criptografia**: informe a senha atual para voltar o banco a texto plano, sem exigir senha.
+
+Quando a criptografia está ativada, o Fina exibe uma tela de desbloqueio antes de abrir a janela principal em toda inicialização do aplicativo.
 
 ### Sobre
 
