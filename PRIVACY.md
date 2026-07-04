@@ -16,7 +16,7 @@ O Fina usa SQLite para armazenar os dados no computador do usuário.
 
 O banco pode conter:
 
-- contas;
+- meios de pagamento;
 - categorias;
 - transações;
 - orçamentos;
@@ -92,7 +92,7 @@ Dados que podem ser enviados:
 
 - renda e despesas mensais agregadas;
 - despesas por categoria;
-- saldos totais por tipo de conta;
+- saldos totais por tipo de meio de pagamento;
 - total de dívidas por tipo e status;
 - taxas e parcelas agregadas de dívidas;
 - orçamentos do mês;
@@ -155,4 +155,3 @@ O usuário é responsável por:
 ## Alterações nesta política
 
 Este documento deve ser atualizado quando novas integrações, novos tipos de dados ou novos fluxos de envio externo forem adicionados ao Fina.
-

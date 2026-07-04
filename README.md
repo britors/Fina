@@ -124,8 +124,10 @@ npm start
 | Alertas | Riscos e oportunidades calculados a partir dos dados financeiros |
 | Assistente IA | Análise educacional usando ChatGPT/OpenAI ou Gemini/Google com consentimento explícito |
 | Transações | Lançamentos com categorias, filtros e importação CSV/OFX |
-| Contas | Corrente, poupança, cartão de crédito, carteira |
+| Meios de pagamento | Corrente, poupança, cartão de crédito, vale refeição, vale alimentação, carteira |
 | Orçamento | Limites mensais por categoria com alertas |
+| Fixas | Assinaturas e despesas recorrentes |
+| Calendário | Vencimentos e lançamentos por dia |
 | Relatórios | Histórico de até 12 meses, exportação PDF e CSV |
 | Agenda | Contas a pagar e receber com recorrências automáticas |
 | Patrimônio | Imóveis, veículos, terrenos e outros bens |

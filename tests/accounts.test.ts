@@ -21,8 +21,8 @@ const ACCOUNTS: Account[] = [
 ];
 
 describe('calculateTotalBalance', () => {
-  test('soma todos os saldos', () => {
-    assert.equal(calculateTotalBalance(ACCOUNTS), 16000);
+  test('calcula patrimônio tratando cartão como dívida', () => {
+    assert.equal(calculateTotalBalance(ACCOUNTS), 15000);
   });
 
   test('retorna 0 para lista vazia', () => {
@@ -60,6 +60,11 @@ describe('formatCurrency', () => {
     assert.ok(result.length > 0);
   });
 
+  test('normaliza zero negativo', () => {
+    const result = formatCurrency(-0);
+    assert.equal(result.includes('-'), false);
+  });
+
   test('lida com valores decimais', () => {
     const result = formatCurrency(1234.56);
     assert.ok(result.includes('1') && result.includes('234'));
@@ -77,6 +82,11 @@ describe('accountTypeLabel', () => {
 
   test('retorna rótulo correto para credit_card', () => {
     assert.equal(accountTypeLabel('credit_card'), 'Cartão de Crédito');
+  });
+
+  test('retorna rótulo correto para vales', () => {
+    assert.equal(accountTypeLabel('meal_voucher'), 'Vale Refeição');
+    assert.equal(accountTypeLabel('food_voucher'), 'Vale Alimentação');
   });
 
   test('retorna o próprio valor para tipo desconhecido', () => {

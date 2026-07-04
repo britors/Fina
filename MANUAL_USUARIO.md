@@ -4,20 +4,20 @@ Este manual explica como usar o Fina no dia a dia. Ele não trata de detalhes t�
 
 ## Visão geral
 
-O Fina é um aplicativo de controle financeiro pessoal. Nele você pode cadastrar contas, registrar receitas e despesas, acompanhar orçamento, controlar contas a pagar, patrimônio, investimentos, metas, dívidas, indicadores de mercado e gerar um informe auxiliar para IRPF.
+O Fina é um aplicativo de controle financeiro pessoal. Nele você pode cadastrar meios de pagamento, registrar receitas e despesas, acompanhar orçamento, controlar contas a pagar, patrimônio, investimentos, metas, dívidas, indicadores de mercado e gerar um informe auxiliar para IRPF.
 
 A navegação principal fica no menu lateral esquerdo. O menu é organizado em grupos expansíveis. Clique no nome de um grupo para abrir ou recolher suas opções. Quando você entra em uma tela, o Fina mantém o grupo correspondente aberto e destaca o item ativo.
 
 Os grupos do menu são:
 
 - `Visão geral`: Dashboard, diagnóstico financeiro, plano mensal, alertas e Assistente IA.
-- `Movimentação`: transações, contas, agenda e orçamento.
+- `Movimentação`: transações, meios de pagamento, agenda, despesas fixas, calendário e orçamento.
 - `Dívidas e proteção`: controle de dívidas, plano de saída e reserva.
 - `Patrimônio e crescimento`: patrimônio, investimentos, metas, simulador e jornada.
 - `Análise`: relatórios, mercado e IRPF.
 - `Sistema`: manual e configurações.
 
-A parte superior da janela mostra o título da tela aberta e, quando existir, botões de ação como `Novo lançamento`, `Nova conta`, `Exportar PDF` ou `Atualizar`.
+A parte superior da janela mostra o título da tela aberta e, quando existir, botões de ação como `Novo lançamento`, `Novo meio`, `Exportar PDF` ou `Atualizar`.
 
 No canto superior direito ficam os controles da janela:
 
@@ -41,13 +41,13 @@ Use os campos `Período`, com mês inicial e mês final, para escolher quais mes
 
 O Dashboard mostra três cartões no topo:
 
-- `Saldo em contas`: soma o saldo das contas cadastradas. Também mostra o patrimônio líquido, considerando contas, investimentos, bens e dívidas.
+- `Saldo em meios de pagamento`: soma o saldo dos meios de pagamento cadastrados. Também mostra o patrimônio líquido, considerando meios de pagamento, investimentos, bens e dívidas.
 - `Receitas`: total de receitas no período selecionado.
 - `Despesas`: total de despesas no período selecionado e saldo do período.
 
 ### Últimas transações
 
-Mostra as transações mais recentes do período selecionado. Cada item exibe descrição, conta, data, categoria e valor.
+Mostra as transações mais recentes do período selecionado. Cada item exibe descrição, meio de pagamento, data, categoria e valor.
 
 Use `Ver todas` para abrir a tela `Transações`.
 
@@ -83,7 +83,7 @@ Use `Ver todos` para abrir a tela `Mercado`.
 
 A tela `Diagnóstico` interpreta os dados já cadastrados no Fina e mostra uma leitura prática da sua situação financeira.
 
-Ela usa informações de contas, transações, dívidas, investimentos e patrimônio para indicar se a situação está em nível crítico, de atenção, estável ou de crescimento.
+Ela usa informações de meios de pagamento, transações, dívidas, investimentos e patrimônio para indicar se a situação está em nível crítico, de atenção, estável ou de crescimento.
 
 ### Resultado do diagnóstico
 
@@ -103,8 +103,8 @@ A tela mostra cartões com:
 - `Despesa média`: média de despesas dos últimos 3 meses.
 - `Saldo mensal`: diferença média entre renda e despesas.
 - `Comprometido com dívidas`: percentual da renda usado em parcelas.
-- `Reserva estimada`: quantos meses de despesas o saldo em contas cobre.
-- `Patrimônio líquido`: contas, bens e investimentos menos dívidas.
+- `Reserva estimada`: quantos meses de despesas o saldo em meios de pagamento cobre.
+- `Patrimônio líquido`: meios de pagamento, bens e investimentos menos dívidas.
 
 ### Barras de diagnóstico
 
@@ -118,7 +118,7 @@ As barras ajudam a comparar pontos importantes:
 
 Mostra a composição do patrimônio:
 
-- Saldo em contas.
+- Saldo em meios de pagamento.
 - Investimentos.
 - Bens.
 - Dívidas.
@@ -126,13 +126,13 @@ Mostra a composição do patrimônio:
 
 ### Como usar
 
-Atualize suas transações, contas, dívidas e investimentos antes de consultar o diagnóstico. Quanto mais completos os dados, mais útil será a recomendação exibida.
+Atualize suas transações, meios de pagamento, dívidas e investimentos antes de consultar o diagnóstico. Quanto mais completos os dados, mais útil será a recomendação exibida.
 
 ## Plano mensal
 
 A tela `Plano mensal` sugere como usar a margem mensal disponível. Ela ajuda a transformar sua renda e seus gastos em uma orientação prática para o próximo mês.
 
-O plano é calculado com base na média dos últimos 3 meses, considerando receitas, despesas, dívidas, saldo em contas, metas e investimentos.
+O plano é calculado com base na média dos últimos 3 meses, considerando receitas, despesas, dívidas, saldo em meios de pagamento, metas e investimentos.
 
 ### Cartões principais
 
@@ -176,7 +176,7 @@ Revise o plano depois de atualizar suas transações, dívidas, metas e investim
 
 A tela `Alertas` mostra riscos e oportunidades identificados automaticamente pelo Fina.
 
-Ela usa dados de transações, dívidas, contas, orçamentos e categorias para indicar situações que merecem atenção.
+Ela usa dados de transações, dívidas, meios de pagamento, orçamentos e categorias para indicar situações que merecem atenção.
 
 ### Tipos de alerta
 
@@ -226,7 +226,7 @@ Enviado somente com consentimento:
 
 - renda e despesas agregadas;
 - despesas por categoria;
-- saldos totais por tipo de conta;
+- saldos totais por tipo de meio de pagamento;
 - dívidas por tipo e status;
 - orçamentos do mês;
 - metas, investimentos e bens agregados.
@@ -293,7 +293,7 @@ A tela mostra três cartões:
 A tabela mostra:
 
 - Descrição.
-- Conta.
+- Meio de pagamento.
 - Categoria.
 - Data.
 - Valor.
@@ -305,7 +305,7 @@ As ações disponíveis são:
 - `Editar`: altera os dados da transação.
 - `Excluir`: remove a transação após confirmação.
 
-Quando uma transação confirmada é criada, alterada ou excluída, o saldo da conta é atualizado automaticamente.
+Quando uma transação confirmada é criada, alterada ou excluída, o saldo do meio de pagamento é atualizado automaticamente.
 
 ### Novo lançamento ou edição
 
@@ -314,9 +314,9 @@ Ao clicar em `Novo lançamento` ou `Editar`, preencha:
 - `Descrição`: nome do lançamento, como supermercado, salário ou aluguel.
 - `Valor`: valor da movimentação.
 - `Tipo`: despesa, receita ou transferência.
-- `Conta`: conta de origem.
+- `Meio de pagamento`: origem do lançamento.
 - `Categoria`: categoria da transação.
-- `Conta destino`: aparece quando o tipo é transferência. Deve ser diferente da conta de origem.
+- `Meio de pagamento destino`: aparece quando o tipo é transferência. Deve ser diferente do meio de origem.
 - `Data`: data da transação.
 - `Status`: confirmado ou pendente.
 - `Observações`: informação opcional.
@@ -328,7 +328,7 @@ Use `Salvar` para gravar. Use `Cancelar` para sair sem salvar.
 Ao clicar em `Importar extrato`:
 
 1. Selecione um arquivo CSV, OFX ou QFX.
-2. Escolha a conta de destino.
+2. Escolha o meio de pagamento de destino.
 3. Escolha uma categoria padrão.
 4. Clique em `Pré-visualizar`.
 5. Confira as transações encontradas.
@@ -336,47 +336,47 @@ Ao clicar em `Importar extrato`:
 
 Duplicatas identificadas são indicadas na prévia e ignoradas na importação.
 
-## Contas
+## Meios de pagamento
 
-A tela `Contas` gerencia contas bancárias, cartões e carteira.
+A tela `Meios de pagamento` gerencia contas bancárias, cartões, vales e carteira.
 
 ### Botão da tela
 
-- `Nova conta`: cadastra uma nova conta.
+- `Novo meio`: cadastra um novo meio de pagamento.
 
 ### Resumo
 
 O topo da tela mostra:
 
 - `Patrimônio líquido`: soma dos saldos cadastrados.
-- `Em conta`: soma das contas que não são cartão de crédito.
-- `Em débito`: soma dos valores de cartão de crédito.
+- `Disponível`: soma dos meios de pagamento que não funcionam como crédito/vale.
+- `Em débito`: soma dos valores de cartão de crédito e vales.
 
-### Cartões de conta
+### Cartões de meio de pagamento
 
-Cada conta mostra:
+Cada meio de pagamento mostra:
 
 - Banco.
-- Tipo da conta.
+- Tipo.
 - Nome.
 - Saldo disponível ou fatura atual.
-- Limite e limite disponível, quando for cartão de crédito.
+- Limite e limite disponível, quando for cartão de crédito ou vale.
 - Data de criação.
 
 As ações disponíveis são:
 
-- `Editar`: altera os dados da conta.
-- `Excluir`: remove a conta. Ao excluir uma conta, as transações vinculadas também são removidas.
+- `Editar`: altera os dados do meio de pagamento.
+- `Excluir`: remove o meio de pagamento. Ao excluir um meio, as transações vinculadas também são removidas.
 
-### Nova conta ou edição
+### Novo meio de pagamento ou edição
 
 Campos disponíveis:
 
-- `Nome da conta`: nome que identifica a conta.
-- `Tipo`: conta corrente, poupança, cartão de crédito ou carteira.
+- `Nome do meio de pagamento`: nome que identifica o meio.
+- `Tipo`: conta corrente, poupança, cartão de crédito, vale refeição, vale alimentação ou carteira.
 - `Banco`: nome da instituição.
 - `Saldo`: saldo inicial ou atual.
-- `Limite de crédito`: usado principalmente para cartões.
+- `Limite de crédito`: usado principalmente para cartões e vales.
 
 ## Orçamento
 
@@ -500,7 +500,7 @@ Campos disponíveis:
 - `Descrição`: nome da conta.
 - `Valor`: valor a pagar.
 - `Vencimento`: data de vencimento.
-- `Conta`: conta relacionada, opcional.
+- `Meio de pagamento`: meio relacionado, opcional.
 - `Status`: pendente, pago ou vencido.
 
 ## Patrimônio
@@ -609,7 +609,7 @@ Campos disponíveis:
 
 A tela `Simulador` projeta o crescimento do patrimônio ao longo do tempo.
 
-Ela usa como ponto de partida o patrimônio atual aproximado, somando contas, investimentos e bens cadastrados. Você pode alterar os valores para comparar cenários.
+Ela usa como ponto de partida o patrimônio atual aproximado, somando meios de pagamento, investimentos e bens cadastrados. Você pode alterar os valores para comparar cenários.
 
 ### Cartões principais
 
@@ -653,7 +653,7 @@ O progresso é salvo no próprio aplicativo.
 A jornada inclui:
 
 - Entender a situação atual.
-- Organizar contas e lançamentos.
+- Organizar meios de pagamento e lançamentos.
 - Identificar vazamentos.
 - Montar plano contra dívidas.
 - Construir reserva de emergência.
@@ -714,7 +714,7 @@ Campos disponíveis:
 - `Valor alvo`: valor que deseja atingir.
 - `Valor acumulado`: valor já guardado.
 - `Data alvo`: prazo desejado.
-- `Conta vinculada`: conta relacionada à meta, opcional.
+- `Meio de pagamento vinculado`: meio relacionado à meta, opcional.
 - `Descrição`: observações opcionais.
 
 ## Dívidas
@@ -832,14 +832,14 @@ Use essa ordem como referência para decidir onde colocar pagamentos extras.
 
 A tela `Reserva` ajuda a calcular e acompanhar uma reserva de emergência.
 
-Ela usa a média de despesas dos últimos 3 meses e o saldo disponível em contas que não são cartão de crédito.
+Ela usa a média de despesas dos últimos 3 meses e o saldo disponível em meios de pagamento que não funcionam como crédito/vale.
 
 ### Cartões principais
 
 A tela mostra:
 
 - `Despesa média`: média de despesas dos últimos 3 meses.
-- `Saldo em contas`: valor disponível em contas.
+- `Saldo em meios de pagamento`: valor disponível nos meios de pagamento.
 - `Reserva ideal`: valor necessário para o objetivo escolhido.
 
 ### Objetivo de reserva
@@ -938,7 +938,7 @@ Ao clicar em `Importar ano anterior`:
 
 1. Selecione um CSV exportado pelo Fina.
 2. Informe o ano-calendário.
-3. Escolha uma conta para lançar rendimentos.
+3. Escolha um meio de pagamento para lançar rendimentos.
 4. Clique em `Pré-visualizar`.
 5. Confira totais de rendimentos, deduções, bens e dívidas.
 6. Clique em `Importar`.
@@ -1054,7 +1054,7 @@ Se houver uma nova versão disponível, o botão muda para baixar a atualizaçã
 
 Para começar a usar o Fina de forma organizada:
 
-1. Cadastre suas contas em `Contas`.
+1. Cadastre seus meios de pagamento em `Meios de pagamento`.
 2. Ajuste categorias em `Configurações > Categorias`, se necessário.
 3. Registre receitas e despesas em `Transações`.
 4. Cadastre contas futuras em `Agenda`.

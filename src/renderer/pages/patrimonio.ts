@@ -197,7 +197,6 @@ export async function render(el: HTMLElement): Promise<void> {
     };
 
     overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', close));
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
     overlay.querySelector('#btn-save-asset')?.addEventListener('click', async () => {
       const name = (overlay.querySelector<HTMLInputElement>('#f-name')!).value.trim();

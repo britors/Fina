@@ -28,7 +28,7 @@
     target: ["deb", "rpm"],
     category: "Office",
     synopsis: "Gerenciador de finanças pessoais",
-    description: "Controle total das suas finanças: contas, transações, orçamentos, investimentos, metas e muito mais.",
+    description: "Controle total das suas finanças: meios de pagamento, transações, orçamentos, investimentos, metas e muito mais.",
     // build/icon.png gerado por npm run generate-icons
     icon: "build/icon.png"
   },

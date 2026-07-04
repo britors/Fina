@@ -20,8 +20,8 @@ const STEPS: Step[] = [
   },
   {
     id: 'organize',
-    title: 'Organizar contas e lançamentos',
-    body: 'Cadastre contas e mantenha transações atualizadas para o Fina refletir a realidade.',
+    title: 'Organizar meios de pagamento e lançamentos',
+    body: 'Cadastre meios de pagamento e mantenha transações atualizadas para o Fina refletir a realidade.',
     route: 'transactions',
     action: 'Organizar transações',
     icon: 'ti-arrows-transfer',

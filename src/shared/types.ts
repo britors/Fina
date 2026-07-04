@@ -1,4 +1,4 @@
-export type AccountType = 'checking' | 'savings' | 'credit_card' | 'wallet';
+export type AccountType = 'checking' | 'savings' | 'credit_card' | 'meal_voucher' | 'food_voucher' | 'wallet';
 export type TransactionType = 'income' | 'expense' | 'transfer';
 export type TransactionStatus = 'confirmed' | 'pending';
 export type CategoryType = 'income' | 'expense';
@@ -42,11 +42,21 @@ export interface Transaction {
   updated_at: string;
 }
 
+export interface PaymentSplit {
+  account_id: string;
+  amount: number;
+}
+
+export interface PaymentSplitWithAccount extends PaymentSplit {
+  account_name: string;
+}
+
 export interface TransactionWithDetails extends Transaction {
   account_name: string;
   category_name: string;
   category_icon: string;
   category_color: string;
+  payments?: PaymentSplitWithAccount[];
 }
 
 export interface Budget {
@@ -84,6 +94,7 @@ export interface BillWithCategory extends Bill {
   category_name: string | null;
   category_icon: string | null;
   category_color: string | null;
+  payments?: PaymentSplitWithAccount[];
 }
 
 export interface TransactionFilters {
@@ -163,6 +174,8 @@ export interface ImportPreviewRow {
   type: TransactionType;
   fitid: string | null;
   duplicate: boolean;
+  suggested_category_id?: string | null;
+  suggested_category_name?: string | null;
 }
 
 export interface ImportPreview {

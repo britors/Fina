@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency, getCurrentYearMonth } from '../../shared/utils';
+import { formatCurrency, getCurrentYearMonth, isCreditLikeAccountType } from '../../shared/utils';
 import type { Account, BudgetWithProgress, Debt } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
@@ -73,7 +73,7 @@ function buildAlerts(
   const activeDebts = debts.filter(d => d.status !== 'quitada');
   const debtInstallments = activeDebts.reduce((s, d) => s + d.installment_amount, 0);
   const debtCommitment = avgIncome > 0 ? (debtInstallments / avgIncome) * 100 : 0;
-  const liquidBalance = accounts.filter(a => a.type !== 'credit_card').reduce((s, a) => s + a.balance, 0);
+  const liquidBalance = accounts.filter(a => !isCreditLikeAccountType(a.type)).reduce((s, a) => s + a.balance, 0);
   const reserveMonths = avgExpense > 0 ? liquidBalance / avgExpense : 0;
 
   if (monthlyBalance < 0) {
@@ -108,7 +108,7 @@ function buildAlerts(
     alerts.push({
       level: 'warning',
       title: 'Reserva de emergência baixa',
-      body: `O saldo em contas cobre cerca de ${reserveMonths.toFixed(1)} mês de despesas.`,
+      body: `O saldo em meios de pagamento cobre cerca de ${reserveMonths.toFixed(1)} mês de despesas.`,
       action: 'Use a tela Reserva para definir uma contribuição mensal.',
       icon: 'ti-shield',
     });

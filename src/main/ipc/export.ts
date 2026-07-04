@@ -26,7 +26,14 @@ export function registerExportHandlers(): void {
     if (!filePath) return null;
 
     let q = `
-      SELECT t.date, t.description, c.name as category, a.name as account,
+      SELECT t.date, t.description, c.name as category,
+             COALESCE(
+               (SELECT group_concat(a2.name, ' + ')
+                FROM transaction_payments p
+                JOIN accounts a2 ON a2.id = p.account_id
+                WHERE p.transaction_id = t.id),
+               a.name
+             ) as account,
              t.type, t.amount, t.status, t.notes
       FROM transactions t
       JOIN accounts a ON a.id = t.account_id
@@ -42,7 +49,10 @@ export function registerExportHandlers(): void {
       if (filters.month) { q += ` AND strftime('%m',t.date) = ?`; params.push(String(filters.month).padStart(2, '0')); }
       if (filters.year)  { q += ` AND strftime('%Y',t.date) = ?`; params.push(String(filters.year)); }
     }
-    if (filters.account_id) { q += ` AND t.account_id = ?`; params.push(filters.account_id); }
+    if (filters.account_id) {
+      q += ` AND (t.account_id = ? OR EXISTS (SELECT 1 FROM transaction_payments p WHERE p.transaction_id = t.id AND p.account_id = ?))`;
+      params.push(filters.account_id, filters.account_id);
+    }
     if (filters.type)  { q += ` AND t.type = ?`; params.push(filters.type); }
     q += ' ORDER BY t.date DESC';
 
@@ -51,7 +61,7 @@ export function registerExportHandlers(): void {
     const typeLabel = (t: string) => t === 'income' ? 'Receita' : t === 'expense' ? 'Despesa' : 'Transferência';
     const statusLabel = (s: string) => s === 'confirmed' ? 'Confirmado' : 'Pendente';
 
-    const header = 'Data,Descrição,Categoria,Conta,Tipo,Valor,Status,Observações';
+    const header = 'Data,Descrição,Categoria,Meio de pagamento,Tipo,Valor,Status,Observações';
     const lines = rows.map(r => [
       r.date, `"${String(r.description).replace(/"/g, '""')}"`,
       `"${String(r.category).replace(/"/g, '""')}"`,
@@ -88,7 +98,15 @@ export function registerExportHandlers(): void {
     `).get(pad, String(year)) as { income: number; expense: number };
 
     const txs = db.prepare(`
-      SELECT t.date, t.description, c.name as category, a.name as account, t.type, t.amount, t.status
+      SELECT t.date, t.description, c.name as category,
+             COALESCE(
+               (SELECT group_concat(a2.name, ' + ')
+                FROM transaction_payments p
+                JOIN accounts a2 ON a2.id = p.account_id
+                WHERE p.transaction_id = t.id),
+               a.name
+             ) as account,
+             t.type, t.amount, t.status
       FROM transactions t
       JOIN accounts a ON a.id = t.account_id
       JOIN categories c ON c.id = t.category_id
@@ -134,7 +152,7 @@ export function registerExportHandlers(): void {
   </div>
 </div>
 <table>
-  <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta</th><th>Valor</th></tr></thead>
+  <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Meio de pagamento</th><th>Valor</th></tr></thead>
   <tbody>
     ${txs.map(t => `<tr>
       <td>${new Date(t.date + 'T12:00').toLocaleDateString('pt-BR')}</td>

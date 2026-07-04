@@ -172,7 +172,7 @@ export async function render(el: HTMLElement): Promise<void> {
               <input class="form-ctrl" id="f-date" type="date" value="${goal?.target_date ?? ''}">
             </div>
             <div class="form-group">
-              <label class="form-label">Conta vinculada</label>
+              <label class="form-label">Meio de pagamento vinculado</label>
               <select class="form-ctrl" id="f-account">
                 <option value="">— Nenhuma —</option>
                 ${accounts.map(a => `<option value="${a.id}" ${goal?.account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
@@ -198,7 +198,6 @@ export async function render(el: HTMLElement): Promise<void> {
     };
 
     overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', close));
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
     overlay.querySelector('#btn-save-goal')?.addEventListener('click', async () => {
       const name = (overlay.querySelector<HTMLInputElement>('#f-name')!).value.trim();

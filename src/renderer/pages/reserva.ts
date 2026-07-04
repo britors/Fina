@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
 import type { Account } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
@@ -11,7 +11,7 @@ export async function render(el: HTMLElement): Promise<void> {
     invoke<MonthRow[]>('transactions:getMonthlyHistory', 3),
   ]);
 
-  const liquidBalance = accounts.filter(a => a.type !== 'credit_card').reduce((s, a) => s + a.balance, 0);
+  const liquidBalance = accounts.filter(a => !isCreditLikeAccountType(a.type)).reduce((s, a) => s + a.balance, 0);
   const avgExpense = avg(history.map(r => r.expense));
 
   function renderPage(): void {
@@ -25,7 +25,7 @@ export async function render(el: HTMLElement): Promise<void> {
     el.innerHTML = `
       <div class="grid-3" style="margin-bottom:20px">
         ${metricCard('Despesa média', formatCurrency(avgExpense), 'Últimos 3 meses', 'ti-arrow-down-right', 'var(--danger)')}
-        ${metricCard('Saldo em contas', formatCurrency(liquidBalance), 'Contas não cartão', 'ti-wallet', 'var(--accent)')}
+        ${metricCard('Saldo em meios de pagamento', formatCurrency(liquidBalance), 'Meios sem crédito/vales', 'ti-wallet', 'var(--accent)')}
         ${metricCard('Reserva ideal', formatCurrency(targetAmount), `${targetMonths} meses de despesas`, 'ti-shield', 'var(--warning)')}
       </div>
 
@@ -78,7 +78,7 @@ export async function render(el: HTMLElement): Promise<void> {
             ` : `
               <p style="margin:0 0 10px">A reserva é calculada a partir da sua média de despesas dos últimos 3 meses.</p>
               <p style="margin:0 0 10px">Use 3 meses como ponto de partida, 6 meses como objetivo equilibrado e 12 meses para uma proteção mais conservadora.</p>
-              <p style="margin:0">O saldo em contas é usado como aproximação do dinheiro disponível para emergências.</p>
+              <p style="margin:0">O saldo em meios de pagamento é usado como aproximação do dinheiro disponível para emergências.</p>
             `}
           </div>
         </div>

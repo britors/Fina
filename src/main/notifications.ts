@@ -1,10 +1,12 @@
 import { Notification } from 'electron';
 import { randomUUID } from 'node:crypto';
+import net from 'node:net';
+import tls from 'node:tls';
 import { getDb } from './database';
 
-function getSetting(key: string): string {
+function getSetting(key: string, fallback = 'true'): string {
   const row = getDb().prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined;
-  return row?.value ?? 'true';
+  return row?.value ?? fallback;
 }
 
 function alreadySent(type: string, refId: string): boolean {
@@ -23,6 +25,186 @@ function logSent(type: string, refId: string): void {
 function notify(title: string, body: string): void {
   if (!Notification.isSupported()) return;
   new Notification({ title, body, silent: false }).show();
+  void sendAlertEmail(title, body).catch(err => {
+    console.warn('[SMTP] Não foi possível enviar alerta por e-mail:', err instanceof Error ? err.message : err);
+  });
+}
+
+type SmtpConfig = {
+  enabled: boolean;
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  from: string;
+  to: string;
+};
+
+function smtpConfig(): SmtpConfig | null {
+  const enabled = getSetting('smtp_enabled', 'false') === 'true';
+  if (!enabled) return null;
+  const host = getSetting('smtp_host', '').trim();
+  const port = Number(getSetting('smtp_port', '587'));
+  const from = getSetting('smtp_from', '').trim();
+  const to = getSetting('smtp_to', '').trim();
+  if (!host || !Number.isInteger(port) || port <= 0 || !from || !to) return null;
+  return {
+    enabled,
+    host,
+    port,
+    secure: getSetting('smtp_secure', 'false') === 'true',
+    user: getSetting('smtp_user', '').trim(),
+    pass: getSetting('smtp_pass', ''),
+    from,
+    to,
+  };
+}
+
+async function sendAlertEmail(title: string, body: string): Promise<void> {
+  const cfg = smtpConfig();
+  if (!cfg) return;
+
+  const client = new SmtpClient(cfg);
+  await client.connect();
+  try {
+    await client.sendMail(title, body);
+  } finally {
+    await client.quit().catch(() => {});
+  }
+}
+
+class SmtpClient {
+  private socket!: net.Socket | tls.TLSSocket;
+  private buffer = '';
+  private pending: ((line: string) => void) | null = null;
+
+  constructor(private readonly cfg: SmtpConfig) {}
+
+  async connect(): Promise<void> {
+    this.socket = this.cfg.secure
+      ? tls.connect({ host: this.cfg.host, port: this.cfg.port, servername: this.cfg.host })
+      : net.connect({ host: this.cfg.host, port: this.cfg.port });
+
+    this.socket.setEncoding('utf8');
+    this.socket.on('data', chunk => this.onData(String(chunk)));
+    await onceConnect(this.socket);
+    await this.expect(220);
+    await this.command(`EHLO localhost`, 250);
+
+    if (!this.cfg.secure) {
+      const supportsStartTls = await this.tryStartTls();
+      if (supportsStartTls) await this.command(`EHLO localhost`, 250);
+    }
+
+    if (this.cfg.user || this.cfg.pass) {
+      await this.command('AUTH LOGIN', 334);
+      await this.command(Buffer.from(this.cfg.user).toString('base64'), 334);
+      await this.command(Buffer.from(this.cfg.pass).toString('base64'), 235);
+    }
+  }
+
+  async sendMail(subject: string, body: string): Promise<void> {
+    await this.command(`MAIL FROM:<${extractEmail(this.cfg.from)}>`, 250);
+    await this.command(`RCPT TO:<${extractEmail(this.cfg.to)}>`, [250, 251]);
+    await this.command('DATA', 354);
+    const message = [
+      `From: ${this.cfg.from}`,
+      `To: ${this.cfg.to}`,
+      `Subject: ${mimeHeader(`[Fina] ${subject}`)}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=UTF-8',
+      'Content-Transfer-Encoding: 8bit',
+      '',
+      body,
+      '',
+    ].join('\r\n').replace(/\r?\n\./g, '\r\n..');
+    await this.command(`${message}\r\n.`, 250);
+  }
+
+  async quit(): Promise<void> {
+    if (!this.socket.destroyed) {
+      await this.command('QUIT', 221).catch(() => {});
+      this.socket.end();
+    }
+  }
+
+  private async tryStartTls(): Promise<boolean> {
+    const response = await this.commandRaw('STARTTLS');
+    if (!response.startsWith('220')) return false;
+    this.socket.removeAllListeners('data');
+    const secureSocket = tls.connect({ socket: this.socket, servername: this.cfg.host });
+    this.socket = secureSocket;
+    this.buffer = '';
+    this.pending = null;
+    this.socket.setEncoding('utf8');
+    this.socket.on('data', chunk => this.onData(String(chunk)));
+    await onceConnect(secureSocket);
+    return true;
+  }
+
+  private command(cmd: string, expected: number | number[]): Promise<string> {
+    return this.commandRaw(cmd).then(response => {
+      const code = Number(response.slice(0, 3));
+      const ok = Array.isArray(expected) ? expected.includes(code) : code === expected;
+      if (!ok) throw new Error(`SMTP respondeu ${response}`);
+      return response;
+    });
+  }
+
+  private commandRaw(cmd: string): Promise<string> {
+    this.socket.write(`${cmd}\r\n`);
+    return this.readResponse();
+  }
+
+  private expect(expected: number): Promise<string> {
+    return this.readResponse().then(response => {
+      if (Number(response.slice(0, 3)) !== expected) throw new Error(`SMTP respondeu ${response}`);
+      return response;
+    });
+  }
+
+  private readResponse(): Promise<string> {
+    return new Promise(resolve => {
+      this.pending = resolve;
+      this.flush();
+    });
+  }
+
+  private onData(chunk: string): void {
+    this.buffer += chunk;
+    this.flush();
+  }
+
+  private flush(): void {
+    if (!this.pending) return;
+    const lines = this.buffer.split(/\r?\n/).filter(Boolean);
+    if (lines.length === 0) return;
+    const last = lines[lines.length - 1];
+    if (!/^\d{3} /.test(last)) return;
+    this.buffer = '';
+    const resolve = this.pending;
+    this.pending = null;
+    resolve(lines.join('\n'));
+  }
+}
+
+function onceConnect(socket: net.Socket | tls.TLSSocket): Promise<void> {
+  if (socket instanceof tls.TLSSocket && socket.authorized !== undefined && !socket.connecting) return Promise.resolve();
+  if (!socket.connecting) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    socket.once('connect', resolve);
+    socket.once('secureConnect', resolve);
+    socket.once('error', reject);
+  });
+}
+
+function extractEmail(value: string): string {
+  return value.match(/<([^>]+)>/)?.[1] ?? value;
+}
+
+function mimeHeader(value: string): string {
+  return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
 }
 
 export function checkAndNotify(): void {

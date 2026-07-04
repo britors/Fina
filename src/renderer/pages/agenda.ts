@@ -2,7 +2,7 @@ import { invoke } from '../api';
 import { formatCurrency, formatDate, getDaysUntilDue } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { setTopbarActions } from '../components/topbar';
-import type { Account, Bill, BillInterval, BillStatus, BillWithCategory, Category } from '../../shared/types';
+import type { Account, Bill, BillInterval, BillStatus, BillWithCategory, Category, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 
 const INTERVAL_LABELS: Record<BillInterval, string> = {
   weekly:     'Semanal',
@@ -176,7 +176,8 @@ function billSection(title: string, bills: BillWithCategory[], isOverdue: boolea
 
 function openBillModal(b: Bill | null, onDone: () => void): void {
   const today = new Date().toISOString().split('T')[0];
-  openModal({
+  const initialPayments = initialPaymentSplits((b as BillWithCategory | null)?.payments, b?.account_id ?? undefined, b?.amount);
+  const overlay = openModal({
     title: b ? 'Editar conta à pagar' : 'Nova conta à pagar',
     body: `
       <div class="form-group">
@@ -193,13 +194,14 @@ function openBillModal(b: Bill | null, onDone: () => void): void {
           <input class="form-ctrl" id="f-due" type="date" value="${b?.due_date ?? today}">
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Conta</label>
-          <select class="form-ctrl" id="f-account">
-            <option value="">— Sem conta —</option>
-            ${accounts.map(a => `<option value="${a.id}" ${b?.account_id===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}
-          </select>
+      <div class="form-group">
+        <label class="form-label">Meios de pagamento</label>
+        <div id="bill-payments" style="display:flex;flex-direction:column;gap:8px">
+          ${paymentRowsHtml(initialPayments)}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-bill-payment"><i class="ti ti-plus"></i> Adicionar meio</button>
+          <div id="bill-payment-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
         </div>
       </div>
       <div class="form-row">
@@ -224,23 +226,28 @@ function openBillModal(b: Bill | null, onDone: () => void): void {
       const desc   = (document.getElementById('f-desc')    as HTMLInputElement).value.trim();
       const amount = parseFloat((document.getElementById('f-amount') as HTMLInputElement).value);
       const due    = (document.getElementById('f-due')     as HTMLInputElement).value;
-      const acc    = (document.getElementById('f-account') as HTMLSelectElement).value;
       const cat    = (document.getElementById('f-category') as HTMLSelectElement).value;
       const status = (document.getElementById('f-status')  as HTMLSelectElement).value as BillStatus;
       if (!desc || isNaN(amount) || !due) { alert('Preencha todos os campos.'); return false; }
-      const payload = { description: desc, amount, due_date: due, status, account_id: acc || null, category_id: cat || null, recurring: 0 as const };
+      const payments = collectPayments('bill', amount, true);
+      if (!payments) return false;
+      const payload = { description: desc, amount, due_date: due, status, account_id: payments[0]?.account_id ?? null, category_id: cat || null, recurring: 0 as const, payments };
       if (b) { await invoke('bills:update', { id: b.id, ...payload }); }
       else   { await invoke('bills:create', payload); }
       onDone();
     },
   });
+  bindPaymentRows(overlay, 'bill');
+  overlay.querySelector('#f-amount')?.addEventListener('input', () => updatePaymentSummary(overlay, 'bill'));
+  overlay.querySelector('#btn-add-bill-payment')?.addEventListener('click', () => {
+    overlay.querySelector<HTMLElement>('#bill-payments')!.insertAdjacentHTML('beforeend', paymentRowHtml('', remainingAmount(overlay, 'bill'), 'bill'));
+    bindPaymentRows(overlay, 'bill');
+    updatePaymentSummary(overlay, 'bill');
+  });
+  updatePaymentSummary(overlay, 'bill');
 }
 
 function openPayBillModal(b: BillWithCategory, onDone: () => void): void {
-  if (!b.account_id) {
-    alert('Defina uma conta para esta despesa (em "Editar") antes de marcá-la como paga.');
-    return;
-  }
   // Se a conta já tem categoria definida, ela é reaproveitada automaticamente
   // no lançamento — só pedimos para escolher quando não há uma.
   if (!b.category_id && expenseCategories.length === 0) {
@@ -249,15 +256,26 @@ function openPayBillModal(b: BillWithCategory, onDone: () => void): void {
   }
 
   const today = new Date().toISOString().split('T')[0];
-  const account = accounts.find(a => a.id === b.account_id);
+  const initialPayments = initialPaymentSplits(b.payments, b.account_id ?? undefined, b.amount);
 
-  openModal({
+  const overlay = openModal({
     title: 'Confirmar pagamento',
     saveLabel: 'Marcar como paga',
     body: `
       <p style="margin-bottom:14px;color:var(--text-2)">
-        <strong>${esc(b.description)}</strong> — ${formatCurrency(b.amount)}${account ? ` · ${esc(account.name)}` : ''}
+        <strong>${esc(b.description)}</strong> — ${formatCurrency(b.amount)}
       </p>
+      <input type="hidden" id="pay-total" value="${b.amount}">
+      <div class="form-group">
+        <label class="form-label">Meios de pagamento</label>
+        <div id="pay-payments" style="display:flex;flex-direction:column;gap:8px">
+          ${paymentRowsHtml(initialPayments, 'pay')}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-pay-payment"><i class="ti ti-plus"></i> Adicionar meio</button>
+          <div id="pay-payment-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
+        </div>
+      </div>
       <div class="form-row">
         ${b.category_id
           ? `<div class="form-group">
@@ -280,8 +298,10 @@ function openPayBillModal(b: BillWithCategory, onDone: () => void): void {
     onSave: async () => {
       const category_id = b.category_id ?? (document.getElementById('f-pay-category') as HTMLSelectElement).value;
       const date = (document.getElementById('f-pay-date') as HTMLInputElement).value;
+      const payments = collectPayments('pay', b.amount, false);
+      if (!payments) return false;
       try {
-        await invoke('bills:markAsPaid', { id: b.id, category_id, date });
+        await invoke('bills:markAsPaid', { id: b.id, category_id, date, payments });
       } catch (err) {
         alert(err instanceof Error ? err.message : 'Não foi possível marcar como paga.');
         return false;
@@ -289,6 +309,13 @@ function openPayBillModal(b: BillWithCategory, onDone: () => void): void {
       onDone();
     },
   });
+  bindPaymentRows(overlay, 'pay');
+  overlay.querySelector('#btn-add-pay-payment')?.addEventListener('click', () => {
+    overlay.querySelector<HTMLElement>('#pay-payments')!.insertAdjacentHTML('beforeend', paymentRowHtml('', remainingAmount(overlay, 'pay'), 'pay'));
+    bindPaymentRows(overlay, 'pay');
+    updatePaymentSummary(overlay, 'pay');
+  });
+  updatePaymentSummary(overlay, 'pay');
 }
 
 function openDuplicateBillModal(b: Bill, onDone: () => void): void {
@@ -336,4 +363,94 @@ function alpha(hex: string, a: number): string {
 
 function esc(s?: string | null): string {
   return (s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function initialPaymentSplits(payments: PaymentSplitWithAccount[] | undefined, accountId: string | undefined, amount: number | undefined): PaymentSplit[] {
+  if (payments?.length) return payments.map(p => ({ account_id: p.account_id, amount: p.amount }));
+  return accountId ? [{ account_id: accountId, amount: amount ?? 0 }] : [];
+}
+
+function paymentRowsHtml(payments: PaymentSplit[], prefix = 'bill'): string {
+  return payments.length
+    ? payments.map(payment => paymentRowHtml(payment.account_id, payment.amount, prefix)).join('')
+    : paymentRowHtml('', 0, prefix);
+}
+
+function paymentRowHtml(accountId: string, amount: number, prefix = 'bill'): string {
+  return `
+    <div class="${prefix}-payment-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 34px;gap:8px;align-items:center">
+      <select class="form-ctrl ${prefix}-payment-account">
+        <option value="">— Selecione —</option>
+        ${accounts.map(a => `<option value="${a.id}" ${accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+      </select>
+      <input class="form-ctrl ${prefix}-payment-amount" type="number" step="0.01" min="0" value="${amount || ''}" placeholder="Valor">
+      <button class="btn btn-ghost btn-sm ${prefix}-payment-remove" type="button" title="Remover"><i class="ti ti-x"></i></button>
+    </div>
+  `;
+}
+
+function bindPaymentRows(overlay: HTMLElement, prefix: string): void {
+  overlay.querySelectorAll<HTMLElement>(`.${prefix}-payment-row`).forEach(row => {
+    row.querySelectorAll('input, select').forEach(ctrl => {
+      ctrl.addEventListener('input', () => updatePaymentSummary(overlay, prefix));
+      ctrl.addEventListener('change', () => updatePaymentSummary(overlay, prefix));
+    });
+    row.querySelector<HTMLElement>(`.${prefix}-payment-remove`)?.addEventListener('click', () => {
+      if (overlay.querySelectorAll(`.${prefix}-payment-row`).length <= 1) return;
+      row.remove();
+      updatePaymentSummary(overlay, prefix);
+    });
+  });
+}
+
+function collectPayments(prefix: string, total: number, allowEmpty: boolean): PaymentSplit[] | null {
+  const rows = [...document.querySelectorAll<HTMLElement>(`.${prefix}-payment-row`)];
+  const payments = rows
+    .map(row => ({
+      account_id: row.querySelector<HTMLSelectElement>(`.${prefix}-payment-account`)!.value,
+      amount: parseFloat(row.querySelector<HTMLInputElement>(`.${prefix}-payment-amount`)!.value),
+    }))
+    .filter(payment => payment.account_id || Number.isFinite(payment.amount));
+
+  if (allowEmpty && payments.length === 0) return [];
+  const seen = new Set<string>();
+  let sum = 0;
+  for (const payment of payments) {
+    if (!payment.account_id || !Number.isFinite(payment.amount) || payment.amount <= 0) {
+      alert('Preencha todos os meios de pagamento com valores válidos.');
+      return null;
+    }
+    if (seen.has(payment.account_id)) {
+      alert('Não repita o mesmo meio de pagamento.');
+      return null;
+    }
+    seen.add(payment.account_id);
+    sum += payment.amount;
+  }
+  if (Math.abs(sum - total) > 0.005) {
+    alert('A soma dos meios de pagamento deve ser igual ao valor total.');
+    return null;
+  }
+  return payments;
+}
+
+function remainingAmount(overlay: HTMLElement, prefix: string): number {
+  const total = prefix === 'pay'
+    ? parseFloat(overlay.querySelector<HTMLInputElement>('#pay-total')?.value ?? '0') || 0
+    : parseFloat((overlay.querySelector<HTMLInputElement>('#f-amount')?.value ?? '0')) || 0;
+  const used = [...overlay.querySelectorAll<HTMLInputElement>(`.${prefix}-payment-amount`)]
+    .reduce((sum, input) => sum + (parseFloat(input.value) || 0), 0);
+  return Math.max(0, Math.round((total - used) * 100) / 100);
+}
+
+function updatePaymentSummary(overlay: HTMLElement, prefix: string): void {
+  const summary = overlay.querySelector<HTMLElement>(`#${prefix}-payment-summary`);
+  if (!summary) return;
+  const total = prefix === 'pay'
+    ? parseFloat(overlay.querySelector<HTMLInputElement>('#pay-total')?.value ?? '0') || 0
+    : parseFloat((overlay.querySelector<HTMLInputElement>('#f-amount')?.value ?? '0')) || 0;
+  const used = [...overlay.querySelectorAll<HTMLInputElement>(`.${prefix}-payment-amount`)]
+    .reduce((sum, input) => sum + (parseFloat(input.value) || 0), 0);
+  const rest = Math.round((total - used) * 100) / 100;
+  summary.innerHTML = `Total: <strong>${formatCurrency(total)}</strong> · Distribuído: <strong>${formatCurrency(used)}</strong> · Restante: <strong style="color:${Math.abs(rest) < 0.005 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(rest)}</strong>`;
 }

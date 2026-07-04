@@ -2,7 +2,7 @@ import { invoke } from '../api';
 import { formatCurrency, formatDate, calculateMonthlySummary } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { setTopbarActions } from '../components/topbar';
-import type { Account, Category, TransactionWithDetails, TransactionType } from '../../shared/types';
+import type { Account, Category, PaymentSplit, PaymentSplitWithAccount, TransactionWithDetails, TransactionType } from '../../shared/types';
 
 let accounts: Account[]  = [];
 let categories: Category[] = [];
@@ -184,6 +184,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
 function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): void {
   const today = new Date().toISOString().split('T')[0];
+  const initialPayments = initialPaymentSplits(tx?.payments, tx?.account_id, tx?.amount);
   const overlay = openModal({
     title: tx ? 'Editar transação' : 'Nova transação',
     body: `
@@ -206,8 +207,8 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): voi
         </div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Conta</label>
+        <div class="form-group" id="single-account-group" style="display:${tx?.type === 'transfer' ? '' : 'none'}">
+          <label class="form-label">Meio de pagamento origem</label>
           <select class="form-ctrl" id="f-account">
             ${accounts.map(a => `<option value="${a.id}" ${tx?.account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
           </select>
@@ -219,8 +220,18 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): voi
           </select>
         </div>
       </div>
+      <div class="form-group" id="payment-splits-group" style="display:${tx?.type === 'transfer' ? 'none' : ''}">
+        <label class="form-label">Meios de pagamento</label>
+        <div id="payment-splits" style="display:flex;flex-direction:column;gap:8px">
+          ${paymentRowsHtml(initialPayments)}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-payment"><i class="ti ti-plus"></i> Adicionar meio</button>
+          <div id="payment-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
+        </div>
+      </div>
       <div class="form-group" id="f-to-account-group" style="display:${tx?.type === 'transfer' ? '' : 'none'}">
-        <label class="form-label">Conta destino</label>
+        <label class="form-label">Meio de pagamento destino</label>
         <select class="form-ctrl" id="f-to-account">
           <option value="">— Selecione —</option>
           ${accounts.map(a => `<option value="${a.id}" ${tx?.to_account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
@@ -260,14 +271,16 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): voi
         return false;
       }
       if (type === 'transfer' && (!toAccount || toAccount === account)) {
-        alert('Selecione uma conta de destino diferente da conta de origem.');
+        alert('Selecione um meio de pagamento de destino diferente do meio de origem.');
         return false;
       }
+      const payments = type === 'transfer' ? [] : collectPayments(overlay, amount);
+      if (type !== 'transfer' && !payments) return false;
 
       const payload = {
-        description: desc, amount, type, account_id: account,
+        description: desc, amount, type, account_id: type === 'transfer' ? account : payments![0].account_id,
         to_account_id: type === 'transfer' ? toAccount : null,
-        category_id: category, date, status, notes: notes || null, recurring: 0,
+        category_id: category, date, status, notes: notes || null, recurring: 0, payments,
       };
       if (tx) { await invoke('transactions:update', { id: tx.id, ...payload }); }
       else    { await invoke('transactions:create', payload); }
@@ -278,7 +291,19 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): voi
   overlay.querySelector('#f-type')?.addEventListener('change', e => {
     const isTransfer = (e.target as HTMLSelectElement).value === 'transfer';
     (overlay.querySelector('#f-to-account-group') as HTMLElement).style.display = isTransfer ? '' : 'none';
+    (overlay.querySelector('#single-account-group') as HTMLElement).style.display = isTransfer ? '' : 'none';
+    (overlay.querySelector('#payment-splits-group') as HTMLElement).style.display = isTransfer ? 'none' : '';
+    updatePaymentSummary(overlay);
   });
+  overlay.querySelector('#f-amount')?.addEventListener('input', () => updatePaymentSummary(overlay));
+  overlay.querySelector('#btn-add-payment')?.addEventListener('click', () => {
+    const list = overlay.querySelector<HTMLElement>('#payment-splits')!;
+    list.insertAdjacentHTML('beforeend', paymentRowHtml('', remainingAmount(overlay)));
+    bindPaymentRows(overlay);
+    updatePaymentSummary(overlay);
+  });
+  bindPaymentRows(overlay);
+  updatePaymentSummary(overlay);
 }
 
 function openImportModal(): void {
@@ -300,7 +325,7 @@ function openImportModal(): void {
           <input class="form-ctrl" id="imp-file" type="file" accept=".csv,.ofx,.qfx">
         </div>
         <div class="form-group">
-          <label class="form-label">Conta de destino *</label>
+          <label class="form-label">Meio de pagamento de destino *</label>
           <select class="form-ctrl" id="imp-account">
             <option value="">— Selecione —</option>
             ${accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
@@ -313,6 +338,10 @@ function openImportModal(): void {
             ${categories.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
           </select>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text-2)">
+          <input id="imp-use-suggestions" type="checkbox" checked style="accent-color:var(--accent)">
+          Usar categoria sugerida quando houver correspondência
+        </label>
         <div id="imp-preview"></div>
       </div>
       <div class="modal-footer">
@@ -328,7 +357,6 @@ function openImportModal(): void {
 
   document.body.appendChild(overlay);
   overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 
   let previewedRows: unknown[] = [];
 
@@ -352,12 +380,13 @@ function openImportModal(): void {
       </div>
       <div style="max-height:220px;overflow-y:auto;font-size:0.78rem;border:1px solid var(--border);border-radius:6px">
         <table class="table" style="margin:0">
-          <thead><tr><th>Data</th><th>Descrição</th><th>Valor</th><th>Tipo</th></tr></thead>
+          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Tipo</th></tr></thead>
           <tbody>
-            ${(preview.rows as { date: string; description: string; amount: number; type: string; duplicate: boolean }[]).slice(0, 50).map(r => `
+            ${(preview.rows as { date: string; description: string; amount: number; type: string; duplicate: boolean; suggested_category_name?: string | null }[]).slice(0, 50).map(r => `
               <tr style="${r.duplicate ? 'opacity:0.4' : ''}">
                 <td>${r.date}</td>
                 <td>${esc(r.description)}</td>
+                <td>${r.suggested_category_name ? `<span class="badge badge-ok">${esc(r.suggested_category_name)}</span>` : '<span style="color:var(--text-3)">Padrão</span>'}</td>
                 <td style="color:${r.type === 'income' ? 'var(--accent)' : 'var(--danger)'}">
                   ${r.type === 'income' ? '+' : '-'}R$ ${r.amount.toFixed(2).replace('.', ',')}
                 </td>
@@ -373,12 +402,14 @@ function openImportModal(): void {
   overlay.querySelector('#btn-imp-confirm')?.addEventListener('click', async () => {
     const accountId  = (overlay.querySelector<HTMLSelectElement>('#imp-account')!).value;
     const categoryId = (overlay.querySelector<HTMLSelectElement>('#imp-category')!).value;
-    if (!accountId || !categoryId) { alert('Selecione a conta e a categoria de destino.'); return; }
+    const useSuggestions = overlay.querySelector<HTMLInputElement>('#imp-use-suggestions')!.checked;
+    if (!accountId || !categoryId) { alert('Selecione o meio de pagamento e a categoria de destino.'); return; }
 
     const result = await invoke<{ imported: number; skipped: number }>('import:confirm', {
       rows: previewedRows,
       accountId,
       categoryId,
+      useSuggestions,
     });
 
     overlay.remove();
@@ -393,4 +424,84 @@ function alpha(hex: string, a: number): string {
 }
 function esc(s?: string): string {
   return (s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function initialPaymentSplits(payments: PaymentSplitWithAccount[] | undefined, accountId: string | undefined, amount: number | undefined): PaymentSplit[] {
+  if (payments?.length) return payments.map(p => ({ account_id: p.account_id, amount: p.amount }));
+  return [{ account_id: accountId ?? accounts[0]?.id ?? '', amount: amount ?? 0 }];
+}
+
+function paymentRowsHtml(payments: PaymentSplit[]): string {
+  return payments.map(payment => paymentRowHtml(payment.account_id, payment.amount)).join('');
+}
+
+function paymentRowHtml(accountId: string, amount: number): string {
+  return `
+    <div class="payment-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 34px;gap:8px;align-items:center">
+      <select class="form-ctrl payment-account">
+        <option value="">— Selecione —</option>
+        ${accounts.map(a => `<option value="${a.id}" ${accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+      </select>
+      <input class="form-ctrl payment-amount" type="number" step="0.01" min="0" value="${amount || ''}" placeholder="Valor">
+      <button class="btn btn-ghost btn-sm payment-remove" type="button" title="Remover"><i class="ti ti-x"></i></button>
+    </div>
+  `;
+}
+
+function bindPaymentRows(overlay: HTMLElement): void {
+  overlay.querySelectorAll<HTMLElement>('.payment-row').forEach(row => {
+    row.querySelectorAll('input, select').forEach(ctrl => {
+      ctrl.addEventListener('input', () => updatePaymentSummary(overlay));
+      ctrl.addEventListener('change', () => updatePaymentSummary(overlay));
+    });
+    row.querySelector<HTMLElement>('.payment-remove')?.addEventListener('click', () => {
+      if (overlay.querySelectorAll('.payment-row').length <= 1) return;
+      row.remove();
+      updatePaymentSummary(overlay);
+    });
+  });
+}
+
+function collectPayments(overlay: HTMLElement, total: number): PaymentSplit[] | null {
+  const rows = [...overlay.querySelectorAll<HTMLElement>('.payment-row')];
+  const payments = rows.map(row => ({
+    account_id: row.querySelector<HTMLSelectElement>('.payment-account')!.value,
+    amount: parseFloat(row.querySelector<HTMLInputElement>('.payment-amount')!.value),
+  }));
+  const seen = new Set<string>();
+  let sum = 0;
+  for (const payment of payments) {
+    if (!payment.account_id || !Number.isFinite(payment.amount) || payment.amount <= 0) {
+      alert('Preencha todos os meios de pagamento com valores válidos.');
+      return null;
+    }
+    if (seen.has(payment.account_id)) {
+      alert('Não repita o mesmo meio de pagamento no lançamento.');
+      return null;
+    }
+    seen.add(payment.account_id);
+    sum += payment.amount;
+  }
+  if (Math.abs(sum - total) > 0.005) {
+    alert('A soma dos meios de pagamento deve ser igual ao valor total.');
+    return null;
+  }
+  return payments;
+}
+
+function remainingAmount(overlay: HTMLElement): number {
+  const total = parseFloat((overlay.querySelector<HTMLInputElement>('#f-amount')?.value ?? '0')) || 0;
+  const used = [...overlay.querySelectorAll<HTMLInputElement>('.payment-amount')]
+    .reduce((sum, input) => sum + (parseFloat(input.value) || 0), 0);
+  return Math.max(0, Math.round((total - used) * 100) / 100);
+}
+
+function updatePaymentSummary(overlay: HTMLElement): void {
+  const summary = overlay.querySelector<HTMLElement>('#payment-summary');
+  if (!summary) return;
+  const total = parseFloat((overlay.querySelector<HTMLInputElement>('#f-amount')?.value ?? '0')) || 0;
+  const used = [...overlay.querySelectorAll<HTMLInputElement>('.payment-amount')]
+    .reduce((sum, input) => sum + (parseFloat(input.value) || 0), 0);
+  const rest = Math.round((total - used) * 100) / 100;
+  summary.innerHTML = `Total: <strong>${formatCurrency(total)}</strong> · Distribuído: <strong>${formatCurrency(used)}</strong> · Restante: <strong style="color:${Math.abs(rest) < 0.005 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(rest)}</strong>`;
 }

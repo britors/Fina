@@ -116,6 +116,9 @@ function registerHandlers(): void {
     if (!win) return;
     win.isMaximized() ? win.unmaximize() : win.maximize();
   });
+  ipcMain.handle('window:focus', (e) => {
+    BrowserWindow.fromWebContents(e.sender)?.focus();
+  });
   ipcMain.handle('window:close', (e) => {
     BrowserWindow.fromWebContents(e.sender)?.close();
   });

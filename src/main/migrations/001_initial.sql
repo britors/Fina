@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS accounts (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
-  type        TEXT NOT NULL CHECK (type IN ('checking','savings','credit_card','wallet')),
+  type        TEXT NOT NULL CHECK (type IN ('checking','savings','credit_card','meal_voucher','food_voucher','wallet')),
   bank_name   TEXT,
   balance     REAL NOT NULL DEFAULT 0,
   credit_limit REAL,
@@ -84,5 +84,12 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES
   ('accent_color',   '#1D9E75'),
   ('notif_bills',    'true'),
   ('notif_budget',   'true'),
-  ('notif_summary',  'false');
-
+  ('notif_summary',  'false'),
+  ('smtp_enabled',   'false'),
+  ('smtp_host',      ''),
+  ('smtp_port',      '587'),
+  ('smtp_secure',    'false'),
+  ('smtp_user',      ''),
+  ('smtp_pass',      ''),
+  ('smtp_from',      ''),
+  ('smtp_to',        '');

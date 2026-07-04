@@ -165,6 +165,8 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
   const notifBills   = s.notif_bills   !== 'false';
   const notifBudget  = s.notif_budget  !== 'false';
   const notifSummary = s.notif_summary === 'true';
+  const smtpEnabled  = s.smtp_enabled === 'true';
+  const smtpSecure   = s.smtp_secure === 'true';
 
   el.innerHTML = `
     <div class="settings-section-label">NOTIFICAÇÕES</div>
@@ -188,12 +190,104 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
         </div>
       </div>
     `).join('')}
+
+    <div class="settings-section-label" style="margin-top:22px">E-MAIL SMTP</div>
+    <div class="settings-hr"></div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Enviar alertas por e-mail</div>
+        <div class="settings-row-sub">Usa as configurações SMTP abaixo para alertas de vencimento e orçamento</div>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle">
+          <input type="checkbox" id="smtp-enabled" ${smtpEnabled ? 'checked' : ''}>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Servidor SMTP</div>
+        <div class="settings-row-sub">Host e porta do servidor de envio</div>
+      </div>
+      <div class="settings-row-right">
+        <input class="form-ctrl" id="smtp-host" value="${esc(s.smtp_host ?? '')}" placeholder="smtp.exemplo.com" style="width:220px">
+        <input class="form-ctrl" id="smtp-port" type="number" min="1" max="65535" value="${esc(s.smtp_port ?? '587')}" style="width:90px">
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Conexão segura</div>
+        <div class="settings-row-sub">Ative para SMTP SSL/TLS direto, normalmente porta 465</div>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle">
+          <input type="checkbox" id="smtp-secure" ${smtpSecure ? 'checked' : ''}>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Autenticação</div>
+        <div class="settings-row-sub">Usuário e senha do provedor SMTP</div>
+      </div>
+      <div class="settings-row-right">
+        <input class="form-ctrl" id="smtp-user" value="${esc(s.smtp_user ?? '')}" placeholder="usuário" style="width:180px">
+        <input class="form-ctrl" id="smtp-pass" type="password" value="${esc(s.smtp_pass ?? '')}" placeholder="senha" style="width:180px">
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Remetente e destinatário</div>
+        <div class="settings-row-sub">E-mails usados no envio dos alertas</div>
+      </div>
+      <div class="settings-row-right">
+        <input class="form-ctrl" id="smtp-from" value="${esc(s.smtp_from ?? '')}" placeholder="Fina <alertas@exemplo.com>" style="width:220px">
+        <input class="form-ctrl" id="smtp-to" value="${esc(s.smtp_to ?? s.user_email ?? '')}" placeholder="destino@exemplo.com" style="width:220px">
+      </div>
+    </div>
+    <div style="margin-top:16px;display:flex;justify-content:flex-end">
+      <button class="btn btn-primary" id="save-smtp">Salvar SMTP</button>
+    </div>
   `;
 
   el.querySelectorAll<HTMLInputElement>('.toggle input').forEach(input => {
     input.addEventListener('change', () => {
       invoke('settings:set', { key: input.dataset.key!, value: input.checked ? 'true' : 'false' });
     });
+  });
+
+  el.querySelector('#save-smtp')?.addEventListener('click', async () => {
+    const smtp_enabled = el.querySelector<HTMLInputElement>('#smtp-enabled')!.checked ? 'true' : 'false';
+    const smtp_host = el.querySelector<HTMLInputElement>('#smtp-host')!.value.trim();
+    const smtp_port = el.querySelector<HTMLInputElement>('#smtp-port')!.value.trim() || '587';
+    const smtp_secure = el.querySelector<HTMLInputElement>('#smtp-secure')!.checked ? 'true' : 'false';
+    const smtp_user = el.querySelector<HTMLInputElement>('#smtp-user')!.value.trim();
+    const smtp_pass = el.querySelector<HTMLInputElement>('#smtp-pass')!.value;
+    const smtp_from = el.querySelector<HTMLInputElement>('#smtp-from')!.value.trim();
+    const smtp_to = el.querySelector<HTMLInputElement>('#smtp-to')!.value.trim();
+
+    if (smtp_enabled === 'true' && (!smtp_host || !smtp_port || !smtp_from || !smtp_to)) {
+      alert('Informe servidor, porta, remetente e destinatário para ativar o envio por e-mail.');
+      return;
+    }
+
+    await invoke('settings:setMany', {
+      smtp_enabled,
+      smtp_host,
+      smtp_port,
+      smtp_secure,
+      smtp_user,
+      smtp_pass,
+      smtp_from,
+      smtp_to,
+    });
+    Object.assign(s, { smtp_enabled, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass, smtp_from, smtp_to });
+    alert('Configurações SMTP salvas.');
+    renderNotifications(el, s);
   });
 }
 

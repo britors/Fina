@@ -2,7 +2,10 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import { adjustBalance } from './transactions';
-import type { Bill, BillInterval } from '../../shared/types';
+import type { Bill, BillInterval, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
+
+type BillInput = Omit<Bill, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[] };
+type BillUpdateInput = Partial<Bill> & { id: string; payments?: PaymentSplit[] };
 
 function autoMarkOverdue(): void {
   getDb().prepare(
@@ -36,6 +39,65 @@ function addInterval(dueDate: string, interval: BillInterval, multiplier: number
   return `${newYear}-${String(newMonth).padStart(2, '0')}-${String(newDay).padStart(2, '0')}`;
 }
 
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function normalizePayments(data: { amount: number; account_id?: string | null; payments?: PaymentSplit[] }, allowEmpty: boolean): PaymentSplit[] {
+  const payments = data.payments?.length
+    ? data.payments
+    : data.account_id
+      ? [{ account_id: data.account_id, amount: data.amount }]
+      : [];
+
+  if (allowEmpty && payments.length === 0) return [];
+  if (payments.length === 0) throw new Error('Defina pelo menos um meio de pagamento.');
+
+  const seen = new Set<string>();
+  let total = 0;
+  for (const payment of payments) {
+    if (!payment.account_id) throw new Error('Selecione todos os meios de pagamento.');
+    if (!Number.isFinite(payment.amount) || payment.amount <= 0) throw new Error('Informe valores válidos para os meios de pagamento.');
+    if (seen.has(payment.account_id)) throw new Error('Não repita o mesmo meio de pagamento.');
+    seen.add(payment.account_id);
+    total += payment.amount;
+  }
+
+  if (Math.abs(total - data.amount) > 0.005) {
+    throw new Error('A soma dos meios de pagamento deve ser igual ao valor total.');
+  }
+
+  return payments.map(payment => ({ account_id: payment.account_id, amount: roundMoney(payment.amount) }));
+}
+
+function replaceBillPayments(billId: string, payments: PaymentSplit[]): void {
+  const db = getDb();
+  db.prepare('DELETE FROM bill_payments WHERE bill_id = ?').run(billId);
+  const stmt = db.prepare('INSERT INTO bill_payments (id, bill_id, account_id, amount) VALUES (?,?,?,?)');
+  for (const payment of payments) {
+    stmt.run(randomUUID(), billId, payment.account_id, payment.amount);
+  }
+}
+
+function getBillPayments(billId: string): PaymentSplitWithAccount[] {
+  return getDb().prepare(`
+    SELECT p.account_id, p.amount, a.name as account_name
+    FROM bill_payments p
+    JOIN accounts a ON a.id = p.account_id
+    WHERE p.bill_id = ?
+    ORDER BY p.created_at, p.id
+  `).all(billId) as PaymentSplitWithAccount[];
+}
+
+function enrichBill<T extends Bill>(bill: T | undefined | null): (T & { payments: PaymentSplitWithAccount[] }) | null {
+  if (!bill) return null;
+  return { ...bill, payments: getBillPayments(bill.id) };
+}
+
+function enrichBills<T extends Bill>(bills: T[]): (T & { payments: PaymentSplitWithAccount[] })[] {
+  return bills.map(bill => enrichBill(bill)!);
+}
+
 export function registerBillHandlers(): void {
   ipcMain.handle('bills:list', (_e, filters: { status?: string; dateFrom?: string; dateTo?: string; category_id?: string } = {}) => {
     autoMarkOverdue();
@@ -45,28 +107,36 @@ export function registerBillHandlers(): void {
     if (filters.dateFrom)    { conds.push('b.due_date >= ?');   params.push(filters.dateFrom); }
     if (filters.dateTo)      { conds.push('b.due_date <= ?');   params.push(filters.dateTo); }
     if (filters.category_id) { conds.push('b.category_id = ?'); params.push(filters.category_id); }
-    return getDb().prepare(`
+    const rows = getDb().prepare(`
       SELECT b.*, c.name as category_name, c.icon as category_icon, c.color as category_color
       FROM bills b
       LEFT JOIN categories c ON b.category_id = c.id
       WHERE ${conds.join(' AND ')}
       ORDER BY b.due_date
-    `).all(...params);
+    `).all(...params) as Bill[];
+    return enrichBills(rows);
   });
 
   ipcMain.handle('bills:getUpcoming', (_e, days = 30) => {
     autoMarkOverdue();
-    return getDb().prepare(
+    const rows = getDb().prepare(
       `SELECT * FROM bills WHERE status != 'paid' AND due_date <= date('now', '+' || ? || ' days') ORDER BY due_date`
-    ).all(days);
+    ).all(days) as Bill[];
+    return enrichBills(rows);
   });
 
-  ipcMain.handle('bills:create', (_e, data: Omit<Bill, 'id' | 'created_at' | 'updated_at'>) => {
+  ipcMain.handle('bills:create', (_e, data: BillInput) => {
+    const payments = normalizePayments(data, true);
+    const primaryAccountId = payments[0]?.account_id ?? data.account_id ?? null;
     const id = randomUUID();
-    getDb().prepare(
-      'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring) VALUES (?,?,?,?,?,?,?,?)'
-    ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', data.account_id ?? null, data.category_id ?? null, data.recurring ? 1 : 0);
-    return getDb().prepare('SELECT * FROM bills WHERE id = ?').get(id);
+    const db = getDb();
+    db.transaction(() => {
+      db.prepare(
+        'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring) VALUES (?,?,?,?,?,?,?,?)'
+      ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', primaryAccountId, data.category_id ?? null, data.recurring ? 1 : 0);
+      replaceBillPayments(id, payments);
+    })();
+    return enrichBill(db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined);
   });
 
   // Cria N cópias da conta com o vencimento avançado a cada repetição,
@@ -86,18 +156,25 @@ export function registerBillHandlers(): void {
         db.prepare(
           'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring) VALUES (?,?,?,?,?,?,?,0)'
         ).run(newId, bill.description, bill.amount, newDue, 'pending', bill.account_id, bill.category_id);
+        replaceBillPayments(newId, getBillPayments(bill.id));
         createdIds.push(newId);
       }
     })();
 
-    return db.prepare(`SELECT * FROM bills WHERE id IN (${createdIds.map(() => '?').join(',')}) ORDER BY due_date`).all(...createdIds);
+    return enrichBills(db.prepare(`SELECT * FROM bills WHERE id IN (${createdIds.map(() => '?').join(',')}) ORDER BY due_date`).all(...createdIds) as Bill[]);
   });
 
-  ipcMain.handle('bills:update', (_e, { id, ...data }: Partial<Bill> & { id: string }) => {
-    getDb().prepare(
-      `UPDATE bills SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, updated_at=datetime('now') WHERE id=?`
-    ).run(data.description, data.amount, data.due_date, data.status, data.account_id ?? null, data.category_id ?? null, data.recurring ? 1 : 0, id);
-    return getDb().prepare('SELECT * FROM bills WHERE id = ?').get(id);
+  ipcMain.handle('bills:update', (_e, { id, ...data }: BillUpdateInput) => {
+    const payments = normalizePayments(data as BillInput, true);
+    const primaryAccountId = payments[0]?.account_id ?? data.account_id ?? null;
+    const db = getDb();
+    db.transaction(() => {
+      db.prepare(
+        `UPDATE bills SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, updated_at=datetime('now') WHERE id=?`
+      ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, data.category_id ?? null, data.recurring ? 1 : 0, id);
+      replaceBillPayments(id, payments);
+    })();
+    return enrichBill(db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined);
   });
 
   ipcMain.handle('bills:delete', (_e, id: string) => {
@@ -114,14 +191,12 @@ export function registerBillHandlers(): void {
   // category_id é opcional: se a conta já tiver uma categoria definida, ela é
   // reaproveitada automaticamente no lançamento gerado; só é obrigatório
   // informar uma quando a conta não tem categoria (ex: bills mais antigas).
-  ipcMain.handle('bills:markAsPaid', (_e, { id, category_id, date }: { id: string; category_id?: string; date?: string }) => {
+  ipcMain.handle('bills:markAsPaid', (_e, { id, category_id, date, payments: inputPayments }: { id: string; category_id?: string; date?: string; payments?: PaymentSplit[] }) => {
     const db = getDb();
     const bill = db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined;
     if (!bill) return null;
     if (bill.status === 'paid') return bill;
-    if (!bill.account_id) {
-      throw new Error('Defina uma conta para esta despesa antes de marcá-la como paga.');
-    }
+    const payments = normalizePayments({ amount: bill.amount, account_id: bill.account_id, payments: inputPayments?.length ? inputPayments : getBillPayments(id) }, false);
     const finalCategoryId = category_id || bill.category_id;
     if (!finalCategoryId) {
       throw new Error('Selecione uma categoria para o lançamento.');
@@ -131,16 +206,21 @@ export function registerBillHandlers(): void {
 
     db.transaction(() => {
       if (bill.recurring) {
-        adjustBalance(bill.account_id!, -bill.amount);
+        for (const payment of payments) adjustBalance(payment.account_id, -payment.amount);
         db.prepare(`UPDATE bills SET status='paid', updated_at=datetime('now') WHERE id=?`).run(id);
+        replaceBillPayments(id, payments);
         return;
       }
 
       const txId = randomUUID();
       db.prepare(
         'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,0)'
-      ).run(txId, bill.account_id, finalCategoryId, bill.description, bill.amount, 'expense', paidAt, 'confirmed', null);
-      adjustBalance(bill.account_id!, -bill.amount);
+      ).run(txId, payments[0].account_id, finalCategoryId, bill.description, bill.amount, 'expense', paidAt, 'confirmed', null);
+      const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount) VALUES (?,?,?,?)');
+      for (const payment of payments) {
+        txPaymentStmt.run(randomUUID(), txId, payment.account_id, payment.amount);
+        adjustBalance(payment.account_id, -payment.amount);
+      }
       db.prepare('DELETE FROM bills WHERE id = ?').run(id);
     })();
 

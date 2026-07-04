@@ -8,8 +8,6 @@ export async function render(el: HTMLElement): Promise<void> {
   let year = currentYear - 1;
   let report: IRPFReport | null = null;
   let loading = false;
-  let accounts: { id: string; name: string }[] = [];
-  accounts = await invoke<{ id: string; name: string }[]>('accounts:list');
 
   setTopbarActions(`
     <select class="form-ctrl" id="irpf-year" style="width:110px">
@@ -38,7 +36,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
   document.getElementById('btn-irpf-load')?.addEventListener('click', fetchAndRender);
 
-  document.getElementById('btn-irpf-import')?.addEventListener('click', () => openImportModal());
+  document.getElementById('btn-irpf-import')?.addEventListener('click', () => { void openImportModal(); });
 
   document.getElementById('btn-irpf-csv')?.addEventListener('click', async () => {
     if (!report) return;
@@ -204,7 +202,8 @@ export async function render(el: HTMLElement): Promise<void> {
   await fetchAndRender();
 }
 
-function openImportModal(): void {
+async function openImportModal(): Promise<void> {
+  const accounts = await invoke<{ id: string; name: string }[]>('accounts:list');
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.innerHTML = `
@@ -235,7 +234,7 @@ function openImportModal(): void {
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">Conta para lançar os rendimentos *</label>
+          <label class="form-label">Meio de pagamento para lançar os rendimentos *</label>
           <select class="form-ctrl" id="imp-account">
             <option value="">— Selecione —</option>
             ${accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
@@ -256,7 +255,6 @@ function openImportModal(): void {
 
   document.body.appendChild(overlay);
   overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 
   overlay.querySelector('#btn-dl-template')?.addEventListener('click', () => invoke('irpf:downloadTemplate'));
 
@@ -288,7 +286,7 @@ function openImportModal(): void {
     if (!previewData) return;
     const accountId = (overlay.querySelector<HTMLSelectElement>('#imp-account')!).value;
     const importYear = parseInt((overlay.querySelector<HTMLInputElement>('#imp-year')!).value);
-    if (!accountId) { alert('Selecione a conta de destino.'); return; }
+    if (!accountId) { alert('Selecione o meio de pagamento de destino.'); return; }
     if (!importYear) { alert('Informe o ano.'); return; }
 
     const result = await invoke<{ imported: number }>('irpf:confirmImport', { preview: previewData, year: importYear, accountId });

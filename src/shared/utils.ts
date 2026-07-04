@@ -1,7 +1,8 @@
 import type { Account, Transaction, MonthlySummary } from './types';
 
 export function formatCurrency(amount: number, locale = 'pt-BR', currency = 'BRL'): string {
-  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount);
+  const normalized = Object.is(amount, -0) || Math.abs(amount) < 0.005 ? 0 : amount;
+  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(normalized);
 }
 
 export function formatDate(dateStr: string): string {
@@ -20,7 +21,7 @@ export function getCurrentYearMonth(): { month: number; year: number } {
 }
 
 export function calculateTotalBalance(accounts: Account[]): number {
-  return accounts.reduce((sum, acc) => sum + (acc.type === 'credit_card' ? -acc.balance : acc.balance), 0);
+  return accounts.reduce((sum, acc) => sum + (isCreditLikeAccountType(acc.type) ? -acc.balance : acc.balance), 0);
 }
 
 export function calculateAvailableCredit(account: Account): number {
@@ -66,7 +67,13 @@ export function accountTypeLabel(type: string): string {
     checking: 'Conta Corrente',
     savings: 'Poupança',
     credit_card: 'Cartão de Crédito',
+    meal_voucher: 'Vale Refeição',
+    food_voucher: 'Vale Alimentação',
     wallet: 'Carteira',
   };
   return map[type] ?? type;
+}
+
+export function isCreditLikeAccountType(type: string): boolean {
+  return type === 'credit_card' || type === 'meal_voucher' || type === 'food_voucher';
 }

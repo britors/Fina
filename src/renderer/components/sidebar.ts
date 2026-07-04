@@ -34,8 +34,10 @@ const NAV: NavGroup[] = [
     icon: 'ti-arrows-transfer',
     items: [
       { route: 'transactions', label: 'Transações', icon: 'ti-arrows-transfer' },
-      { route: 'accounts',     label: 'Contas',     icon: 'ti-building-bank'   },
+      { route: 'accounts',     label: 'Meios de pagamento', icon: 'ti-building-bank' },
       { route: 'agenda',       label: 'Contas à pagar',     icon: 'ti-calendar'        },
+      { route: 'fixas',        label: 'Fixas',      icon: 'ti-repeat'          },
+      { route: 'calendario',   label: 'Calendário', icon: 'ti-calendar-month'  },
       { route: 'budget',       label: 'Orçamento',  icon: 'ti-target'          },
     ],
   },

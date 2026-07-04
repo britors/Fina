@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency, formatDate, getDaysUntilDue } from '../../shared/utils';
+import { formatCurrency, formatDate, getDaysUntilDue, isCreditLikeAccountType } from '../../shared/utils';
 import { createDonut, createAreaChart } from '../components/charts';
 import type { Account, Bill, TransactionWithDetails, MonthlySummary, ForecastPoint, InvestmentSummary, Goal, MarketQuote } from '../../shared/types';
 
@@ -42,7 +42,7 @@ export async function render(el: HTMLElement): Promise<void> {
       invoke<MarketQuote[]>('market:getQuotes'),
     ]);
 
-    const totalBalance  = accounts.reduce((s, a) => s + (a.type === 'credit_card' ? -a.balance : a.balance), 0);
+    const totalBalance  = accounts.reduce((s, a) => s + (isCreditLikeAccountType(a.type) ? -a.balance : a.balance), 0);
     const netWorth       = totalBalance + invSummary.total_current + (assetSummary.total ?? 0) - (debtSummary.total_debt ?? 0);
     const donutSegs      = expenses.map(e => ({ value: e.total, color: e.color, label: e.name }));
     const urgentGoals    = goals.filter(g => {
@@ -66,9 +66,9 @@ export async function render(el: HTMLElement): Promise<void> {
     <!-- Stat cards -->
     <div class="grid-3" style="margin-bottom:20px">
       <div class="stat-card">
-        <div class="stat-label">Saldo em contas</div>
+        <div class="stat-label">Saldo em meios de pagamento</div>
         <div class="stat-value">${formatCurrency(totalBalance)}</div>
-        <div class="stat-sub">${accounts.length} conta${accounts.length !== 1 ? 's' : ''} · patrimônio líquido: <strong>${formatCurrency(netWorth)}</strong></div>
+        <div class="stat-sub">${accounts.length} meio${accounts.length !== 1 ? 's' : ''} · patrimônio líquido: <strong>${formatCurrency(netWorth)}</strong></div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Receitas (${periodLabel})</div>

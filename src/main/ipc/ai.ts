@@ -307,7 +307,7 @@ export function registerAIHandlers(): void {
     fieldsShared: [
       'renda/despesa mensal agregada',
       'despesas por categoria',
-      'saldos totais por tipo de conta',
+      'saldos totais por tipo de meio de pagamento',
       'dívidas por tipo/status',
       'orçamentos do mês',
       'metas, investimentos e bens agregados',

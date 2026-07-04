@@ -21,6 +21,36 @@ function alreadyExists(fitid: string | null, hash: string): boolean {
   return !!row;
 }
 
+function normalizeText(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function suggestCategory(description: string, type: TransactionType): { id: string; name: string } | null {
+  const db = getDb();
+  const categories = db.prepare('SELECT id, name FROM categories WHERE type = ?').all(type === 'income' ? 'income' : 'expense') as { id: string; name: string }[];
+  const desc = normalizeText(description);
+  const direct = categories.find(c => desc.includes(normalizeText(c.name)));
+  if (direct) return direct;
+
+  const hints: Record<string, string[]> = {
+    Alimentação: ['mercado', 'supermercado', 'restaurante', 'ifood', 'padaria', 'hortifruti', 'acougue'],
+    Transporte: ['uber', '99', 'posto', 'combustivel', 'gasolina', 'metro', 'onibus', 'estacionamento'],
+    Moradia: ['aluguel', 'condominio', 'energia', 'luz', 'agua', 'internet', 'claro', 'vivo', 'tim'],
+    Saúde: ['farmacia', 'drogaria', 'hospital', 'clinica', 'medico', 'consulta', 'exame'],
+    Educação: ['curso', 'faculdade', 'escola', 'livraria', 'udemy'],
+    Lazer: ['netflix', 'spotify', 'cinema', 'prime', 'disney', 'steam'],
+    Salário: ['salario', 'pagamento', 'folha'],
+    Freelance: ['freela', 'freelance', 'servico'],
+  };
+
+  for (const category of categories) {
+    const words = hints[category.name] ?? [];
+    if (words.some(word => desc.includes(word))) return category;
+  }
+
+  return null;
+}
+
 export function registerImportHandlers(): void {
   ipcMain.handle('import:preview', (_e, filePath: string): ImportPreview => {
     const content = readFileSync(filePath, 'utf-8');
@@ -33,6 +63,9 @@ export function registerImportHandlers(): void {
     for (const row of raw) {
       const hash = txHash(row.date, row.amount, row.description);
       row.duplicate = alreadyExists(row.fitid, hash);
+      const suggestion = suggestCategory(row.description, row.type);
+      row.suggested_category_id = suggestion?.id ?? null;
+      row.suggested_category_name = suggestion?.name ?? null;
     }
 
     return {
@@ -47,6 +80,7 @@ export function registerImportHandlers(): void {
     rows: ImportPreviewRow[];
     accountId: string;
     categoryId: string;
+    useSuggestions?: boolean;
   }): { imported: number; skipped: number } => {
     const db = getDb();
     let imported = 0;
@@ -56,6 +90,10 @@ export function registerImportHandlers(): void {
       INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring)
       VALUES (?,?,?,?,?,?,?,'confirmed',?,0)
     `);
+    const insertPayment = db.prepare(`
+      INSERT INTO transaction_payments (id, transaction_id, account_id, amount)
+      VALUES (?,?,?,?)
+    `);
 
     const doImport = db.transaction((rows: ImportPreviewRow[]) => {
       for (const row of rows) {
@@ -63,9 +101,14 @@ export function registerImportHandlers(): void {
 
         const hash  = txHash(row.date, row.amount, row.description);
         const notes = row.fitid ? `FITID:${row.fitid}|HASH:${hash}` : `HASH:${hash}`;
-        insert.run(randomUUID(), payload.accountId, payload.categoryId,
+        const id = randomUUID();
+        const categoryId = payload.useSuggestions && row.suggested_category_id ? row.suggested_category_id : payload.categoryId;
+        insert.run(id, payload.accountId, categoryId,
                    row.description, row.amount, row.type as TransactionType,
                    row.date, notes);
+        if (row.type !== 'transfer') {
+          insertPayment.run(randomUUID(), id, payload.accountId, row.amount);
+        }
         adjustBalance(payload.accountId, balanceDelta(row.type as TransactionType, row.amount));
         imported++;
       }

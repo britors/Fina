@@ -404,7 +404,14 @@ function guessAssetType(tipo: string): string {
 // ── Helpers de label ─────────────────────────────────────────────────────────
 
 function labelContaTipo(t: string): string {
-  return ({ checking: 'Conta Corrente', savings: 'Conta Poupança', credit_card: 'Cartão de Crédito', wallet: 'Carteira' } as Record<string, string>)[t] ?? t;
+  return ({
+    checking: 'Conta Corrente',
+    savings: 'Conta Poupança',
+    credit_card: 'Cartão de Crédito',
+    meal_voucher: 'Vale Refeição',
+    food_voucher: 'Vale Alimentação',
+    wallet: 'Carteira',
+  } as Record<string, string>)[t] ?? t;
 }
 
 function labelInvestTipo(t: string): string {

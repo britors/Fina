@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
 import type { Account, Debt, Goal, InvestmentSummary } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
@@ -28,7 +28,7 @@ export async function render(el: HTMLElement): Promise<void> {
   const activeDebts = debts.filter(d => d.status !== 'quitada');
   const debtInstallments = activeDebts.reduce((s, d) => s + d.installment_amount, 0);
   const debtBalance = activeDebts.reduce((s, d) => s + d.outstanding_balance, 0);
-  const liquidBalance = accounts.filter(a => a.type !== 'credit_card').reduce((s, a) => s + a.balance, 0);
+  const liquidBalance = accounts.filter(a => !isCreditLikeAccountType(a.type)).reduce((s, a) => s + a.balance, 0);
   const reserveMonths = avgExpense > 0 ? liquidBalance / avgExpense : 0;
   const openGoals = goals.filter(g => g.current_amount < g.target_amount);
   const available = avgIncome - avgExpense;
@@ -126,7 +126,7 @@ function buildPlan(data: {
         description: 'Valor aproximado que precisa ser recuperado para o mês fechar sem déficit.',
       },
       {
-        label: 'Proteger contas essenciais',
+        label: 'Proteger despesas essenciais',
         value: Math.max(data.avgIncome * 0.5, 0),
         color: 'var(--warning)',
         icon: 'ti-home',

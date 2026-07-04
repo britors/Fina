@@ -232,7 +232,6 @@ export async function render(el: HTMLElement): Promise<void> {
     };
 
     overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', close));
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
     overlay.querySelector('#btn-save-debt')?.addEventListener('click', async () => {
       const description = (overlay.querySelector<HTMLInputElement>('#f-desc')!).value.trim();
@@ -292,7 +291,6 @@ export async function render(el: HTMLElement): Promise<void> {
     };
 
     overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', close));
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
     overlay.querySelector('#btn-sim-calc')?.addEventListener('click', async () => {
       const extra = parseFloat((overlay.querySelector<HTMLInputElement>('#sim-extra')!).value) || 0;

@@ -9,6 +9,8 @@ import { render as renderBudget       } from './pages/budget';
 import { render as renderReports      } from './pages/reports';
 import { render as renderSettings     } from './pages/settings';
 import { render as renderAgenda       } from './pages/agenda';
+import { render as renderFixas        } from './pages/fixas';
+import { render as renderCalendario   } from './pages/calendario';
 import { render as renderPatrimonio   } from './pages/patrimonio';
 import { render as renderInvestments  } from './pages/investments';
 import { render as renderJornada      } from './pages/jornada';
@@ -49,11 +51,13 @@ const ROUTES: Record<string, Route> = {
   diagnostico:  { title: 'Diagnóstico',  subtitle: 'Situação financeira e próximos passos',        render: renderDiagnostico  },
   'plano-mensal': { title: 'Plano mensal', subtitle: 'Sugestão de uso da renda do mês',             render: renderPlanoMensal  },
   transactions: { title: 'Transações',                                  subtitle: monthLabel,     render: renderTransactions },
-  accounts:     { title: 'Contas',                                                                render: renderAccounts     },
+  accounts:     { title: 'Meios de pagamento',                                                    render: renderAccounts     },
   budget:       { title: 'Orçamento',                                   subtitle: monthLabel,     render: renderBudget       },
   reports:      { title: 'Relatórios',    subtitle: 'Últimos 6 meses',                           render: renderReports      },
   settings:     { title: 'Configurações', subtitle: 'Personalize o Fina de acordo com suas preferências', render: renderSettings },
   agenda:       { title: 'Contas à pagar',        subtitle: 'Contas a pagar e receber',                   render: renderAgenda       },
+  fixas:        { title: 'Despesas fixas', subtitle: 'Assinaturas e compromissos recorrentes',             render: renderFixas        },
+  calendario:   { title: 'Calendário', subtitle: 'Vencimentos e lançamentos por dia',                      render: renderCalendario   },
   patrimonio:   { title: 'Patrimônio',    subtitle: 'Imóveis, veículos e outros bens',             render: renderPatrimonio   },
   investments:  { title: 'Investimentos', subtitle: 'Carteira e rendimentos',                      render: renderInvestments  },
   'simulador-patrimonio': { title: 'Simulador', subtitle: 'Projeção de patrimônio futuro',          render: renderSimuladorPatrimonio },
