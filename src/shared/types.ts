@@ -68,6 +68,7 @@ export interface Budget {
   month: number;
   year: number;
   limit_amount: number;
+  carry_over: 0 | 1;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +78,7 @@ export interface BudgetWithProgress extends Budget {
   category_icon: string;
   category_color: string;
   spent: number;
+  carried_in: number;
   percentage: number;
 }
 
