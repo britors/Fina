@@ -169,6 +169,7 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
   const notifSummary = s.notif_summary === 'true';
   const smtpEnabled  = s.smtp_enabled === 'true';
   const smtpSecure   = s.smtp_secure === 'true';
+  const webhookEnabled = s.webhook_enabled === 'true';
 
   el.innerHTML = `
     <div class="settings-section-label">NOTIFICAÇÕES</div>
@@ -254,6 +255,34 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
     <div style="margin-top:16px;display:flex;justify-content:flex-end">
       <button class="btn btn-primary" id="save-smtp">Salvar SMTP</button>
     </div>
+
+    <div class="settings-section-label" style="margin-top:22px">WEBHOOK</div>
+    <div class="settings-hr"></div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Enviar alertas por webhook</div>
+        <div class="settings-row-sub">Faz um POST em JSON para a URL abaixo a cada alerta</div>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle">
+          <input type="checkbox" id="webhook-enabled" data-key="webhook_enabled" ${webhookEnabled ? 'checked' : ''}>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">URL do webhook</div>
+        <div class="settings-row-sub">Endpoint que recebe { title, body, source, sentAt } em JSON</div>
+      </div>
+      <div class="settings-row-right">
+        <input class="form-ctrl" id="webhook-url" value="${esc(s.webhook_url ?? '')}" placeholder="https://exemplo.com/webhooks/fina" style="width:280px">
+      </div>
+    </div>
+    <div style="margin-top:16px;display:flex;justify-content:flex-end">
+      <button class="btn btn-primary" id="save-webhook">Salvar webhook</button>
+    </div>
   `;
 
   el.querySelectorAll<HTMLInputElement>('.toggle input').forEach(input => {
@@ -289,6 +318,26 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
     });
     Object.assign(s, { smtp_enabled, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass, smtp_from, smtp_to });
     alert('Configurações SMTP salvas.');
+    renderNotifications(el, s);
+  });
+
+  el.querySelector('#save-webhook')?.addEventListener('click', async () => {
+    const webhook_enabled = el.querySelector<HTMLInputElement>('#webhook-enabled')!.checked ? 'true' : 'false';
+    const webhook_url = el.querySelector<HTMLInputElement>('#webhook-url')!.value.trim();
+
+    if (webhook_enabled === 'true') {
+      try {
+        const parsed = new URL(webhook_url);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error();
+      } catch {
+        alert('Informe uma URL http(s) válida para ativar o webhook.');
+        return;
+      }
+    }
+
+    await invoke('settings:setMany', { webhook_enabled, webhook_url });
+    Object.assign(s, { webhook_enabled, webhook_url });
+    alert('Configurações de webhook salvas.');
     renderNotifications(el, s);
   });
 }

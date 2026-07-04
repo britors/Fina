@@ -2,6 +2,8 @@ import { Notification } from 'electron';
 import { randomUUID } from 'node:crypto';
 import net from 'node:net';
 import tls from 'node:tls';
+import http from 'node:http';
+import https from 'node:https';
 import { getDb } from './database';
 
 function getSetting(key: string, fallback = 'true'): string {
@@ -23,10 +25,14 @@ function logSent(type: string, refId: string): void {
 }
 
 function notify(title: string, body: string): void {
-  if (!Notification.isSupported()) return;
-  new Notification({ title, body, silent: false }).show();
+  if (Notification.isSupported()) {
+    new Notification({ title, body, silent: false }).show();
+  }
   void sendAlertEmail(title, body).catch(err => {
     console.warn('[SMTP] Não foi possível enviar alerta por e-mail:', err instanceof Error ? err.message : err);
+  });
+  void sendAlertWebhook(title, body).catch(err => {
+    console.warn('[Webhook] Não foi possível enviar alerta:', err instanceof Error ? err.message : err);
   });
 }
 
@@ -59,6 +65,43 @@ function smtpConfig(): SmtpConfig | null {
     from,
     to,
   };
+}
+
+function webhookUrl(): string | null {
+  const enabled = getSetting('webhook_enabled', 'false') === 'true';
+  if (!enabled) return null;
+  const url = getSetting('webhook_url', '').trim();
+  if (!url) return null;
+  return url;
+}
+
+async function sendAlertWebhook(title: string, body: string): Promise<void> {
+  const url = webhookUrl();
+  if (!url) return;
+
+  const parsed = new URL(url);
+  const client = parsed.protocol === 'http:' ? http : https;
+  const payload = JSON.stringify({ title, body, source: 'Fina', sentAt: new Date().toISOString() });
+
+  await new Promise<void>((resolve, reject) => {
+    const req = client.request(
+      parsed,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+        timeout: 10_000,
+      },
+      res => {
+        res.resume();
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) resolve();
+        else reject(new Error(`Webhook respondeu status ${res.statusCode}`));
+      },
+    );
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('Timeout ao chamar o webhook')));
+    req.write(payload);
+    req.end();
+  });
 }
 
 async function sendAlertEmail(title: string, body: string): Promise<void> {
