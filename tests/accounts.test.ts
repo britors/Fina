@@ -11,6 +11,7 @@ import type { Account } from '../src/shared/types';
 const make = (overrides: Partial<Account> = {}): Account => ({
   id: 'x', name: 'Test', type: 'checking', bank_name: null,
   balance: 0, credit_limit: null, color: null,
+  currency: 'BRL', original_balance: null,
   created_at: '', updated_at: '', ...overrides,
 });
 

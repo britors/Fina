@@ -6,6 +6,8 @@ export type CategoryKind = 'essential' | 'variable' | 'income';
 export type BillStatus = 'pending' | 'paid' | 'overdue';
 export type BillInterval = 'weekly' | 'biweekly' | 'monthly' | 'bimonthly' | 'quarterly' | 'semiannual' | 'annual';
 
+export type AccountCurrency = 'BRL' | 'USD' | 'EUR';
+
 export interface Account {
   id: string;
   name: string;
@@ -14,6 +16,8 @@ export interface Account {
   balance: number;
   credit_limit: number | null;
   color: string | null;
+  currency: AccountCurrency;
+  original_balance: number | null;
   created_at: string;
   updated_at: string;
 }
