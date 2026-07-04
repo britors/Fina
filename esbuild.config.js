@@ -64,7 +64,7 @@ async function build() {
       outfile: 'out/main/index.js',
       platform: 'node',
       format: 'cjs',
-      external: ['electron', 'better-sqlite3-multiple-ciphers'],
+      external: ['electron', 'better-sqlite3-multiple-ciphers', 'tesseract.js'],
     },
     {
       ...shared,
