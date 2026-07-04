@@ -129,6 +129,7 @@ export function registerTransactionHandlers(): void {
     if (filters.category_id) { conds.push('t.category_id = ?'); params.push(filters.category_id); }
     if (filters.type)        { conds.push('t.type = ?');        params.push(filters.type); }
     if (filters.status)      { conds.push('t.status = ?');      params.push(filters.status); }
+    if (filters.owner)       { conds.push('t.owner = ?');       params.push(filters.owner); }
 
     const limit  = filters.limit  ?? 200;
     const offset = filters.offset ?? 0;
@@ -153,8 +154,8 @@ export function registerTransactionHandlers(): void {
     const db = getDb();
     db.transaction(() => {
       db.prepare(
-        'INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
-      ).run(id, primaryAccountId, data.to_account_id ?? null, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0);
+        'INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, type, date, status, notes, recurring, owner) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+      ).run(id, primaryAccountId, data.to_account_id ?? null, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null);
       replaceTransactionPayments(id, payments);
       if (data.status === 'confirmed') {
         applyBalanceEffect({ ...data, id, account_id: primaryAccountId, payments }, 1);
@@ -174,8 +175,8 @@ export function registerTransactionHandlers(): void {
       const old = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as Transaction | undefined;
       const oldPayments = old ? getTransactionPayments(id) : [];
       db.prepare(
-        `UPDATE transactions SET account_id=?, to_account_id=?, category_id=?, description=?, amount=?, type=?, date=?, status=?, notes=?, recurring=?, updated_at=datetime('now') WHERE id=?`
-      ).run(primaryAccountId, data.to_account_id ?? null, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, id);
+        `UPDATE transactions SET account_id=?, to_account_id=?, category_id=?, description=?, amount=?, type=?, date=?, status=?, notes=?, recurring=?, owner=?, updated_at=datetime('now') WHERE id=?`
+      ).run(primaryAccountId, data.to_account_id ?? null, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null, id);
 
       if (old) {
         const wasConfirmed = old.status === 'confirmed';

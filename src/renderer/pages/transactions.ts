@@ -6,6 +6,8 @@ import type { Account, Category, PaymentSplit, PaymentSplitWithAccount, Transact
 
 let accounts: Account[]  = [];
 let categories: Category[] = [];
+let familyEnabled = false;
+let familyMembers: string[] = [];
 
 function monthLabel(month: number, year: number): string {
   return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
@@ -18,11 +20,17 @@ export async function render(el: HTMLElement): Promise<void> {
   let toMonth   = now.getMonth() + 1;
   let toYear    = now.getFullYear();
   let typeFilter: TransactionType | '' = '';
+  let ownerFilter = '';
 
-  [accounts, categories] = await Promise.all([
+  const [loadedAccounts, loadedCategories, settings] = await Promise.all([
     invoke<Account[]>('accounts:list'),
     invoke<Category[]>('categories:list'),
+    invoke<Record<string, string>>('settings:getAll'),
   ]);
+  accounts = loadedAccounts;
+  categories = loadedCategories;
+  familyEnabled = settings.family_mode === 'true';
+  familyMembers = (settings.family_members ?? '').split(',').map(v => v.trim()).filter(Boolean);
 
   setTopbarActions(`
     <button class="btn btn-secondary" id="btn-import">
@@ -53,7 +61,7 @@ export async function render(el: HTMLElement): Promise<void> {
       : `${monthLabel(fromMonth, fromYear)} – ${monthLabel(toMonth, toYear)}`;
 
     const txs = await invoke<TransactionWithDetails[]>('transactions:list', {
-      dateFrom, dateTo, type: typeFilter || undefined, limit: 200,
+      dateFrom, dateTo, type: typeFilter || undefined, owner: ownerFilter || undefined, limit: 200,
     });
     const summary = calculateMonthlySummary(txs);
 
@@ -63,6 +71,12 @@ export async function render(el: HTMLElement): Promise<void> {
         <span class="chip ${!typeFilter ? 'active' : ''}" data-type="">Todos</span>
         <span class="chip ${typeFilter === 'income' ? 'active' : ''}" data-type="income">Receitas</span>
         <span class="chip ${typeFilter === 'expense' ? 'active' : ''}" data-type="expense">Despesas</span>
+        ${familyEnabled && familyMembers.length ? `
+          <select class="form-ctrl" id="tx-owner-filter" style="width:auto">
+            <option value="">Todos responsáveis</option>
+            ${familyMembers.map(m => `<option value="${esc(m)}" ${ownerFilter === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}
+          </select>
+        ` : ''}
         <div style="flex:1"></div>
         <!-- Period filter -->
         <span style="font-size:0.8rem;color:var(--text-2)">Período</span>
@@ -115,7 +129,7 @@ export async function render(el: HTMLElement): Promise<void> {
                         </div>
                         <div>
                           <div class="desc-main">${esc(t.description)}</div>
-                          <div class="desc-sub">${esc(t.account_name)}</div>
+                          <div class="desc-sub">${esc(t.account_name)}${t.owner ? ` · ${esc(t.owner)}` : ''}</div>
                         </div>
                       </div>
                     </td>
@@ -155,6 +169,10 @@ export async function render(el: HTMLElement): Promise<void> {
     el.querySelector<HTMLInputElement>('#tx-to')?.addEventListener('change', e => {
       const [y, m] = (e.target as HTMLInputElement).value.split('-').map(Number);
       if (y && m) { toYear = y; toMonth = m; renderPage(); }
+    });
+    el.querySelector<HTMLSelectElement>('#tx-owner-filter')?.addEventListener('change', e => {
+      ownerFilter = (e.target as HTMLSelectElement).value;
+      renderPage();
     });
     el.querySelector('#tx-reset')?.addEventListener('click', () => {
       fromMonth = now.getMonth() + 1; fromYear = now.getFullYear();
@@ -250,6 +268,15 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): voi
           </select>
         </div>
       </div>
+      ${familyEnabled && familyMembers.length ? `
+        <div class="form-group">
+          <label class="form-label">Responsável</label>
+          <select class="form-ctrl" id="f-owner">
+            <option value="">— Sem responsável —</option>
+            ${familyMembers.map(m => `<option value="${esc(m)}" ${tx?.owner === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}
+          </select>
+        </div>
+      ` : ''}
       <div class="form-group">
         <label class="form-label">Observações (opcional)</label>
         <textarea class="form-ctrl" id="f-notes" rows="2">${tx?.notes ?? ''}</textarea>
@@ -265,6 +292,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): voi
       const date      = (document.getElementById('f-date')     as HTMLInputElement).value;
       const status    = (document.getElementById('f-status')   as HTMLSelectElement).value;
       const notes     = (document.getElementById('f-notes')    as HTMLTextAreaElement).value.trim();
+      const owner     = (document.getElementById('f-owner') as HTMLSelectElement | null)?.value || null;
 
       if (!desc || isNaN(amount) || !date || !account || !category) {
         alert('Preencha todos os campos obrigatórios.');
@@ -280,7 +308,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): voi
       const payload = {
         description: desc, amount, type, account_id: type === 'transfer' ? account : payments![0].account_id,
         to_account_id: type === 'transfer' ? toAccount : null,
-        category_id: category, date, status, notes: notes || null, recurring: 0, payments,
+        category_id: category, date, status, notes: notes || null, recurring: 0, payments, owner,
       };
       if (tx) { await invoke('transactions:update', { id: tx.id, ...payload }); }
       else    { await invoke('transactions:create', payload); }

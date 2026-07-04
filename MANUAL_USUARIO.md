@@ -10,9 +10,9 @@ A navegação principal fica no menu lateral esquerdo. O menu é organizado em g
 
 Os grupos do menu são:
 
-- `Visão geral`: Dashboard, diagnóstico financeiro, plano mensal, alertas e Assistente IA.
+- `Visão geral`: Dashboard, diagnóstico financeiro, score, revisão semanal, decisões, plano mensal, alertas e Assistente IA.
 - `Movimentação`: transações, meios de pagamento, agenda, despesas fixas, calendário e orçamento.
-- `Dívidas e proteção`: controle de dívidas, plano de saída e reserva.
+- `Dívidas e proteção`: controle de dívidas, plano de saída, renegociação e reserva.
 - `Patrimônio e crescimento`: patrimônio, investimentos, metas, simulador e jornada.
 - `Análise`: relatórios, mercado e IRPF.
 - `Sistema`: manual e configurações.
@@ -172,6 +172,85 @@ Use o Plano mensal como referência de decisão. Ele não impede lançamentos ne
 
 Revise o plano depois de atualizar suas transações, dívidas, metas e investimentos.
 
+## Score
+
+A tela `Score` resume a saúde financeira em uma pontuação de 0 a 100.
+
+O cálculo usa dados de transações, meios de pagamento, dívidas, orçamentos e categorias. Ele considera sobra mensal, reserva disponível, comprometimento com dívidas, orçamentos excedidos e peso das despesas variáveis.
+
+### Cartão principal
+
+O cartão principal mostra:
+
+- Pontuação atual.
+- Faixa de situação financeira.
+- Interpretação curta do resultado.
+
+Use essa tela para acompanhar se os hábitos financeiros estão melhorando ao longo do tempo.
+
+### Componentes do score
+
+A tela detalha os fatores usados no cálculo:
+
+- `Sobra mensal`: compara receitas e despesas médias.
+- `Reserva`: mede quantos meses de despesas estão cobertos pelo saldo disponível.
+- `Dívidas`: avalia quanto da renda está comprometido com parcelas.
+- `Orçamento`: verifica categorias que passaram do limite.
+- `Gastos variáveis`: analisa a participação das despesas variáveis nas despesas totais.
+
+### Como melhorar
+
+O Fina mostra ações sugeridas para os pontos que mais prejudicam a pontuação, como reduzir despesas variáveis, renegociar dívidas, reforçar reserva ou revisar orçamentos.
+
+## Revisão semanal
+
+A tela `Revisão semanal` ajuda a criar uma rotina curta de conferência financeira.
+
+Ela mostra um resumo dos últimos 7 dias e um checklist da semana. O progresso do checklist é salvo no aplicativo.
+
+### Resumo da semana
+
+O topo da tela mostra:
+
+- Receitas dos últimos 7 dias.
+- Despesas dos últimos 7 dias.
+- Saldo da semana.
+- Contas próximas ou pendentes.
+
+### Checklist
+
+Use o checklist para marcar tarefas como:
+
+- Conferir lançamentos.
+- Ver contas a vencer.
+- Revisar orçamento.
+- Checar score.
+- Ajustar plano mensal.
+
+Marque cada item quando concluir. Na semana seguinte, o checklist recomeça.
+
+## Decisões
+
+A tela `Decisões` transforma os dados financeiros em prioridades práticas.
+
+Ela analisa margem mensal, dívidas, reserva, orçamentos, metas e investimentos para sugerir qual ação deve vir primeiro.
+
+### Prioridades sugeridas
+
+O Fina pode recomendar ações como:
+
+- Recuperar margem mensal quando as despesas passam da renda.
+- Priorizar renegociação quando há dívidas pesadas ou em atraso.
+- Fortalecer reserva quando o saldo disponível cobre poucos meses de despesas.
+- Ajustar orçamentos quando limites foram ultrapassados.
+- Direcionar sobra para metas ou investimentos quando a situação está estável.
+
+Cada decisão mostra o motivo e um botão para abrir a tela relacionada.
+
+### Como usar
+
+Use essa tela quando estiver em dúvida sobre o próximo passo. Ela não altera seus dados automaticamente; apenas indica uma prioridade com base no cenário atual.
+
 ## Alertas
 
 A tela `Alertas` mostra riscos e oportunidades identificados automaticamente pelo Fina.
@@ -319,6 +398,7 @@ Ao clicar em `Novo lançamento` ou `Editar`, preencha:
 - `Meio de pagamento destino`: aparece quando o tipo é transferência. Deve ser diferente do meio de origem.
 - `Data`: data da transação.
 - `Status`: confirmado ou pendente.
+- `Responsável`: aparece quando o modo família/casal está ativo em configurações.
 - `Observações`: informação opcional.
 
 Use `Salvar` para gravar. Use `Cancelar` para sair sem salvar.
@@ -717,6 +797,18 @@ Campos disponíveis:
 - `Meio de pagamento vinculado`: meio relacionado à meta, opcional.
 - `Descrição`: observações opcionais.
 
+### Objetivos automáticos
+
+Quando houver dados suficientes, o Fina mostra sugestões de objetivos no topo da tela.
+
+As sugestões podem incluir:
+
+- Criar uma reserva de emergência.
+- Quitar dívidas.
+- Investir a sobra mensal.
+
+Clique em `Criar` para transformar uma sugestão em meta. Você pode editar a meta depois, se quiser ajustar valor, prazo ou descrição.
+
 ## Dívidas
 
 A tela `Dívidas` controla empréstimos, financiamentos, cartões e outros compromissos.
@@ -827,6 +919,29 @@ Cada estratégia mostra:
 O Fina mostra a ordem sugerida de pagamento, com prioridade, nome da dívida, saldo, juros ao mês e parcela.
 
 Use essa ordem como referência para decidir onde colocar pagamentos extras.
+
+## Renegociação
+
+A tela `Renegociação` ajuda a identificar quais dívidas merecem tentativa de renegociação primeiro.
+
+Ela usa as dívidas cadastradas para montar uma fila de prioridade, considerando atraso, juros, valor da parcela e saldo devedor.
+
+### Lista priorizada
+
+Cada cartão mostra:
+
+- Dívida e credor.
+- Status atual.
+- Saldo devedor.
+- Parcela mensal.
+- Juros ao mês.
+- Motivo da prioridade.
+
+### Proposta sugerida
+
+O Fina calcula uma referência de negociação, como reduzir a parcela mensal ou buscar uma taxa de juros menor.
+
+Use a sugestão como ponto de partida para conversar com banco, financeira ou credor. A tela não envia propostas automaticamente e não altera a dívida cadastrada.
 
 ## Reserva
 
@@ -977,6 +1092,17 @@ Permite ativar ou desativar:
 
 Use os interruptores para ligar ou desligar cada aviso.
 
+Quando quiser enviar alertas por e-mail, preencha também os dados de SMTP:
+
+- Servidor SMTP.
+- Porta.
+- Usuário.
+- Senha.
+- Remetente.
+- Destinatário dos alertas.
+
+Essas informações permitem que o Fina envie avisos usando uma conta de e-mail configurada por você.
+
 ### Categorias
 
 Permite gerenciar categorias de receitas e despesas.
@@ -991,10 +1117,23 @@ Ao criar ou editar categoria, informe:
 
 - Nome.
 - Tipo: receita ou despesa.
+- Classificação: essencial ou variável, quando a categoria for de despesa.
 - Ícone.
 - Cor.
 
-Categorias são usadas em transações, orçamentos, relatórios e gráficos.
+Categorias são usadas em transações, orçamentos, relatórios, gráficos, score e decisões sugeridas.
+
+### Família/Casal
+
+Permite ativar o uso compartilhado do Fina por mais de uma pessoa.
+
+Ao ativar o modo família/casal:
+
+- Informe os nomes dos responsáveis separados por vírgula.
+- A tela `Transações` passa a mostrar o campo `Responsável`.
+- A lista e os filtros de transações passam a permitir separar lançamentos por pessoa.
+
+Use essa função quando o controle financeiro representar um casal ou uma família, mas o banco de dados continuar sendo único.
 
 ### IA
 

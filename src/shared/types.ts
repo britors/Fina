@@ -2,6 +2,7 @@ export type AccountType = 'checking' | 'savings' | 'credit_card' | 'meal_voucher
 export type TransactionType = 'income' | 'expense' | 'transfer';
 export type TransactionStatus = 'confirmed' | 'pending';
 export type CategoryType = 'income' | 'expense';
+export type CategoryKind = 'essential' | 'variable' | 'income';
 export type BillStatus = 'pending' | 'paid' | 'overdue';
 export type BillInterval = 'weekly' | 'biweekly' | 'monthly' | 'bimonthly' | 'quarterly' | 'semiannual' | 'annual';
 
@@ -23,6 +24,7 @@ export interface Category {
   icon: string;
   color: string;
   type: CategoryType;
+  kind: CategoryKind;
   created_at: string;
 }
 
@@ -38,6 +40,7 @@ export interface Transaction {
   status: TransactionStatus;
   notes: string | null;
   recurring: 0 | 1;
+  owner: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -106,6 +109,7 @@ export interface TransactionFilters {
   category_id?: string;
   type?: TransactionType;
   status?: TransactionStatus;
+  owner?: string;
   limit?: number;
   offset?: number;
 }

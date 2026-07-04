@@ -23,6 +23,9 @@ const NAV: NavGroup[] = [
     items: [
       { route: 'dashboard',    label: 'Dashboard',   icon: 'ti-layout-dashboard' },
       { route: 'diagnostico',  label: 'Diagnóstico', icon: 'ti-stethoscope'       },
+      { route: 'score',        label: 'Score',       icon: 'ti-gauge'             },
+      { route: 'revisao-semanal', label: 'Revisão semanal', icon: 'ti-checklist' },
+      { route: 'decisoes',    label: 'Decisões',    icon: 'ti-route'             },
       { route: 'plano-mensal', label: 'Plano mensal', icon: 'ti-calendar-stats'   },
       { route: 'alertas',      label: 'Alertas',     icon: 'ti-alert-triangle'    },
       { route: 'assistente',   label: 'Assistente IA', icon: 'ti-sparkles'        },
@@ -48,6 +51,7 @@ const NAV: NavGroup[] = [
     items: [
       { route: 'debts',          label: 'Dívidas',          icon: 'ti-receipt'    },
       { route: 'plano-dividas',  label: 'Plano de saída',   icon: 'ti-route'      },
+      { route: 'renegociacao',   label: 'Renegociação',     icon: 'ti-message-dollar' },
       { route: 'reserva',        label: 'Reserva',          icon: 'ti-shield'     },
     ],
   },

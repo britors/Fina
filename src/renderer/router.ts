@@ -3,6 +3,9 @@ import { render as renderAlertas      } from './pages/alertas';
 import { render as renderAssistente   } from './pages/assistente';
 import { render as renderDiagnostico  } from './pages/diagnostico';
 import { render as renderPlanoMensal  } from './pages/planoMensal';
+import { render as renderScore        } from './pages/score';
+import { render as renderRevisaoSemanal } from './pages/revisaoSemanal';
+import { render as renderDecisoes     } from './pages/decisoes';
 import { render as renderTransactions } from './pages/transactions';
 import { render as renderAccounts     } from './pages/accounts';
 import { render as renderBudget       } from './pages/budget';
@@ -18,6 +21,7 @@ import { render as renderSimuladorPatrimonio } from './pages/simuladorPatrimonio
 import { render as renderGoals        } from './pages/goals';
 import { render as renderDebts        } from './pages/debts';
 import { render as renderPlanoDividas } from './pages/planoDividas';
+import { render as renderRenegociacao } from './pages/renegociacao';
 import { render as renderReserva      } from './pages/reserva';
 import { render as renderMarket       } from './pages/market';
 import { render as renderIRPF         } from './pages/irpf';
@@ -50,6 +54,9 @@ const ROUTES: Record<string, Route> = {
   assistente:   { title: 'Assistente IA', subtitle: 'Análise educacional com dados minimizados',    render: renderAssistente   },
   diagnostico:  { title: 'Diagnóstico',  subtitle: 'Situação financeira e próximos passos',        render: renderDiagnostico  },
   'plano-mensal': { title: 'Plano mensal', subtitle: 'Sugestão de uso da renda do mês',             render: renderPlanoMensal  },
+  score:        { title: 'Score', subtitle: 'Pontuação de saúde financeira',                         render: renderScore        },
+  'revisao-semanal': { title: 'Revisão semanal', subtitle: 'Checklist financeiro da semana',          render: renderRevisaoSemanal },
+  decisoes:     { title: 'Decisões', subtitle: 'Prioridades financeiras sugeridas',                    render: renderDecisoes     },
   transactions: { title: 'Transações',                                  subtitle: monthLabel,     render: renderTransactions },
   accounts:     { title: 'Meios de pagamento',                                                    render: renderAccounts     },
   budget:       { title: 'Orçamento',                                   subtitle: monthLabel,     render: renderBudget       },
@@ -65,6 +72,7 @@ const ROUTES: Record<string, Route> = {
   goals:        { title: 'Metas',         subtitle: 'Planejamento financeiro',                      render: renderGoals        },
   debts:        { title: 'Dívidas',       subtitle: 'Empréstimos e financiamentos',                 render: renderDebts        },
   'plano-dividas': { title: 'Plano de saída', subtitle: 'Estratégias para quitar dívidas',           render: renderPlanoDividas },
+  renegociacao: { title: 'Renegociação', subtitle: 'Prioridades e propostas para dívidas',            render: renderRenegociacao },
   reserva:      { title: 'Reserva',       subtitle: 'Proteção para emergências',                     render: renderReserva      },
   market:       { title: 'Mercado',       subtitle: 'Câmbio, bolsas e indicadores',                 render: renderMarket       },
   irpf:         { title: 'IRPF',          subtitle: 'Informe de rendimentos para declaração',        render: renderIRPF         },

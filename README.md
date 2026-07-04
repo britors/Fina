@@ -13,8 +13,12 @@ O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, pl
 - Plano de saída das dívidas com comparação de estratégias.
 - Reserva de emergência com cálculo de objetivo e contribuição mensal.
 - Alertas financeiros inteligentes.
+- Score de saúde financeira e revisão semanal para acompanhar evolução.
+- Decisões sugeridas, renegociação de dívidas e objetivos automáticos.
 - Simulador de patrimônio futuro.
 - Jornada financeira guiada.
+- Modo família/casal para separar lançamentos por responsável.
+- Configuração de SMTP para envio de alertas por e-mail.
 - Assistente IA com suporte a ChatGPT/OpenAI e Gemini/Google, desativado por padrão e com envio apenas de dados agregados mediante consentimento.
 
 ---
@@ -120,12 +124,15 @@ npm start
 |---|---|
 | Dashboard | Resumo financeiro, previsão de saldo 30 dias, indicadores de mercado |
 | Diagnóstico | Leitura da situação financeira, classificação e próximos passos |
+| Score | Pontuação de saúde financeira baseada em sobra mensal, reserva, dívidas, orçamento e gastos variáveis |
+| Revisão semanal | Checklist financeiro da semana com resumo dos últimos 7 dias |
+| Decisões | Prioridades sugeridas para recuperar margem, renegociar dívidas, formar reserva ou investir |
 | Plano mensal | Sugestão de uso da renda para dívidas, reserva, metas e investimentos |
 | Alertas | Riscos e oportunidades calculados a partir dos dados financeiros |
 | Assistente IA | Análise educacional usando ChatGPT/OpenAI ou Gemini/Google com consentimento explícito |
-| Transações | Lançamentos com categorias, filtros e importação CSV/OFX |
+| Transações | Lançamentos com categorias, filtros, rateio por meios de pagamento, responsável no modo família e importação CSV/OFX |
 | Meios de pagamento | Corrente, poupança, cartão de crédito, vale refeição, vale alimentação, carteira |
-| Orçamento | Limites mensais por categoria com alertas |
+| Orçamento | Limites mensais por categoria com alertas e separação entre despesas essenciais e variáveis |
 | Fixas | Assinaturas e despesas recorrentes |
 | Calendário | Vencimentos e lançamentos por dia |
 | Relatórios | Histórico de até 12 meses, exportação PDF e CSV |
@@ -133,14 +140,16 @@ npm start
 | Patrimônio | Imóveis, veículos, terrenos e outros bens |
 | Investimentos | Carteira com alocação e rendimento |
 | Simulador | Projeção de patrimônio futuro por aporte, prazo e rendimento |
-| Metas | Planejamento com prazo e progresso |
+| Metas | Planejamento com prazo, progresso e sugestões automáticas de objetivos |
 | Dívidas | Empréstimos, financiamentos e simulador de quitação |
 | Plano de saída | Estratégias de quitação de dívidas e economia de juros |
+| Renegociação | Priorização e propostas para renegociar dívidas |
 | Reserva | Cálculo de reserva de emergência de 3, 6 ou 12 meses |
 | Jornada | Passos guiados para sair da desorganização e crescer patrimônio |
 | Mercado | Câmbio (USD/EUR/BTC), bolsas (Ibovespa, S&P 500, Nasdaq) e Selic |
 | IRPF | Informe auxiliar com rendimentos, deduções, bens e dívidas |
 | Manual | Guia de uso das telas e funções dentro do app |
+| Configurações | Perfil, aparência, notificações, SMTP, categorias, modo família/casal, IA, dados e backup |
 
 ---
 

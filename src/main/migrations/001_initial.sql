@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS categories (
   icon       TEXT NOT NULL,
   color      TEXT NOT NULL,
   type       TEXT NOT NULL CHECK (type IN ('income','expense')),
+  kind       TEXT NOT NULL DEFAULT 'variable' CHECK (kind IN ('essential','variable','income')),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   status      TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed','pending')),
   notes       TEXT,
   recurring   INTEGER NOT NULL DEFAULT 0,
+  owner       TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -60,15 +62,15 @@ CREATE TABLE IF NOT EXISTS bills (
 );
 
 -- Categorias padrão
-INSERT OR IGNORE INTO categories (id, name, icon, color, type) VALUES
-  ('cat-1', 'Salário',       'ti-briefcase',       '#1D9E75', 'income'),
-  ('cat-2', 'Freelance',     'ti-device-laptop',   '#3B82F6', 'income'),
-  ('cat-3', 'Alimentação',   'ti-tools-kitchen-2', '#EF9F27', 'expense'),
-  ('cat-4', 'Transporte',    'ti-car',             '#8B5CF6', 'expense'),
-  ('cat-5', 'Moradia',       'ti-home',            '#EC4899', 'expense'),
-  ('cat-6', 'Saúde',         'ti-heart',           '#D85A30', 'expense'),
-  ('cat-7', 'Lazer',         'ti-device-gamepad-2','#06B6D4', 'expense'),
-  ('cat-8', 'Educação',      'ti-school',          '#10B981', 'expense');
+INSERT OR IGNORE INTO categories (id, name, icon, color, type, kind) VALUES
+  ('cat-1', 'Salário',       'ti-briefcase',       '#1D9E75', 'income',  'income'),
+  ('cat-2', 'Freelance',     'ti-device-laptop',   '#3B82F6', 'income',  'income'),
+  ('cat-3', 'Alimentação',   'ti-tools-kitchen-2', '#EF9F27', 'expense', 'essential'),
+  ('cat-4', 'Transporte',    'ti-car',             '#8B5CF6', 'expense', 'essential'),
+  ('cat-5', 'Moradia',       'ti-home',            '#EC4899', 'expense', 'essential'),
+  ('cat-6', 'Saúde',         'ti-heart',           '#D85A30', 'expense', 'essential'),
+  ('cat-7', 'Lazer',         'ti-device-gamepad-2','#06B6D4', 'expense', 'variable'),
+  ('cat-8', 'Educação',      'ti-school',          '#10B981', 'expense', 'essential');
 
 
 -- Configurações da aplicação
@@ -92,4 +94,6 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES
   ('smtp_user',      ''),
   ('smtp_pass',      ''),
   ('smtp_from',      ''),
-  ('smtp_to',        '');
+  ('smtp_to',        ''),
+  ('family_mode',    'false'),
+  ('family_members', '');

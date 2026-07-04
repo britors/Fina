@@ -1,10 +1,15 @@
 import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
-import type { Category, CategoryType } from '../../shared/types';
+import type { Category, CategoryKind, CategoryType } from '../../shared/types';
 
 type CreatePayload = Omit<Category, 'id' | 'created_at'>;
 type UpdatePayload = { id: string } & Partial<CreatePayload>;
+
+function normalizeKind(type: CategoryType, kind?: CategoryKind): CategoryKind {
+  if (type === 'income') return 'income';
+  return kind === 'essential' ? 'essential' : 'variable';
+}
 
 export function registerCategoryHandlers(): void {
   ipcMain.handle('categories:list', (_e, type?: CategoryType) => {
@@ -20,16 +25,18 @@ export function registerCategoryHandlers(): void {
 
   ipcMain.handle('categories:create', (_e, data: CreatePayload) => {
     const id = randomUUID();
+    const kind = normalizeKind(data.type, data.kind);
     getDb().prepare(
-      'INSERT INTO categories (id, name, icon, color, type) VALUES (?,?,?,?,?)'
-    ).run(id, data.name, data.icon, data.color, data.type);
+      'INSERT INTO categories (id, name, icon, color, type, kind) VALUES (?,?,?,?,?,?)'
+    ).run(id, data.name, data.icon, data.color, data.type, kind);
     return getDb().prepare('SELECT * FROM categories WHERE id = ?').get(id);
   });
 
   ipcMain.handle('categories:update', (_e, { id, ...data }: UpdatePayload) => {
+    const kind = normalizeKind(data.type!, data.kind);
     getDb().prepare(
-      'UPDATE categories SET name=?, icon=?, color=?, type=? WHERE id=?'
-    ).run(data.name, data.icon, data.color, data.type, id);
+      'UPDATE categories SET name=?, icon=?, color=?, type=?, kind=? WHERE id=?'
+    ).run(data.name, data.icon, data.color, data.type, kind, id);
     return getDb().prepare('SELECT * FROM categories WHERE id = ?').get(id);
   });
 

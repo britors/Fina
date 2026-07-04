@@ -18,6 +18,7 @@ export async function render(el: HTMLElement): Promise<void> {
     { id: 'profile',       label: 'Perfil'           },
     { id: 'appearance',    label: 'Aparência'         },
     { id: 'notifications', label: 'Notificações'      },
+    { id: 'family',        label: 'Família/Casal'     },
     { id: 'categories',    label: 'Categorias'        },
     { id: 'ai',            label: 'IA'                },
     { id: 'data',          label: 'Dados e backup'    },
@@ -54,6 +55,7 @@ function renderSection(el: HTMLElement, id: string, s: Settings, dbPath: string)
   if (id === 'profile')            renderProfile(el, s);
   else if (id === 'appearance')    renderAppearance(el, s);
   else if (id === 'notifications') renderNotifications(el, s);
+  else if (id === 'family')        renderFamily(el, s);
   else if (id === 'categories')    renderCategories(el);
   else if (id === 'ai')            renderAI(el);
   else if (id === 'data')          renderData(el, s, dbPath);
@@ -288,6 +290,55 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
     Object.assign(s, { smtp_enabled, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass, smtp_from, smtp_to });
     alert('Configurações SMTP salvas.');
     renderNotifications(el, s);
+  });
+}
+
+function renderFamily(el: HTMLElement, s: Settings): void {
+  const enabled = s.family_mode === 'true';
+  const members = s.family_members ?? '';
+
+  el.innerHTML = `
+    <div class="settings-section-label">FAMÍLIA / CASAL</div>
+    <div class="settings-hr"></div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Ativar modo família/casal</div>
+        <div class="settings-row-sub">Permite marcar lançamentos por responsável</div>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle">
+          <input type="checkbox" id="family-enabled" ${enabled ? 'checked' : ''}>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Membros</div>
+        <div class="settings-row-sub">Separe nomes por vírgula. Ex: Rodrigo, Ana, Casa</div>
+      </div>
+      <div class="settings-row-right">
+        <input class="form-ctrl" id="family-members" value="${esc(members)}" style="width:320px" placeholder="Pessoa 1, Pessoa 2, Casa">
+      </div>
+    </div>
+    <div style="margin-top:16px;display:flex;justify-content:flex-end">
+      <button class="btn btn-primary" id="save-family">Salvar família/casal</button>
+    </div>
+  `;
+
+  el.querySelector('#save-family')?.addEventListener('click', async () => {
+    const family_mode = el.querySelector<HTMLInputElement>('#family-enabled')!.checked ? 'true' : 'false';
+    const family_members = el.querySelector<HTMLInputElement>('#family-members')!.value
+      .split(',')
+      .map(v => v.trim())
+      .filter(Boolean)
+      .join(', ');
+    await invoke('settings:setMany', { family_mode, family_members });
+    s.family_mode = family_mode;
+    s.family_members = family_members;
+    alert('Configurações de família/casal salvas.');
+    renderFamily(el, s);
   });
 }
 
@@ -573,7 +624,7 @@ async function renderCategories(el: HTMLElement): Promise<void> {
           </div>
           <div>
             <div class="settings-row-label">${esc(c.name)}</div>
-            <div class="settings-row-sub">${c.type === 'income' ? 'Receita' : 'Despesa'}</div>
+            <div class="settings-row-sub">${categoryTypeLabel(c)}</div>
           </div>
         </div>
         <div class="settings-row-right">
@@ -714,4 +765,9 @@ async function renderAI(el: HTMLElement): Promise<void> {
 
 function esc(s?: string): string {
   return (s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g, '&quot;');
+}
+
+function categoryTypeLabel(c: Category): string {
+  if (c.type === 'income') return 'Receita';
+  return c.kind === 'essential' ? 'Despesa essencial' : 'Despesa variável';
 }

@@ -1,7 +1,7 @@
 import { invoke } from '../api';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
-import type { Goal, GoalType, Account } from '../../shared/types';
+import type { Goal, GoalType, Account, Debt } from '../../shared/types';
 
 const TYPE_META: Record<GoalType, { label: string; icon: string; color: string }> = {
   viagem:      { label: 'Viagem',              icon: 'ti-plane',       color: '#3B82F6' },
@@ -14,12 +14,18 @@ const TYPE_META: Record<GoalType, { label: string; icon: string; color: string }
 export async function render(el: HTMLElement): Promise<void> {
   let goals: Goal[] = [];
   let accounts: Account[] = [];
+  let suggestions: SuggestedGoal[] = [];
 
   async function load(): Promise<void> {
-    [goals, accounts] = await Promise.all([
+    const [loadedGoals, loadedAccounts, history, debts] = await Promise.all([
       invoke<Goal[]>('goals:list'),
       invoke<Account[]>('accounts:list'),
+      invoke<{ income: number; expense: number }[]>('transactions:getMonthlyHistory', 3),
+      invoke<Debt[]>('debts:list'),
     ]);
+    goals = loadedGoals;
+    accounts = loadedAccounts;
+    suggestions = buildSuggestions(goals, accounts, history, debts);
   }
 
   setTopbarActions(`
@@ -51,6 +57,27 @@ export async function render(el: HTMLElement): Promise<void> {
           <div class="stat-sub">${totalTarget > 0 ? ((totalCurrent / totalTarget) * 100).toFixed(0) : 0}% concluído</div>
         </div>
       </div>
+
+      ${suggestions.length > 0 ? `
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">Objetivos automáticos</div>
+          <div class="card-hr"></div>
+          <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+            ${suggestions.map(s => `
+              <div style="display:flex;align-items:center;gap:12px;background:var(--bg);border:0.5px solid var(--border);border-radius:8px;padding:12px">
+                <div style="width:36px;height:36px;border-radius:8px;background:${TYPE_META[s.type].color}22;display:flex;align-items:center;justify-content:center">
+                  <i class="ti ${TYPE_META[s.type].icon}" style="color:${TYPE_META[s.type].color}"></i>
+                </div>
+                <div style="flex:1">
+                  <div style="font-weight:600">${esc(s.name)}</div>
+                  <div style="font-size:0.78rem;color:var(--text-3)">${esc(s.description)} · alvo ${formatCurrency(s.target_amount)}</div>
+                </div>
+                <button class="btn btn-primary btn-sm" data-create-suggested="${s.id}">Criar</button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
 
       ${goals.length === 0 ? `
         <div class="empty">
@@ -118,6 +145,23 @@ export async function render(el: HTMLElement): Promise<void> {
     `;
 
     el.querySelector('#btn-empty-goal')?.addEventListener('click', () => openModal(null));
+    el.querySelectorAll<HTMLElement>('[data-create-suggested]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const suggestion = suggestions.find(s => s.id === btn.dataset.createSuggested);
+        if (!suggestion) return;
+        await invoke('goals:create', {
+          name: suggestion.name,
+          type: suggestion.type,
+          target_amount: suggestion.target_amount,
+          current_amount: suggestion.current_amount,
+          target_date: suggestion.target_date,
+          account_id: null,
+          description: suggestion.description,
+        });
+        await load();
+        await renderPage();
+      });
+    });
     el.querySelectorAll<HTMLElement>('.btn-edit-goal').forEach(btn =>
       btn.addEventListener('click', () => openModal(goals.find(g => g.id === btn.dataset.id) ?? null))
     );
@@ -221,6 +265,70 @@ export async function render(el: HTMLElement): Promise<void> {
 
   await load();
   await renderPage();
+}
+
+interface SuggestedGoal {
+  id: string;
+  name: string;
+  type: GoalType;
+  target_amount: number;
+  current_amount: number;
+  target_date: string | null;
+  description: string;
+}
+
+function buildSuggestions(goals: Goal[], accounts: Account[], history: { income: number; expense: number }[], debts: Debt[]): SuggestedGoal[] {
+  const existing = new Set(goals.map(g => g.type));
+  const avgExpense = avg(history.map(h => h.expense));
+  const avgIncome = avg(history.map(h => h.income));
+  const liquidBalance = accounts.filter(a => !isCreditLikeAccountType(a.type)).reduce((sum, a) => sum + a.balance, 0);
+  const debtTotal = debts.filter(d => d.status !== 'quitada').reduce((sum, d) => sum + d.outstanding_balance, 0);
+  const suggestions: SuggestedGoal[] = [];
+
+  if (!existing.has('emergencia') && avgExpense > 0) {
+    suggestions.push({
+      id: 'reserve',
+      name: 'Reserva de emergência',
+      type: 'emergencia',
+      target_amount: Math.round(avgExpense * 6 * 100) / 100,
+      current_amount: Math.max(0, liquidBalance),
+      target_date: futureDate(12),
+      description: 'Sugestão para cobrir 6 meses de despesas médias.',
+    });
+  }
+  if (debtTotal > 0 && !goals.some(g => g.name.toLowerCase().includes('dívida') || g.name.toLowerCase().includes('divida'))) {
+    suggestions.push({
+      id: 'debt',
+      name: 'Quitar dívidas',
+      type: 'outro',
+      target_amount: Math.round(debtTotal * 100) / 100,
+      current_amount: 0,
+      target_date: futureDate(18),
+      description: 'Objetivo automático baseado no saldo devedor atual.',
+    });
+  }
+  if (avgIncome > avgExpense && !goals.some(g => g.name.toLowerCase().includes('investir'))) {
+    suggestions.push({
+      id: 'invest',
+      name: 'Investir sobra mensal',
+      type: 'outro',
+      target_amount: Math.round((avgIncome - avgExpense) * 6 * 100) / 100,
+      current_amount: 0,
+      target_date: futureDate(6),
+      description: 'Transforma a sobra média em objetivo de acumulação.',
+    });
+  }
+  return suggestions.slice(0, 3);
+}
+
+function avg(values: number[]): number {
+  return values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : 0;
+}
+
+function futureDate(months: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
 }
 
 function esc(s: string | null | undefined): string {
