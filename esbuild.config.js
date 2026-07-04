@@ -22,6 +22,7 @@ function copyAssets() {
   fs.mkdirSync('out/renderer', { recursive: true });
   cp('src/renderer/index.html', 'out/renderer/index.html');
   cp('src/renderer/splash.html', 'out/renderer/splash.html');
+  cp('src/renderer/unlock.html', 'out/renderer/unlock.html');
   cp('src/assets/mascot.png', 'out/renderer/assets/mascot.png');
   cp('MANUAL_USUARIO.md', 'out/MANUAL_USUARIO.md');
 
@@ -48,7 +49,7 @@ async function buildTests() {
     outdir: 'out/tests',
     platform: 'node',
     format: 'cjs',
-    external: ['electron', 'better-sqlite3'],
+    external: ['electron', 'better-sqlite3-multiple-ciphers'],
   });
   console.log('Tests built → out/tests/');
 }
@@ -63,7 +64,7 @@ async function build() {
       outfile: 'out/main/index.js',
       platform: 'node',
       format: 'cjs',
-      external: ['electron', 'better-sqlite3'],
+      external: ['electron', 'better-sqlite3-multiple-ciphers'],
     },
     {
       ...shared,
@@ -77,6 +78,13 @@ async function build() {
       ...shared,
       entryPoints: ['src/renderer/index.ts'],
       outfile: 'out/renderer/index.js',
+      platform: 'browser',
+      format: 'iife',
+    },
+    {
+      ...shared,
+      entryPoints: ['src/renderer/unlock.ts'],
+      outfile: 'out/renderer/unlock.js',
       platform: 'browser',
       format: 'iife',
     },

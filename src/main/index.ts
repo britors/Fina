@@ -2,7 +2,8 @@ import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electro
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
-import { openDatabase, runMigrations, closeDatabase, dbPath } from './database';
+import { openDatabase, runMigrations, closeDatabase, dbPath, needsUnlock } from './database';
+import { registerUnlockHandler, registerSecurityHandlers } from './ipc/security';
 import { registerAccountHandlers } from './ipc/accounts';
 import { registerTransactionHandlers } from './ipc/transactions';
 import { registerCategoryHandlers } from './ipc/categories';
@@ -60,6 +61,27 @@ function createSplash(): BrowserWindow {
   return w;
 }
 
+function createUnlockWindow(): BrowserWindow {
+  const w = new BrowserWindow({
+    width: 420,
+    height: 420,
+    frame: false,
+    resizable: false,
+    center: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    backgroundColor: '#0F1117',
+    icon: loadAppIcon(),
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  w.loadFile(path.join(__dirname, '../renderer/unlock.html'));
+  return w;
+}
+
 function createMainWindow(): BrowserWindow {
   const w = new BrowserWindow({
     width: 1280,
@@ -104,6 +126,7 @@ function registerHandlers(): void {
   registerMarketHandlers();
   registerIRPFHandlers();
   registerAIHandlers();
+  registerSecurityHandlers();
 
   ipcMain.handle('db:path', () => dbPath());
   ipcMain.handle('app:version', () => app.getVersion());
@@ -170,8 +193,30 @@ app.whenReady().then(async () => {
   const splash = createSplash();
   const t0 = Date.now();
 
+  registerUnlockHandler();
+
   try {
     openDatabase();
+  } catch (err) {
+    console.error('[DB] Erro na inicialização:', err);
+  }
+
+  // Enquanto a janela de desbloqueio ou a splash estiverem de pé, nunca deixe
+  // o app chegar a zero janelas abertas: o Electron trata isso como
+  // 'window-all-closed' e encerra o processo (ver app.on('window-all-closed')
+  // abaixo), o que aconteceria antes mesmo de mostrar a tela de senha.
+  let unlockWin: BrowserWindow | null = null;
+  let showedUnlockScreen = false;
+  if (needsUnlock()) {
+    showedUnlockScreen = true;
+    unlockWin = createUnlockWindow();
+    if (!splash.isDestroyed()) splash.destroy();
+    await new Promise<void>(resolve => {
+      ipcMain.once('security:unlocked', () => resolve());
+    });
+  }
+
+  try {
     runMigrations();
     runAutoBackup('on_open');
   } catch (err) {
@@ -180,14 +225,17 @@ app.whenReady().then(async () => {
 
   registerHandlers();
 
-  const elapsed = Date.now() - t0;
-  await new Promise<void>(r => setTimeout(r, Math.max(0, 1800 - elapsed)));
+  if (!showedUnlockScreen) {
+    const elapsed = Date.now() - t0;
+    await new Promise<void>(r => setTimeout(r, Math.max(0, 1800 - elapsed)));
+  }
 
   const win = createMainWindow();
   initUpdater(win);
   win.once('ready-to-show', () => {
     win.show();
-    splash.destroy();
+    if (!splash.isDestroyed()) splash.destroy();
+    if (unlockWin && !unlockWin.isDestroyed()) unlockWin.close();
     const rec = generateRecurrences();
     if (rec.transactions + rec.bills > 0) {
       console.log(`[Recorrências] ${rec.transactions} transações, ${rec.bills} contas geradas`);

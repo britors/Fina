@@ -18,7 +18,7 @@
     "typecheck": "tsc --noEmit",
     "build:tests": "node esbuild.config.js --tests",
     "test": "node esbuild.config.js --tests && node --test out/tests/accounts.test.js out/tests/transactions.test.js",
-    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "electron-rebuild -f -w better-sqlite3-multiple-ciphers",
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:win": "npm run build && electron-builder --win",
@@ -27,7 +27,6 @@
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
     "@resvg/resvg-js": "^2.6.2",
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^25.9.1",
     "electron": "^34.5.8",
     "electron-builder": "^25.1.8",
@@ -36,7 +35,7 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3-multiple-ciphers": "^12.11.1",
     "electron-updater": "^6.8.9"
   }
 }

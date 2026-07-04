@@ -22,6 +22,7 @@ export async function render(el: HTMLElement): Promise<void> {
     { id: 'categories',    label: 'Categorias'        },
     { id: 'ai',            label: 'IA'                },
     { id: 'data',          label: 'Dados e backup'    },
+    { id: 'security',      label: 'Segurança'         },
     { id: 'about',         label: 'Sobre'             },
   ];
 
@@ -59,6 +60,7 @@ function renderSection(el: HTMLElement, id: string, s: Settings, dbPath: string)
   else if (id === 'categories')    renderCategories(el);
   else if (id === 'ai')            renderAI(el);
   else if (id === 'data')          renderData(el, s, dbPath);
+  else if (id === 'security')      renderSecurity(el);
   else if (id === 'about')         renderAbout(el);
 }
 
@@ -430,6 +432,110 @@ function renderData(el: HTMLElement, s: Settings, dbPath: string): void {
     await invoke('settings:set', { key: 'autobackup_folder', value: chosen });
     s.autobackup_folder = chosen;
     renderData(el, s, dbPath);
+  });
+}
+
+async function renderSecurity(el: HTMLElement): Promise<void> {
+  const { active } = await invoke<{ active: boolean }>('security:status');
+
+  el.innerHTML = `
+    <div class="settings-section-label">CRIPTOGRAFIA DO BANCO DE DADOS</div>
+    <div class="settings-hr"></div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Status</div>
+        <div class="settings-row-sub">${active
+          ? 'O banco de dados está criptografado com uma senha mestre.'
+          : 'O banco de dados está em texto plano (sem criptografia).'}</div>
+      </div>
+      <span class="badge" style="background:${active ? 'var(--accent)' : 'var(--text-3)'}18;color:${active ? 'var(--accent)' : 'var(--text-3)'}">
+        ${active ? 'Ativada' : 'Desativada'}
+      </span>
+    </div>
+
+    ${!active ? `
+      <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+        <div>
+          <div class="settings-row-label">Ativar criptografia</div>
+          <div class="settings-row-sub">
+            Protege o arquivo do banco com uma senha mestre. <strong>Não há como recuperar seus dados se você esquecer essa senha</strong> — guarde-a em um lugar seguro. Considere exportar um backup antes de ativar.
+          </div>
+        </div>
+        <div class="form-row" style="width:100%">
+          <input class="form-ctrl" type="password" id="sec-new-pass" placeholder="Senha mestre">
+          <input class="form-ctrl" type="password" id="sec-new-pass-confirm" placeholder="Confirme a senha">
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:12px;color:var(--text-2)">
+          <input type="checkbox" id="sec-ack">
+          Entendo que não há como recuperar meus dados se eu esquecer a senha.
+        </label>
+        <button class="btn btn-primary" id="btn-enable-encryption">Ativar criptografia</button>
+      </div>
+    ` : `
+      <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+        <div>
+          <div class="settings-row-label">Trocar senha</div>
+          <div class="settings-row-sub">Define uma nova senha mestre para o banco já criptografado.</div>
+        </div>
+        <input class="form-ctrl" type="password" id="sec-current-pass" placeholder="Senha atual" style="width:100%">
+        <div class="form-row" style="width:100%">
+          <input class="form-ctrl" type="password" id="sec-change-pass" placeholder="Nova senha">
+          <input class="form-ctrl" type="password" id="sec-change-pass-confirm" placeholder="Confirme a nova senha">
+        </div>
+        <button class="btn btn-secondary" id="btn-change-password">Trocar senha</button>
+      </div>
+      <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+        <div>
+          <div class="settings-row-label">Desativar criptografia</div>
+          <div class="settings-row-sub">Volta o banco de dados a texto plano, sem exigir senha.</div>
+        </div>
+        <input class="form-ctrl" type="password" id="sec-disable-pass" placeholder="Senha atual" style="width:100%;max-width:320px">
+        <button class="btn btn-danger" id="btn-disable-encryption">Desativar criptografia</button>
+      </div>
+    `}
+  `;
+
+  el.querySelector('#btn-enable-encryption')?.addEventListener('click', async () => {
+    const pass = (el.querySelector('#sec-new-pass') as HTMLInputElement).value;
+    const confirm_ = (el.querySelector('#sec-new-pass-confirm') as HTMLInputElement).value;
+    const ack = (el.querySelector('#sec-ack') as HTMLInputElement).checked;
+    if (!ack) { alert('Confirme que você entende o risco de perda de dados antes de continuar.'); return; }
+    if (pass.length < 4) { alert('Use uma senha de pelo menos 4 caracteres.'); return; }
+    if (pass !== confirm_) { alert('As senhas não conferem.'); return; }
+    try {
+      await invoke('security:enable', pass);
+      alert('Criptografia ativada.');
+      renderSecurity(el);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível ativar a criptografia.');
+    }
+  });
+
+  el.querySelector('#btn-change-password')?.addEventListener('click', async () => {
+    const oldPassword = (el.querySelector('#sec-current-pass') as HTMLInputElement).value;
+    const pass = (el.querySelector('#sec-change-pass') as HTMLInputElement).value;
+    const confirm_ = (el.querySelector('#sec-change-pass-confirm') as HTMLInputElement).value;
+    if (pass.length < 4) { alert('Use uma senha de pelo menos 4 caracteres.'); return; }
+    if (pass !== confirm_) { alert('As senhas não conferem.'); return; }
+    try {
+      await invoke('security:changePassword', { oldPassword, newPassword: pass });
+      alert('Senha alterada.');
+      renderSecurity(el);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível trocar a senha.');
+    }
+  });
+
+  el.querySelector('#btn-disable-encryption')?.addEventListener('click', async () => {
+    const currentPass = (el.querySelector('#sec-disable-pass') as HTMLInputElement).value;
+    if (!confirm('Desativar a criptografia deixa o banco de dados em texto plano. Deseja continuar?')) return;
+    try {
+      await invoke('security:disable', currentPass);
+      alert('Criptografia desativada.');
+      renderSecurity(el);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível desativar a criptografia.');
+    }
   });
 }
 
