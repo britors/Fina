@@ -50,6 +50,12 @@ Recomendações:
 - apague backups antigos quando não forem mais necessários;
 - lembre-se de que importar um backup substitui os dados atuais.
 
+## OCR de comprovantes e notas fiscais
+
+O Fina pode ler o valor, a data e o estabelecimento de uma foto de comprovante ou nota fiscal para pré-preencher um lançamento.
+
+Esse reconhecimento roda inteiramente no seu computador (biblioteca Tesseract OCR local) — a imagem do comprovante nunca é enviada para nenhum servidor. Na primeira vez que o recurso é usado, o Fina baixa um modelo de reconhecimento de texto em português (genérico, sem relação com seus dados) e guarda em cache para uso offline nas próximas vezes.
+
 ## Chaves de API de IA
 
 As chaves de API de IA não são salvas no banco SQLite.

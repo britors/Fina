@@ -21,6 +21,7 @@ import { registerDebtHandlers } from './ipc/debts';
 import { registerMarketHandlers } from './ipc/market';
 import { registerIRPFHandlers } from './ipc/irpf';
 import { registerAIHandlers } from './ipc/ai';
+import { registerOCRHandlers } from './ipc/ocr';
 import { initUpdater } from './updater';
 import { startNotificationScheduler } from './notifications';
 import { generateRecurrences } from './recurrences';
@@ -126,6 +127,7 @@ function registerHandlers(): void {
   registerMarketHandlers();
   registerIRPFHandlers();
   registerAIHandlers();
+  registerOCRHandlers();
   registerSecurityHandlers();
 
   ipcMain.handle('db:path', () => dbPath());

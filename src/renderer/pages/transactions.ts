@@ -33,6 +33,9 @@ export async function render(el: HTMLElement): Promise<void> {
   familyMembers = (settings.family_members ?? '').split(',').map(v => v.trim()).filter(Boolean);
 
   setTopbarActions(`
+    <button class="btn btn-secondary" id="btn-scan-receipt">
+      <i class="ti ti-scan"></i> Escanear comprovante
+    </button>
     <button class="btn btn-secondary" id="btn-import">
       <i class="ti ti-upload"></i> Importar extrato
     </button>
@@ -44,6 +47,26 @@ export async function render(el: HTMLElement): Promise<void> {
     </button>
   `);
   document.getElementById('btn-new-tx')?.addEventListener('click', () => openTxModal(null, () => renderPage()));
+  document.getElementById('btn-scan-receipt')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-scan-receipt') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader-2"></i> Lendo comprovante...';
+    try {
+      const result = await invoke<{ amount: number | null; date: string | null; merchant: string | null } | null>('ocr:scanReceipt');
+      if (result) {
+        openTxModal(null, () => renderPage(), {
+          description: result.merchant ?? undefined,
+          amount: result.amount ?? undefined,
+          date: result.date ?? undefined,
+        });
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível ler o comprovante.');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-scan"></i> Escanear comprovante';
+    }
+  });
   document.getElementById('btn-export-csv')?.addEventListener('click', async () => {
     const dateFrom = `${fromYear}-${String(fromMonth).padStart(2, '0')}-01`;
     const lastDay  = new Date(toYear, toMonth, 0).getDate();
@@ -200,20 +223,26 @@ export async function render(el: HTMLElement): Promise<void> {
   await renderPage();
 }
 
-function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): void {
+interface TxDraft {
+  description?: string;
+  amount?: number;
+  date?: string;
+}
+
+function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draft?: TxDraft): void {
   const today = new Date().toISOString().split('T')[0];
-  const initialPayments = initialPaymentSplits(tx?.payments, tx?.account_id, tx?.amount);
+  const initialPayments = initialPaymentSplits(tx?.payments, tx?.account_id, tx?.amount ?? draft?.amount);
   const overlay = openModal({
     title: tx ? 'Editar transação' : 'Nova transação',
     body: `
       <div class="form-group">
         <label class="form-label">Descrição</label>
-        <input class="form-ctrl" id="f-desc" value="${esc(tx?.description ?? '')}" placeholder="Ex: Supermercado">
+        <input class="form-ctrl" id="f-desc" value="${esc(tx?.description ?? draft?.description ?? '')}" placeholder="Ex: Supermercado">
       </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Valor (R$)</label>
-          <input class="form-ctrl" id="f-amount" type="number" step="0.01" min="0" value="${tx?.amount ?? ''}">
+          <input class="form-ctrl" id="f-amount" type="number" step="0.01" min="0" value="${tx?.amount ?? draft?.amount ?? ''}">
         </div>
         <div class="form-group">
           <label class="form-label">Tipo</label>
@@ -258,7 +287,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void): voi
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Data</label>
-          <input class="form-ctrl" id="f-date" type="date" value="${tx?.date ?? today}">
+          <input class="form-ctrl" id="f-date" type="date" value="${tx?.date ?? draft?.date ?? today}">
         </div>
         <div class="form-group">
           <label class="form-label">Status</label>
