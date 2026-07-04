@@ -16,6 +16,8 @@ import { registerForecastHandlers } from './ipc/forecast';
 import { registerImportHandlers } from './ipc/import';
 import { registerExportHandlers } from './ipc/export';
 import { registerBackupHandlers } from './ipc/backup';
+import { registerSyncHandlers } from './ipc/sync';
+import { getSyncStatus, pushSync } from './sync';
 import { registerGoalHandlers } from './ipc/goals';
 import { registerDebtHandlers } from './ipc/debts';
 import { registerMarketHandlers } from './ipc/market';
@@ -127,6 +129,7 @@ function registerHandlers(): void {
   registerIRPFHandlers();
   registerAIHandlers();
   registerSecurityHandlers();
+  registerSyncHandlers();
 
   ipcMain.handle('db:path', () => dbPath());
   ipcMain.handle('app:version', () => app.getVersion());
@@ -255,5 +258,11 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   runAutoBackup('on_close');
+  try {
+    const sync = getSyncStatus();
+    if (sync.enabled && sync.folder) pushSync(sync.folder);
+  } catch (err) {
+    console.error('[Sync] Falha ao enviar sincronização ao fechar:', err);
+  }
   closeDatabase();
 });
