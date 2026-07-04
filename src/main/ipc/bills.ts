@@ -2,7 +2,7 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import { adjustBalance } from './transactions';
-import type { Bill, BillInterval, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
+import type { Bill, BillInterval, BillPriceIncrease, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 
 type BillInput = Omit<Bill, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[] };
 type BillUpdateInput = Partial<Bill> & { id: string; payments?: PaymentSplit[] };
@@ -21,7 +21,7 @@ const INTERVAL_MONTHS: Partial<Record<BillInterval, number>> = {
 // Soma `multiplier` intervalos a due_date. Para intervalos em meses, o dia é
 // preso ao último dia do mês de destino quando ele não existir (ex: dia 31
 // de um mês de 30 dias), igual à lógica usada em recurrences.ts.
-function addInterval(dueDate: string, interval: BillInterval, multiplier: number): string {
+export function addInterval(dueDate: string, interval: BillInterval, multiplier: number): string {
   const days = INTERVAL_DAYS[interval];
   if (days != null) {
     const d = new Date(dueDate + 'T00:00:00');
@@ -98,6 +98,23 @@ function enrichBills<T extends Bill>(bills: T[]): (T & { payments: PaymentSplitW
   return bills.map(bill => enrichBill(bill)!);
 }
 
+function latestPriceHistoryAmount(billId: string): number | null {
+  const row = getDb().prepare(
+    `SELECT amount FROM bill_price_history WHERE bill_id = ? ORDER BY changed_at DESC, rowid DESC LIMIT 1`
+  ).get(billId) as { amount: number } | undefined;
+  return row?.amount ?? null;
+}
+
+// Registra o valor de uma conta recorrente sempre que ele mudar, para
+// permitir detectar aumento de preço de assinaturas (bills:getPriceIncreases).
+function trackPriceHistory(billId: string, amount: number): void {
+  const previous = latestPriceHistoryAmount(billId);
+  if (previous !== null && Math.abs(previous - amount) < 0.005) return;
+  getDb().prepare(
+    'INSERT INTO bill_price_history (id, bill_id, amount) VALUES (?,?,?)'
+  ).run(randomUUID(), billId, amount);
+}
+
 export function registerBillHandlers(): void {
   ipcMain.handle('bills:list', (_e, filters: { status?: string; dateFrom?: string; dateTo?: string; category_id?: string } = {}) => {
     autoMarkOverdue();
@@ -132,9 +149,10 @@ export function registerBillHandlers(): void {
     const db = getDb();
     db.transaction(() => {
       db.prepare(
-        'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring) VALUES (?,?,?,?,?,?,?,?)'
-      ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', primaryAccountId, data.category_id ?? null, data.recurring ? 1 : 0);
+        'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring, recurrence_interval) VALUES (?,?,?,?,?,?,?,?,?)'
+      ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', primaryAccountId, data.category_id ?? null, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly');
       replaceBillPayments(id, payments);
+      if (data.recurring) trackPriceHistory(id, data.amount);
     })();
     return enrichBill(db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined);
   });
@@ -170,15 +188,38 @@ export function registerBillHandlers(): void {
     const db = getDb();
     db.transaction(() => {
       db.prepare(
-        `UPDATE bills SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, updated_at=datetime('now') WHERE id=?`
-      ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, data.category_id ?? null, data.recurring ? 1 : 0, id);
+        `UPDATE bills SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, recurrence_interval=?, updated_at=datetime('now') WHERE id=?`
+      ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, data.category_id ?? null, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
       replaceBillPayments(id, payments);
+      if (data.recurring && data.amount != null) trackPriceHistory(id, data.amount);
     })();
     return enrichBill(db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined);
   });
 
   ipcMain.handle('bills:delete', (_e, id: string) => {
     getDb().prepare('DELETE FROM bills WHERE id = ?').run(id);
+  });
+
+  // Assinaturas (fixas recorrentes) cujo valor mais recente é maior que o
+  // valor anterior registrado no histórico — usado no painel de alertas e
+  // nas notificações nativas/e-mail/webhook.
+  ipcMain.handle('bills:getPriceIncreases', () => {
+    return getDb().prepare(`
+      SELECT b.id as bill_id, b.description, prev.amount as previous_amount, last.amount as new_amount, last.changed_at
+      FROM bills b
+      JOIN (
+        SELECT bill_id, amount, changed_at,
+               ROW_NUMBER() OVER (PARTITION BY bill_id ORDER BY changed_at DESC, rowid DESC) as rn
+        FROM bill_price_history
+      ) last ON last.bill_id = b.id AND last.rn = 1
+      JOIN (
+        SELECT bill_id, amount, changed_at,
+               ROW_NUMBER() OVER (PARTITION BY bill_id ORDER BY changed_at DESC, rowid DESC) as rn
+        FROM bill_price_history
+      ) prev ON prev.bill_id = b.id AND prev.rn = 2
+      WHERE b.recurring = 1 AND last.amount > prev.amount
+      ORDER BY last.changed_at DESC
+    `).all() as BillPriceIncrease[];
   });
 
   // Marca a conta como paga gerando o lançamento de despesa correspondente:

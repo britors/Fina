@@ -164,20 +164,22 @@ function renderAppearance(el: HTMLElement, s: Settings): void {
 }
 
 function renderNotifications(el: HTMLElement, s: Settings): void {
-  const notifBills   = s.notif_bills   !== 'false';
-  const notifBudget  = s.notif_budget  !== 'false';
-  const notifSummary = s.notif_summary === 'true';
-  const smtpEnabled  = s.smtp_enabled === 'true';
-  const smtpSecure   = s.smtp_secure === 'true';
-  const webhookEnabled = s.webhook_enabled === 'true';
+  const notifBills        = s.notif_bills        !== 'false';
+  const notifBudget       = s.notif_budget       !== 'false';
+  const notifSubscription = s.notif_subscription !== 'false';
+  const notifSummary      = s.notif_summary      === 'true';
+  const smtpEnabled       = s.smtp_enabled === 'true';
+  const smtpSecure        = s.smtp_secure === 'true';
+  const webhookEnabled    = s.webhook_enabled === 'true';
 
   el.innerHTML = `
     <div class="settings-section-label">NOTIFICAÇÕES</div>
     <div class="settings-hr"></div>
     ${[
-      { id: 'bills',   key: 'notif_bills',   label: 'Contas a vencer',      sub: 'Alerta 3 dias antes do vencimento',     val: notifBills   },
-      { id: 'budget',  key: 'notif_budget',  label: 'Orçamento excedido',   sub: 'Notifica ao ultrapassar o limite',      val: notifBudget  },
-      { id: 'summary', key: 'notif_summary', label: 'Resumo semanal',       sub: 'Relatório toda segunda-feira',          val: notifSummary },
+      { id: 'bills',        key: 'notif_bills',        label: 'Contas a vencer',           sub: 'Alerta 3 dias antes do vencimento',      val: notifBills        },
+      { id: 'budget',       key: 'notif_budget',       label: 'Orçamento excedido',        sub: 'Notifica ao ultrapassar o limite',       val: notifBudget       },
+      { id: 'subscription', key: 'notif_subscription', label: 'Assinatura aumentou de preço', sub: 'Notifica quando uma fixa/assinatura sobe de valor', val: notifSubscription },
+      { id: 'summary',      key: 'notif_summary',      label: 'Resumo semanal',            sub: 'Relatório toda segunda-feira',           val: notifSummary      },
     ].map(row => `
       <div class="settings-row">
         <div>

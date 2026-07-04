@@ -1,6 +1,6 @@
 import { invoke } from '../api';
 import { formatCurrency, getCurrentYearMonth, isCreditLikeAccountType } from '../../shared/utils';
-import type { Account, BudgetWithProgress, Debt } from '../../shared/types';
+import type { Account, BillPriceIncrease, BudgetWithProgress, Debt } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
 type CategoryExpense = { name: string; color: string; total: number };
@@ -21,16 +21,17 @@ export async function render(el: HTMLElement): Promise<void> {
   const prevDate = new Date(now.year, now.month - 2, 1);
   const prev = { month: prevDate.getMonth() + 1, year: prevDate.getFullYear() };
 
-  const [history, debts, accounts, budgets, currentCats, prevCats] = await Promise.all([
+  const [history, debts, accounts, budgets, currentCats, prevCats, priceIncreases] = await Promise.all([
     invoke<MonthRow[]>('transactions:getMonthlyHistory', 3),
     invoke<Debt[]>('debts:list'),
     invoke<Account[]>('accounts:list'),
     invoke<BudgetWithProgress[]>('budgets:list', now),
     invoke<CategoryExpense[]>('transactions:getExpensesByCategory', now),
     invoke<CategoryExpense[]>('transactions:getExpensesByCategory', prev),
+    invoke<BillPriceIncrease[]>('bills:getPriceIncreases'),
   ]);
 
-  const alerts = buildAlerts(history, debts, accounts, budgets, currentCats, prevCats);
+  const alerts = buildAlerts(history, debts, accounts, budgets, currentCats, prevCats, priceIncreases);
   const counts = {
     danger: alerts.filter(a => a.level === 'danger').length,
     warning: alerts.filter(a => a.level === 'warning').length,
@@ -65,6 +66,7 @@ function buildAlerts(
   budgets: BudgetWithProgress[],
   currentCats: CategoryExpense[],
   prevCats: CategoryExpense[],
+  priceIncreases: BillPriceIncrease[],
 ): FinancialAlert[] {
   const alerts: FinancialAlert[] = [];
   const avgIncome = avg(history.map(h => h.income));
@@ -132,6 +134,16 @@ function buildAlerts(
         icon: 'ti-target',
       });
     }
+  }
+
+  for (const inc of priceIncreases) {
+    alerts.push({
+      level: 'warning',
+      title: `Assinatura "${inc.description}" aumentou de preço`,
+      body: `Subiu de ${formatCurrency(inc.previous_amount)} para ${formatCurrency(inc.new_amount)}.`,
+      action: 'Avalie se o novo valor ainda vale a pena ou se é hora de cancelar/renegociar.',
+      icon: 'ti-trending-up',
+    });
   }
 
   const prevMap = new Map(prevCats.map(c => [c.name, c.total]));

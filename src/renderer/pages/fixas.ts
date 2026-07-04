@@ -2,7 +2,17 @@ import { invoke } from '../api';
 import { formatCurrency, formatDate } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { setTopbarActions } from '../components/topbar';
-import type { Account, BillWithCategory, Category } from '../../shared/types';
+import type { Account, BillInterval, BillPriceIncrease, BillWithCategory, Category } from '../../shared/types';
+
+const INTERVAL_LABELS: Record<BillInterval, string> = {
+  weekly:     'Semanal',
+  biweekly:   'Quinzenal',
+  monthly:    'Mensal',
+  bimonthly:  'Bimestral',
+  quarterly:  'Trimestral',
+  semiannual: 'Semestral',
+  annual:     'Anual',
+};
 
 let accounts: Account[] = [];
 let categories: Category[] = [];
@@ -18,8 +28,12 @@ export async function render(el: HTMLElement): Promise<void> {
   `);
 
   async function renderPage(): Promise<void> {
-    const all = await invoke<BillWithCategory[]>('bills:list', {});
+    const [all, priceIncreases] = await Promise.all([
+      invoke<BillWithCategory[]>('bills:list', {}),
+      invoke<BillPriceIncrease[]>('bills:getPriceIncreases'),
+    ]);
     const fixed = all.filter(b => b.recurring);
+    const increaseByBill = new Map(priceIncreases.map(i => [i.bill_id, i]));
     const monthlyTotal = fixed.reduce((sum, b) => sum + b.amount, 0);
     const nextDue = [...fixed].sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
 
@@ -61,11 +75,14 @@ export async function render(el: HTMLElement): Promise<void> {
               </tr>
             </thead>
             <tbody>
-              ${fixed.map(b => `
+              ${fixed.map(b => {
+                const increase = increaseByBill.get(b.id);
+                return `
                 <tr>
                   <td>
                     <div class="desc-main">${esc(b.description)}</div>
-                    <div class="desc-sub">${paymentLabel(b)}</div>
+                    <div class="desc-sub">${paymentLabel(b)} · ${INTERVAL_LABELS[b.recurrence_interval] ?? 'Mensal'}</div>
+                    ${increase ? `<div class="desc-sub" style="color:var(--warning)"><i class="ti ti-trending-up"></i> Subiu de ${formatCurrency(increase.previous_amount)} para ${formatCurrency(increase.new_amount)}</div>` : ''}
                   </td>
                   <td>${b.category_name ? `<span class="badge" style="background:${alpha(b.category_color!,0.12)};color:${b.category_color}">${esc(b.category_name)}</span>` : '<span style="color:var(--text-3)">—</span>'}</td>
                   <td style="color:var(--text-2)">${formatDate(b.due_date)}</td>
@@ -77,7 +94,8 @@ export async function render(el: HTMLElement): Promise<void> {
                     </div>
                   </td>
                 </tr>
-              `).join('')}
+              `;
+              }).join('')}
             </tbody>
           </table>
         </div>
@@ -138,6 +156,14 @@ function openFixedModal(bill: BillWithCategory | null, onDone: () => void): void
           </select>
         </div>
       </div>
+      <div class="form-group">
+        <label class="form-label">Intervalo de renovação</label>
+        <select class="form-ctrl" id="f-interval">
+          ${(Object.keys(INTERVAL_LABELS) as BillInterval[]).map(k =>
+            `<option value="${k}" ${(bill?.recurrence_interval ?? 'monthly') === k ? 'selected' : ''}>${INTERVAL_LABELS[k]}</option>`
+          ).join('')}
+        </select>
+      </div>
     `,
     onSave: async () => {
       const description = (document.getElementById('f-desc') as HTMLInputElement).value.trim();
@@ -145,6 +171,7 @@ function openFixedModal(bill: BillWithCategory | null, onDone: () => void): void
       const due = (document.getElementById('f-due') as HTMLInputElement).value;
       const accountId = (document.getElementById('f-account') as HTMLSelectElement).value;
       const categoryId = (document.getElementById('f-category') as HTMLSelectElement).value;
+      const interval = (document.getElementById('f-interval') as HTMLSelectElement).value as BillInterval;
 
       if (!description || !Number.isFinite(amount) || amount <= 0 || !due) {
         alert('Preencha descrição, valor e vencimento.');
@@ -159,6 +186,7 @@ function openFixedModal(bill: BillWithCategory | null, onDone: () => void): void
         account_id: accountId || null,
         category_id: categoryId || null,
         recurring: 1 as const,
+        recurrence_interval: interval,
         payments: accountId ? [{ account_id: accountId, amount }] : [],
       };
 

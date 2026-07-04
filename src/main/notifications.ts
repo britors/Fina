@@ -18,6 +18,15 @@ function alreadySent(type: string, refId: string): boolean {
   return !!row;
 }
 
+// Para eventos pontuais (não algo que se repete todo dia enquanto persistir,
+// como conta vencida): dispara uma única vez, não uma vez por dia.
+function alreadySentEver(type: string, refId: string): boolean {
+  const row = getDb()
+    .prepare(`SELECT 1 FROM notification_log WHERE type = ? AND ref_id = ?`)
+    .get(type, refId);
+  return !!row;
+}
+
 function logSent(type: string, refId: string): void {
   getDb()
     .prepare(`INSERT OR IGNORE INTO notification_log (id, type, ref_id) VALUES (?,?,?)`)
@@ -252,8 +261,9 @@ function mimeHeader(value: string): string {
 
 export function checkAndNotify(): void {
   const db = getDb();
-  const notifBills  = getSetting('notif_bills')  !== 'false';
-  const notifBudget = getSetting('notif_budget') !== 'false';
+  const notifBills        = getSetting('notif_bills')        !== 'false';
+  const notifBudget       = getSetting('notif_budget')       !== 'false';
+  const notifSubscription = getSetting('notif_subscription') !== 'false';
 
   if (notifBills) {
     // Contas a vencer em até 3 dias
@@ -318,6 +328,34 @@ export function checkAndNotify(): void {
         notify('Orçamento quase no limite', `${bud.name} está com ${Math.round(pct * 100)}% do orçamento usado`);
         logSent('budget_warn', bud.id);
       }
+    }
+  }
+
+  if (notifSubscription) {
+    const increases = db.prepare(`
+      SELECT b.id as bill_id, b.description, prev.amount as previous_amount, last.amount as new_amount, last.changed_at
+      FROM bills b
+      JOIN (
+        SELECT bill_id, amount, changed_at,
+               ROW_NUMBER() OVER (PARTITION BY bill_id ORDER BY changed_at DESC, rowid DESC) as rn
+        FROM bill_price_history
+      ) last ON last.bill_id = b.id AND last.rn = 1
+      JOIN (
+        SELECT bill_id, amount, changed_at,
+               ROW_NUMBER() OVER (PARTITION BY bill_id ORDER BY changed_at DESC, rowid DESC) as rn
+        FROM bill_price_history
+      ) prev ON prev.bill_id = b.id AND prev.rn = 2
+      WHERE b.recurring = 1 AND last.amount > prev.amount
+    `).all() as { bill_id: string; description: string; previous_amount: number; new_amount: number; changed_at: string }[];
+
+    for (const inc of increases) {
+      const refId = `${inc.bill_id}:${inc.changed_at}`;
+      if (alreadySentEver('subscription_price_increase', refId)) continue;
+      notify(
+        'Assinatura aumentou de preço',
+        `${inc.description} subiu de R$ ${inc.previous_amount.toFixed(2).replace('.', ',')} para R$ ${inc.new_amount.toFixed(2).replace('.', ',')}`,
+      );
+      logSent('subscription_price_increase', refId);
     }
   }
 }
