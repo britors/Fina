@@ -18,6 +18,7 @@ import { render as renderPatrimonio   } from './pages/patrimonio';
 import { render as renderInvestments  } from './pages/investments';
 import { render as renderJornada      } from './pages/jornada';
 import { render as renderSimuladorPatrimonio } from './pages/simuladorPatrimonio';
+import { render as renderAposentadoria } from './pages/aposentadoria';
 import { render as renderGoals        } from './pages/goals';
 import { render as renderDebts        } from './pages/debts';
 import { render as renderPlanoDividas } from './pages/planoDividas';
@@ -68,6 +69,7 @@ const ROUTES: Record<string, Route> = {
   patrimonio:   { title: 'Patrimônio',    subtitle: 'Imóveis, veículos e outros bens',             render: renderPatrimonio   },
   investments:  { title: 'Investimentos', subtitle: 'Carteira e rendimentos',                      render: renderInvestments  },
   'simulador-patrimonio': { title: 'Simulador', subtitle: 'Projeção de patrimônio futuro',          render: renderSimuladorPatrimonio },
+  'aposentadoria': { title: 'Aposentadoria', subtitle: 'Simulador de renda na aposentadoria',        render: renderAposentadoria },
   jornada:      { title: 'Jornada',       subtitle: 'Passos guiados para evoluir financeiramente',  render: renderJornada      },
   goals:        { title: 'Metas',         subtitle: 'Planejamento financeiro',                      render: renderGoals        },
   debts:        { title: 'Dívidas',       subtitle: 'Empréstimos e financiamentos',                 render: renderDebts        },

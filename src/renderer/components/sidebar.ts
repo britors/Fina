@@ -64,6 +64,7 @@ const NAV: NavGroup[] = [
       { route: 'investments', label: 'Investimentos', icon: 'ti-trending-up' },
       { route: 'goals',       label: 'Metas',         icon: 'ti-target'      },
       { route: 'simulador-patrimonio', label: 'Simulador', icon: 'ti-chart-area-line' },
+      { route: 'aposentadoria', label: 'Aposentadoria', icon: 'ti-beach' },
       { route: 'jornada',     label: 'Jornada',       icon: 'ti-map-2'       },
     ],
   },
