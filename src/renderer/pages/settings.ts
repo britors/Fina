@@ -404,9 +404,10 @@ const AUTOBACKUP_TRIGGERS: { value: string; label: string }[] = [
   { value: 'monthly',  label: 'Mensalmente' },
 ];
 
-function renderData(el: HTMLElement, s: Settings, dbPath: string): void {
+async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise<void> {
   const trigger = s.autobackup_trigger ?? 'off';
   const folder  = s.autobackup_folder ?? '';
+  const bg = await invoke<{ supported: boolean; enabled: boolean; mechanism: string }>('backgroundService:status');
 
   el.innerHTML = `
     <div class="settings-section-label">BANCO DE DADOS</div>
@@ -449,6 +450,24 @@ function renderData(el: HTMLElement, s: Settings, dbPath: string): void {
         <button class="btn btn-ghost btn-sm" id="btn-autobackup-folder">Escolher pasta</button>
       </div>
     </div>
+
+    ${bg.supported ? `
+      <div class="settings-section-label" style="margin-top:20px">SERVIÇO EM SEGUNDO PLANO</div>
+      <div class="settings-hr"></div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Rodar tarefas sem o app aberto</div>
+          <div class="settings-row-sub">Gera recorrências e envia alertas (e-mail/webhook) periodicamente mesmo com o Fina fechado, via ${esc(bg.mechanism)}. Não funciona se a criptografia do banco estiver ativada (precisa da senha).</div>
+        </div>
+        <div class="settings-row-right">
+          <label class="toggle">
+            <input type="checkbox" id="bg-service-enabled" ${bg.enabled ? 'checked' : ''}>
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>
+        </div>
+      </div>
+    ` : ''}
   `;
 
   el.querySelector('#btn-export')?.addEventListener('click', async () => {
@@ -483,6 +502,20 @@ function renderData(el: HTMLElement, s: Settings, dbPath: string): void {
     await invoke('settings:set', { key: 'autobackup_folder', value: chosen });
     s.autobackup_folder = chosen;
     renderData(el, s, dbPath);
+  });
+
+  el.querySelector<HTMLInputElement>('#bg-service-enabled')?.addEventListener('change', async (e) => {
+    const input = e.target as HTMLInputElement;
+    const wantEnabled = input.checked;
+    input.disabled = true;
+    try {
+      await invoke(wantEnabled ? 'backgroundService:enable' : 'backgroundService:disable');
+    } catch (err) {
+      input.checked = !wantEnabled;
+      alert(err instanceof Error ? err.message : 'Não foi possível alterar o serviço em segundo plano.');
+    } finally {
+      input.disabled = false;
+    }
   });
 }
 
