@@ -4,21 +4,28 @@ Aplicativo desktop para controle de finanças pessoais, construído com **Electr
 
 O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
 
-## Destaques da versão 10.5
+## Destaques da versão 11.0
 
+- Criptografia do banco de dados local com senha mestre.
+- Sincronização entre dispositivos via arquivo .fin numa pasta de nuvem própria (Dropbox, Google Drive etc.).
+- Serviço em segundo plano (Linux/Windows) para gerar recorrências e enviar alertas sem o app aberto.
+- Contas em moeda estrangeira (USD/EUR) com conversão automática de saldo.
+- Lançamento automático via OCR de comprovante/nota fiscal, processado 100% localmente.
+- Canal de alertas por webhook, além de e-mail e notificação nativa.
+- Detecção de aumento de preço em assinaturas e recorrências com intervalos flexíveis (semanal, trimestral, anual etc.).
+- Modo envelope no orçamento, com saldo não gasto transportado para o mês seguinte.
+- Simulador de aposentadoria/previdência.
 - Menu lateral reorganizado em grupos e submenus.
 - Manual do usuário dentro do aplicativo.
 - Diagnóstico financeiro com classificação da situação atual.
 - Plano mensal sugerido com direcionamento da margem disponível.
 - Plano de saída das dívidas com comparação de estratégias.
 - Reserva de emergência com cálculo de objetivo e contribuição mensal.
-- Alertas financeiros inteligentes.
 - Score de saúde financeira e revisão semanal para acompanhar evolução.
 - Decisões sugeridas, renegociação de dívidas e objetivos automáticos.
 - Simulador de patrimônio futuro.
 - Jornada financeira guiada.
 - Modo família/casal para separar lançamentos por responsável.
-- Configuração de SMTP para envio de alertas por e-mail.
 - Assistente IA com suporte a ChatGPT/OpenAI e Gemini/Google, desativado por padrão e com envio apenas de dados agregados mediante consentimento.
 
 ---
