@@ -407,6 +407,7 @@ const AUTOBACKUP_TRIGGERS: { value: string; label: string }[] = [
 async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise<void> {
   const trigger = s.autobackup_trigger ?? 'off';
   const folder  = s.autobackup_folder ?? '';
+  const bg = await invoke<{ supported: boolean; enabled: boolean; mechanism: string }>('backgroundService:status');
   const syncEnabled = s.sync_enabled === 'true';
   const syncFolder  = s.sync_folder ?? '';
   const sync = await invoke<{ remoteAvailable: boolean; remoteNewer: boolean; remoteMtime: number | null }>('sync:status');
@@ -484,6 +485,24 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
       <button class="btn btn-secondary" id="btn-sync-push">Enviar agora</button>
       <button class="btn btn-secondary" id="btn-sync-pull">Receber agora</button>
     </div>
+
+    ${bg.supported ? `
+      <div class="settings-section-label" style="margin-top:20px">SERVIÇO EM SEGUNDO PLANO</div>
+      <div class="settings-hr"></div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Rodar tarefas sem o app aberto</div>
+          <div class="settings-row-sub">Gera recorrências e envia alertas (e-mail/webhook) periodicamente mesmo com o Fina fechado, via ${esc(bg.mechanism)}. Não funciona se a criptografia do banco estiver ativada (precisa da senha).</div>
+        </div>
+        <div class="settings-row-right">
+          <label class="toggle">
+            <input type="checkbox" id="bg-service-enabled" ${bg.enabled ? 'checked' : ''}>
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>
+        </div>
+      </div>
+    ` : ''}
   `;
 
   el.querySelector('#btn-export')?.addEventListener('click', async () => {
@@ -559,6 +578,20 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
       alert('Sincronização recebida. O aplicativo será reiniciado.');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Não foi possível receber a sincronização.');
+    }
+  });
+
+  el.querySelector<HTMLInputElement>('#bg-service-enabled')?.addEventListener('change', async (e) => {
+    const input = e.target as HTMLInputElement;
+    const wantEnabled = input.checked;
+    input.disabled = true;
+    try {
+      await invoke(wantEnabled ? 'backgroundService:enable' : 'backgroundService:disable');
+    } catch (err) {
+      input.checked = !wantEnabled;
+      alert(err instanceof Error ? err.message : 'Não foi possível alterar o serviço em segundo plano.');
+    } finally {
+      input.disabled = false;
     }
   });
 }

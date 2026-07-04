@@ -28,11 +28,19 @@ import { initUpdater } from './updater';
 import { startNotificationScheduler } from './notifications';
 import { generateRecurrences } from './recurrences';
 import { runAutoBackup, startAutoBackupScheduler } from './autobackup';
+import { runBackgroundTasksAndExit } from './backgroundRunner';
+import { registerBackgroundServiceHandlers } from './ipc/backgroundService';
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
   process.exit(0);
 }
+
+// Invocado pelo timer do systemd (Linux) ou pela Tarefa Agendada do Windows
+// (ver src/main/ipc/backgroundService.ts): roda as tarefas periódicas e
+// encerra, sem nunca criar uma janela nem registrar os handlers de IPC da
+// interface normal.
+const isBackgroundRun = process.argv.includes('--background-tasks');
 
 function loadAppIcon(): Electron.NativeImage | undefined {
   const candidates = [
@@ -131,6 +139,7 @@ function registerHandlers(): void {
   registerAIHandlers();
   registerOCRHandlers();
   registerSecurityHandlers();
+  registerBackgroundServiceHandlers();
   registerSyncHandlers();
 
   ipcMain.handle('db:path', () => dbPath());
@@ -195,6 +204,11 @@ function registerHandlers(): void {
 }
 
 app.whenReady().then(async () => {
+  if (isBackgroundRun) {
+    await runBackgroundTasksAndExit();
+    return;
+  }
+
   const splash = createSplash();
   const t0 = Date.now();
 
