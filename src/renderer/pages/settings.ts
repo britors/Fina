@@ -408,6 +408,9 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
   const trigger = s.autobackup_trigger ?? 'off';
   const folder  = s.autobackup_folder ?? '';
   const bg = await invoke<{ supported: boolean; enabled: boolean; mechanism: string }>('backgroundService:status');
+  const syncEnabled = s.sync_enabled === 'true';
+  const syncFolder  = s.sync_folder ?? '';
+  const sync = await invoke<{ remoteAvailable: boolean; remoteNewer: boolean; remoteMtime: number | null }>('sync:status');
 
   el.innerHTML = `
     <div class="settings-section-label">BANCO DE DADOS</div>
@@ -449,6 +452,38 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
       <div class="settings-row-right">
         <button class="btn btn-ghost btn-sm" id="btn-autobackup-folder">Escolher pasta</button>
       </div>
+    </div>
+
+    <div class="settings-section-label" style="margin-top:20px">SINCRONIZAÇÃO ENTRE DISPOSITIVOS</div>
+    <div class="settings-hr"></div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Ativar sincronização</div>
+        <div class="settings-row-sub">Usa uma pasta sincronizada por um serviço de nuvem próprio (Dropbox, Google Drive etc.) para levar seus dados entre dispositivos — sem servidor do Fina.</div>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle">
+          <input type="checkbox" id="sync-enabled" ${syncEnabled ? 'checked' : ''}>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div><div class="settings-row-label">Pasta sincronizada</div>
+           <div class="settings-row-sub" style="word-break:break-all;max-width:380px">${syncFolder ? esc(syncFolder) : 'Nenhuma pasta selecionada'}</div></div>
+      <div class="settings-row-right">
+        <button class="btn btn-ghost btn-sm" id="btn-sync-folder">Escolher pasta</button>
+      </div>
+    </div>
+    ${sync.remoteNewer ? `
+      <div class="empty" style="margin:12px 0;padding:16px;text-align:left">
+        <p style="margin:0"><i class="ti ti-refresh"></i> Há uma versão mais recente na pasta sincronizada${sync.remoteMtime ? ` (${new Date(sync.remoteMtime).toLocaleString('pt-BR')})` : ''}. Clique em "Receber" para importá-la.</p>
+      </div>
+    ` : ''}
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-secondary" id="btn-sync-push">Enviar agora</button>
+      <button class="btn btn-secondary" id="btn-sync-pull">Receber agora</button>
     </div>
 
     ${bg.supported ? `
@@ -502,6 +537,48 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
     await invoke('settings:set', { key: 'autobackup_folder', value: chosen });
     s.autobackup_folder = chosen;
     renderData(el, s, dbPath);
+  });
+
+  el.querySelector<HTMLInputElement>('#sync-enabled')?.addEventListener('change', async (e) => {
+    const checked = (e.target as HTMLInputElement).checked;
+    if (checked && !s.sync_folder) {
+      alert('Escolha uma pasta sincronizada antes de ativar.');
+      (e.target as HTMLInputElement).checked = false;
+      return;
+    }
+    await invoke('settings:set', { key: 'sync_enabled', value: checked ? 'true' : 'false' });
+    s.sync_enabled = checked ? 'true' : 'false';
+    renderData(el, s, dbPath);
+  });
+
+  el.querySelector('#btn-sync-folder')?.addEventListener('click', async () => {
+    const chosen = await invoke<string | null>('backup:chooseFolder');
+    if (!chosen) return;
+    await invoke('settings:set', { key: 'sync_folder', value: chosen });
+    s.sync_folder = chosen;
+    renderData(el, s, dbPath);
+  });
+
+  el.querySelector('#btn-sync-push')?.addEventListener('click', async () => {
+    if (!s.sync_folder) { alert('Escolha uma pasta sincronizada antes.'); return; }
+    try {
+      await invoke('sync:push', s.sync_folder);
+      alert('Dados enviados para a pasta sincronizada.');
+      renderData(el, s, dbPath);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível enviar a sincronização.');
+    }
+  });
+
+  el.querySelector('#btn-sync-pull')?.addEventListener('click', async () => {
+    if (!s.sync_folder) { alert('Escolha uma pasta sincronizada antes.'); return; }
+    if (!confirm('Receber a versão sincronizada substituirá TODOS os dados atuais deste dispositivo. Deseja continuar?')) return;
+    try {
+      await invoke('sync:pull', s.sync_folder);
+      alert('Sincronização recebida. O aplicativo será reiniciado.');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível receber a sincronização.');
+    }
   });
 
   el.querySelector<HTMLInputElement>('#bg-service-enabled')?.addEventListener('change', async (e) => {

@@ -67,6 +67,23 @@ async function fetchAll(): Promise<MarketQuote[]> {
   return quotes;
 }
 
+// Cotação de USD/EUR para BRL, reaproveitando o mesmo cache do painel de
+// Mercado (só busca de novo se o cache tiver expirado). Usado para converter
+// o saldo de contas em moeda estrangeira.
+export async function getExchangeRate(currency: 'USD' | 'EUR'): Promise<number | null> {
+  const symbol = `${currency}BRL`;
+  const isFresh = cache && Date.now() - cache.fetched_at < CACHE_TTL_MS;
+
+  if (!isFresh) {
+    try {
+      const quotes = await fetchAll();
+      if (quotes.length > 0) cache = { quotes, fetched_at: Date.now() };
+    } catch { /* usa o cache existente, se houver */ }
+  }
+
+  return cache?.quotes.find(q => q.symbol === symbol)?.price ?? null;
+}
+
 export function registerMarketHandlers(): void {
   ipcMain.handle('market:getQuotes', async (): Promise<MarketQuote[]> => {
     const now = Date.now();
