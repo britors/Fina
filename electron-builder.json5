@@ -14,7 +14,7 @@
     "package.json"
   ],
 
-  // Rebuild de módulos nativos (better-sqlite3) para o Electron alvo
+  // Rebuild de módulos nativos (better-sqlite3-multiple-ciphers) para o Electron alvo
   npmRebuild: true,
 
   // Feed do electron-updater (usado apenas no Windows — ver src/main/updater.ts)
