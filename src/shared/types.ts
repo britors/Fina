@@ -89,6 +89,7 @@ export interface Bill {
   account_id: string | null;
   category_id: string | null;
   recurring: 0 | 1;
+  recurrence_interval: BillInterval;
   created_at: string;
   updated_at: string;
 }
@@ -98,6 +99,21 @@ export interface BillWithCategory extends Bill {
   category_icon: string | null;
   category_color: string | null;
   payments?: PaymentSplitWithAccount[];
+}
+
+export interface BillPriceHistory {
+  id: string;
+  bill_id: string;
+  amount: number;
+  changed_at: string;
+}
+
+export interface BillPriceIncrease {
+  bill_id: string;
+  description: string;
+  previous_amount: number;
+  new_amount: number;
+  changed_at: string;
 }
 
 export interface TransactionFilters {
