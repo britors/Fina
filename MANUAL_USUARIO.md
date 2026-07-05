@@ -61,6 +61,12 @@ Mostra uma previsão para os próximos 30 dias. A previsão considera o saldo at
 
 Se houver risco de saldo negativo, a tela exibe um alerta.
 
+### Previsão até o fim do mês
+
+Mostra o saldo projetado especificamente até o último dia do mês atual, a partir do saldo de hoje, considerando lançamentos futuros já confirmados e contas a pagar pendentes com vencimento no período.
+
+Ao lado do saldo projetado, a tela lista os `Principais fatores` — os lançamentos e contas futuras de maior valor que mais influenciam essa projeção, com data e valor. A previsão é recalculada automaticamente conforme novos lançamentos entram.
+
 ### Contas a pagar
 
 Mostra contas próximas do vencimento. Cada item exibe descrição, data de vencimento, situação e valor.

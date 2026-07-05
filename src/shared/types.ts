@@ -195,6 +195,20 @@ export interface ForecastPoint {
   balance: number;
 }
 
+export interface ForecastFactor {
+  label: string;
+  date: string;
+  amount: number;
+  type: 'income' | 'expense';
+}
+
+export interface EndOfMonthForecast {
+  points: ForecastPoint[];
+  projectedBalance: number;
+  currentBalance: number;
+  factors: ForecastFactor[];
+}
+
 // ── Importação de extratos ────────────────────────────────────────────────────
 
 export interface ImportPreviewRow {

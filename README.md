@@ -11,6 +11,7 @@ O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, pl
 - Histórico local de perguntas e respostas do Assistente IA, para consulta e comparação mês a mês, sem envio de dado novo a terceiros.
 - Botão "Detalhar com IA" em cada decisão sugerida, com passo a passo prático gerado sob consentimento explícito por ação.
 - Botão "Gerar rascunho com IA" na tela Renegociação, com rascunho de mensagem de negociação sem enviar nome do credor nem descrição da dívida.
+- Previsão de saldo até o fim do mês no Dashboard, com os principais fatores (lançamentos e contas futuras) que influenciam a projeção.
 
 ## Destaques da versão 11.3
 
@@ -143,7 +144,7 @@ npm start
 
 | Módulo | Descrição |
 |---|---|
-| Dashboard | Resumo financeiro, previsão de saldo 30 dias, indicadores de mercado |
+| Dashboard | Resumo financeiro, previsão de saldo 30 dias e até o fim do mês (com principais fatores), indicadores de mercado |
 | Diagnóstico | Leitura da situação financeira, classificação e próximos passos |
 | Score | Pontuação de saúde financeira baseada em sobra mensal, reserva, dívidas, orçamento e gastos variáveis |
 | Revisão semanal | Checklist financeiro da semana com resumo dos últimos 7 dias |

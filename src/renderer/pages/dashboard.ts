@@ -1,7 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate, getDaysUntilDue, isCreditLikeAccountType } from '../../shared/utils';
 import { createDonut, createAreaChart } from '../components/charts';
-import type { Account, Bill, TransactionWithDetails, MonthlySummary, ForecastPoint, InvestmentSummary, Goal, MarketQuote } from '../../shared/types';
+import type { Account, Bill, TransactionWithDetails, MonthlySummary, ForecastPoint, EndOfMonthForecast, InvestmentSummary, Goal, MarketQuote } from '../../shared/types';
 
 function monthLabel(month: number, year: number): string {
   return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
@@ -28,13 +28,14 @@ export async function render(el: HTMLElement): Promise<void> {
       ? monthLabel(fromMonth, fromYear)
       : `${monthLabel(fromMonth, fromYear)} – ${monthLabel(toMonth, toYear)}`;
 
-    const [accounts, summary, recent, bills, expenses, forecast, invSummary, assetSummary, goals, debtSummary, quotes] = await Promise.all([
+    const [accounts, summary, recent, bills, expenses, forecast, endOfMonthForecast, invSummary, assetSummary, goals, debtSummary, quotes] = await Promise.all([
       invoke<Account[]>('accounts:list'),
       invoke<MonthlySummary>('transactions:getSummaryRange', { dateFrom, dateTo }),
       invoke<TransactionWithDetails[]>('transactions:list', { dateFrom, dateTo, limit: 5 }),
       invoke<Bill[]>('bills:getUpcoming', 30),
       invoke<{ name: string; color: string; total: number }[]>('transactions:getExpensesByCategoryRange', { dateFrom, dateTo }),
       invoke<ForecastPoint[]>('forecast:get', 30),
+      invoke<EndOfMonthForecast>('forecast:endOfMonth'),
       invoke<InvestmentSummary>('investments:getSummary'),
       invoke<{ total: number }>('assets:getSummary'),
       invoke<Goal[]>('goals:list'),
@@ -155,6 +156,38 @@ export async function render(el: HTMLElement): Promise<void> {
       <div class="card-hr"></div>
       <div class="card-body" style="padding:12px 16px">
         ${createAreaChart(forecast, 820, 140)}
+      </div>
+    </div>
+
+    <!-- Previsão até o fim do mês -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <span>Previsão até o fim do mês</span>
+        ${endOfMonthForecast.projectedBalance < 0
+          ? `<span style="color:var(--danger);font-size:0.8rem"><i class="ti ti-alert-triangle"></i> Saldo negativo previsto</span>`
+          : ''}
+      </div>
+      <div class="card-hr"></div>
+      <div class="card-body" style="display:flex;gap:24px;flex-wrap:wrap">
+        <div style="min-width:160px">
+          <div class="stat-label">Saldo projetado</div>
+          <div class="stat-value" style="color:${endOfMonthForecast.projectedBalance >= 0 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(endOfMonthForecast.projectedBalance)}</div>
+          <div class="stat-sub">a partir de ${formatCurrency(endOfMonthForecast.currentBalance)} hoje</div>
+        </div>
+        <div style="flex:1;min-width:240px">
+          <div class="stat-label" style="margin-bottom:8px">Principais fatores</div>
+          ${endOfMonthForecast.factors.length === 0
+            ? `<div style="color:var(--text-3);font-size:0.82rem">Nenhum lançamento ou conta futura no período.</div>`
+            : `<div style="display:flex;flex-direction:column;gap:6px">
+                ${endOfMonthForecast.factors.map(f => `
+                  <div style="display:flex;justify-content:space-between;gap:12px;font-size:0.82rem">
+                    <span style="color:var(--text-2)">${esc(f.label)} · ${formatDate(f.date)}</span>
+                    <strong style="color:${f.type === 'income' ? 'var(--accent)' : 'var(--danger)'}">${f.type === 'income' ? '+' : ''}${formatCurrency(f.amount)}</strong>
+                  </div>
+                `).join('')}
+              </div>`
+          }
+        </div>
       </div>
     </div>
 
