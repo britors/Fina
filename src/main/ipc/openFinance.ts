@@ -3,7 +3,21 @@ import { randomUUID, createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getDb } from '../database';
-import type { AccountType, BalanceAlertSettings, BalanceDropAlert, CashFlowFactor, CashFlowForecast, CashFlowWeek, ConsolidatedBalance, TransactionType } from '../../shared/types';
+import type {
+  AccountType,
+  BalanceAlertSettings,
+  BalanceDropAlert,
+  CashFlowFactor,
+  CashFlowForecast,
+  CashFlowWeek,
+  ConsolidatedBalance,
+  OpenFinanceConnectionInstitution,
+  OpenFinanceConnectionStatus,
+  OpenFinanceLinkedAccount,
+  OpenFinanceOverview,
+  OpenFinanceProviderOverview,
+  TransactionType,
+} from '../../shared/types';
 
 type OpenFinanceProvider = 'pluggy' | 'belvo' | 'klavi';
 
@@ -45,6 +59,16 @@ interface SyncOptions {
   dateTo?: string;
 }
 
+interface ConnectionRow {
+  provider: OpenFinanceProvider;
+  connection_id: string;
+  institution_name: string | null;
+  status: OpenFinanceConnectionStatus;
+  products: string | null;
+  last_sync_at: string | null;
+  last_error: string | null;
+}
+
 type RemoteAccount = {
   id: string;
   name: string;
@@ -64,6 +88,11 @@ type RemoteTransaction = {
 };
 
 const PROVIDERS: OpenFinanceProvider[] = ['pluggy', 'belvo', 'klavi'];
+const PROVIDER_NAMES: Record<OpenFinanceProvider, string> = {
+  pluggy: 'Pluggy',
+  belvo: 'Belvo',
+  klavi: 'Klavi',
+};
 
 function secretsPath(): string {
   return path.join(app.getPath('userData'), 'open-finance-secrets.json');
@@ -150,6 +179,148 @@ function settings(): OpenFinanceSettings {
   return {
     encryptionAvailable: safeStorage.isEncryptionAvailable(),
     providers,
+  };
+}
+
+function maskConnectionId(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length <= 8) return trimmed;
+  return `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}`;
+}
+
+function providerHasCredentials(provider: OpenFinanceProvider, providerSettings: ProviderSettings): boolean {
+  if (provider === 'klavi') return providerSettings.hasApiKey;
+  return providerSettings.hasClientId && providerSettings.hasClientSecret;
+}
+
+function providerStatus(
+  provider: OpenFinanceProvider,
+  providerSettings: ProviderSettings,
+  hasCredentials: boolean,
+  linkedAccounts: OpenFinanceLinkedAccount[],
+  connection: ConnectionRow | undefined,
+): { status: OpenFinanceConnectionStatus; label: string } {
+  if (!providerSettings.enabled) return { status: 'disabled', label: 'Inativo' };
+  if (provider !== 'pluggy') return { status: 'unsupported', label: 'Credenciais preparadas' };
+  if (!hasCredentials || !providerSettings.connectionId.trim()) return { status: 'incomplete', label: 'Configuração incompleta' };
+  if (connection?.last_error) return { status: 'incomplete', label: 'Erro na última sincronização' };
+  if (linkedAccounts.length === 0) return { status: 'pending', label: 'Pendente de sincronização' };
+  return { status: 'active', label: 'Ativo' };
+}
+
+function listConnectionRows(): ConnectionRow[] {
+  return getDb().prepare(`
+    SELECT provider, connection_id, institution_name, status, products, last_sync_at, last_error
+    FROM openfinance_connections
+    ORDER BY updated_at DESC
+  `).all() as ConnectionRow[];
+}
+
+function connectionFor(
+  connections: ConnectionRow[],
+  provider: OpenFinanceProvider,
+  connectionId: string,
+): ConnectionRow | undefined {
+  const trimmed = connectionId.trim();
+  if (!trimmed) return connections.find(connection => connection.provider === provider);
+  return connections.find(connection => connection.provider === provider && connection.connection_id === trimmed);
+}
+
+function upsertConnection(data: {
+  provider: OpenFinanceProvider;
+  connectionId: string;
+  institutionName?: string | null;
+  status: OpenFinanceConnectionStatus;
+  products?: string[] | null;
+  lastSyncAt?: string | null;
+  lastError?: string | null;
+}): void {
+  const connectionId = data.connectionId.trim();
+  if (!connectionId) return;
+  getDb().prepare(`
+    INSERT INTO openfinance_connections (
+      id, provider, connection_id, institution_name, status, products, last_sync_at, last_error
+    ) VALUES (?,?,?,?,?,?,?,?)
+    ON CONFLICT(provider, connection_id) DO UPDATE SET
+      institution_name=COALESCE(excluded.institution_name, openfinance_connections.institution_name),
+      status=excluded.status,
+      products=COALESCE(excluded.products, openfinance_connections.products),
+      last_sync_at=COALESCE(excluded.last_sync_at, openfinance_connections.last_sync_at),
+      last_error=excluded.last_error,
+      updated_at=datetime('now')
+  `).run(
+    randomUUID(),
+    data.provider,
+    connectionId,
+    data.institutionName ?? null,
+    data.status,
+    data.products ? JSON.stringify(data.products) : null,
+    data.lastSyncAt ?? null,
+    data.lastError ?? null,
+  );
+}
+
+function groupInstitutions(accounts: OpenFinanceLinkedAccount[]): OpenFinanceConnectionInstitution[] {
+  const groups = new Map<string, OpenFinanceConnectionInstitution>();
+  for (const account of accounts) {
+    const name = account.bank_name ?? 'Outras conexões';
+    if (!groups.has(name)) groups.set(name, { name, totalBalance: 0, accounts: [] });
+    const group = groups.get(name)!;
+    group.totalBalance += account.balance;
+    group.accounts.push(account);
+  }
+
+  return [...groups.values()]
+    .map(group => ({
+      ...group,
+      totalBalance: Math.round(group.totalBalance * 100) / 100,
+      accounts: group.accounts.sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getOverview(): OpenFinanceOverview {
+  const s = settings();
+  const connections = listConnectionRows();
+  const rows = getDb().prepare(`
+    SELECT id, name, type, bank_name, balance, credit_limit, openfinance_provider, openfinance_id
+    FROM accounts
+    WHERE openfinance_provider IS NOT NULL
+    ORDER BY openfinance_provider, bank_name, name
+  `).all() as OpenFinanceLinkedAccount[];
+
+  const providers: OpenFinanceProviderOverview[] = PROVIDERS.map(provider => {
+    const providerSettings = s.providers[provider];
+    const accounts = rows.filter(account => account.openfinance_provider === provider);
+    const hasCredentials = providerHasCredentials(provider, providerSettings);
+    const connection = connectionFor(connections, provider, providerSettings.connectionId);
+    const { status, label } = providerStatus(provider, providerSettings, hasCredentials, accounts, connection);
+    const institutions = groupInstitutions(accounts);
+    const totalBalance = Math.round(accounts.reduce((sum, account) => sum + account.balance, 0) * 100) / 100;
+
+    return {
+      provider,
+      name: PROVIDER_NAMES[provider],
+      enabled: providerSettings.enabled,
+      supportedSync: provider === 'pluggy',
+      hasCredentials,
+      hasConnectionId: !!providerSettings.connectionId.trim(),
+      status,
+      statusLabel: label,
+      connectionIdMasked: maskConnectionId(providerSettings.connectionId),
+      lastSyncAt: connection?.last_sync_at ?? null,
+      lastError: connection?.last_error ?? null,
+      institutions,
+      totalBalance,
+      accountCount: accounts.length,
+    };
+  });
+
+  return {
+    providers,
+    totalBalance: Math.round(rows.reduce((sum, account) => sum + account.balance, 0) * 100) / 100,
+    accountCount: rows.length,
   };
 }
 
@@ -262,6 +433,8 @@ function getCashFlowForecast(weeksAhead = 8): CashFlowForecast {
 export function registerOpenFinanceHandlers(): void {
   ipcMain.handle('openFinance:getSettings', () => settings());
 
+  ipcMain.handle('openFinance:getOverview', () => getOverview());
+
   ipcMain.handle('openFinance:getBalanceAlertSettings', () => getBalanceAlertSettings());
 
   ipcMain.handle('openFinance:saveBalanceAlertSettings', (_e, data: BalanceAlertSettings) => saveBalanceAlertSettings(data));
@@ -274,6 +447,7 @@ export function registerOpenFinanceHandlers(): void {
 
   ipcMain.handle('openFinance:saveProvider', (_e, data: SaveProviderPayload) => {
     assertProvider(data.provider);
+    const connectionId = data.connectionId?.trim() ?? '';
     setSettings({
       [settingKey(data.provider, 'enabled')]: data.enabled ? 'true' : 'false',
       [settingKey(data.provider, 'sandbox')]: data.sandbox ? 'true' : 'false',
@@ -281,7 +455,15 @@ export function registerOpenFinanceHandlers(): void {
   saveSecret(data.provider, 'clientId', data.clientId);
   saveSecret(data.provider, 'clientSecret', data.clientSecret);
   saveSecret(data.provider, 'apiKey', data.apiKey);
-    setSettings({ [settingKey(data.provider, 'connection_id')]: data.connectionId?.trim() ?? '' });
+    setSettings({ [settingKey(data.provider, 'connection_id')]: connectionId });
+    if (data.enabled && connectionId) {
+      upsertConnection({
+        provider: data.provider,
+        connectionId,
+        status: data.provider === 'pluggy' ? 'pending' : 'unsupported',
+        products: data.provider === 'pluggy' ? ['accounts', 'transactions'] : null,
+      });
+    }
     return settings();
   });
 
@@ -289,6 +471,20 @@ export function registerOpenFinanceHandlers(): void {
     assertProvider(provider);
     clearProviderSecrets(provider);
     return settings();
+  });
+
+  ipcMain.handle('openFinance:disableProvider', (_e, provider: string) => {
+    assertProvider(provider);
+    const connectionId = providerConnectionId(provider);
+    clearProviderSecrets(provider);
+    setSettings({
+      [settingKey(provider, 'enabled')]: 'false',
+      [settingKey(provider, 'connection_id')]: '',
+    });
+    if (connectionId) {
+      upsertConnection({ provider, connectionId, status: 'disabled' });
+    }
+    return getOverview();
   });
 
   ipcMain.handle('openFinance:testProvider', async (_e, provider: string) => {
@@ -568,42 +764,62 @@ async function syncPluggy(options: SyncOptions = {}): Promise<SyncResult> {
   const itemId = providerConnectionId('pluggy');
   if (!itemId) throw new Error('Informe o Item ID da Pluggy antes de sincronizar.');
 
-  const apiKey = await pluggyApiKey();
-  const remoteAccounts = await loadPluggyAccounts(apiKey, itemId);
-  const accountMap = new Map<string, string>();
-  let accountsCreated = 0;
-  let accountsUpdated = 0;
-  let transactionsImported = 0;
-  let transactionsSkipped = 0;
+  try {
+    const apiKey = await pluggyApiKey();
+    const remoteAccounts = await loadPluggyAccounts(apiKey, itemId);
+    const accountMap = new Map<string, string>();
+    let accountsCreated = 0;
+    let accountsUpdated = 0;
+    let transactionsImported = 0;
+    let transactionsSkipped = 0;
 
-  // Atualiza saldos e descobre contas novas sempre, independente do filtro
-  // de conta abaixo — é uma chamada única e leve, e mantém os saldos em dia.
-  // Também registra um snapshot do saldo a cada sync, para permitir detectar
-  // quedas bruscas mais tarde (accounts.balance só guarda o valor atual).
-  const db = getDb();
-  db.transaction(() => {
-    for (const remote of remoteAccounts) {
-      const local = upsertAccount(remote);
-      accountMap.set(remote.id, local.id);
-      if (local.created) accountsCreated++;
-      else accountsUpdated++;
-      recordBalanceSnapshot(local.id, remote.balance);
-    }
-  })();
-
-  for (const remote of remoteAccounts) {
-    const localAccountId = accountMap.get(remote.id);
-    if (!localAccountId) continue;
-    if (options.accountId && options.accountId !== localAccountId) continue;
-
-    const transactions = await loadPluggyTransactions(apiKey, remote, options.dateFrom, options.dateTo);
+    // Atualiza saldos e descobre contas novas sempre, independente do filtro
+    // de conta abaixo — é uma chamada única e leve, e mantém os saldos em dia.
+    // Também registra um snapshot do saldo a cada sync, para permitir detectar
+    // quedas bruscas mais tarde (accounts.balance só guarda o valor atual).
+    const db = getDb();
     db.transaction(() => {
-      for (const tx of transactions) {
-        if (importTransaction(tx, localAccountId)) transactionsImported++;
-        else transactionsSkipped++;
+      for (const remote of remoteAccounts) {
+        const local = upsertAccount(remote);
+        accountMap.set(remote.id, local.id);
+        if (local.created) accountsCreated++;
+        else accountsUpdated++;
+        recordBalanceSnapshot(local.id, remote.balance);
       }
     })();
-  }
 
-  return { provider: 'pluggy', accountsCreated, accountsUpdated, transactionsImported, transactionsSkipped };
+    for (const remote of remoteAccounts) {
+      const localAccountId = accountMap.get(remote.id);
+      if (!localAccountId) continue;
+      if (options.accountId && options.accountId !== localAccountId) continue;
+
+      const transactions = await loadPluggyTransactions(apiKey, remote, options.dateFrom, options.dateTo);
+      db.transaction(() => {
+        for (const tx of transactions) {
+          if (importTransaction(tx, localAccountId)) transactionsImported++;
+          else transactionsSkipped++;
+        }
+      })();
+    }
+
+    upsertConnection({
+      provider: 'pluggy',
+      connectionId: itemId,
+      institutionName: remoteAccounts.find(account => account.bankName)?.bankName ?? null,
+      status: 'active',
+      products: ['accounts', 'transactions'],
+      lastSyncAt: new Date().toISOString(),
+      lastError: null,
+    });
+
+    return { provider: 'pluggy', accountsCreated, accountsUpdated, transactionsImported, transactionsSkipped };
+  } catch (err) {
+    upsertConnection({
+      provider: 'pluggy',
+      connectionId: itemId,
+      status: 'incomplete',
+      lastError: err instanceof Error ? err.message : 'Erro desconhecido na sincronização.',
+    });
+    throw err;
+  }
 }

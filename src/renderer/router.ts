@@ -25,6 +25,7 @@ import { render as renderPlanoDividas } from './pages/planoDividas';
 import { render as renderRenegociacao } from './pages/renegociacao';
 import { render as renderReserva      } from './pages/reserva';
 import { render as renderMarket       } from './pages/market';
+import { render as renderOpenFinance  } from './pages/openFinance';
 import { render as renderIRPF         } from './pages/irpf';
 import { render as renderManual       } from './pages/manual';
 import { setActiveRoute               } from './components/sidebar';
@@ -77,6 +78,7 @@ const ROUTES: Record<string, Route> = {
   renegociacao: { title: 'Renegociação', subtitle: 'Prioridades e propostas para dívidas',            render: renderRenegociacao },
   reserva:      { title: 'Reserva',       subtitle: 'Proteção para emergências',                     render: renderReserva      },
   market:       { title: 'Mercado',       subtitle: 'Câmbio, bolsas e indicadores',                 render: renderMarket       },
+  openfinance:  { title: 'Open Finance',  subtitle: 'Instituições, contas e conexões ativas',        render: renderOpenFinance  },
   irpf:         { title: 'IRPF',          subtitle: 'Informe de rendimentos para declaração',        render: renderIRPF         },
   manual:       { title: 'Manual',        subtitle: 'Guia de uso do Fina',                           render: renderManual       },
 };

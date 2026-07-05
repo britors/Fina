@@ -251,6 +251,48 @@ export interface ConsolidatedBalance {
   byInstitution: ConsolidatedBalanceGroup[];
 }
 
+export type OpenFinanceConnectionStatus = 'active' | 'pending' | 'incomplete' | 'disabled' | 'unsupported';
+
+export interface OpenFinanceLinkedAccount {
+  id: string;
+  name: string;
+  type: AccountType;
+  bank_name: string | null;
+  balance: number;
+  credit_limit: number | null;
+  openfinance_provider: string | null;
+  openfinance_id: string | null;
+}
+
+export interface OpenFinanceConnectionInstitution {
+  name: string;
+  totalBalance: number;
+  accounts: OpenFinanceLinkedAccount[];
+}
+
+export interface OpenFinanceProviderOverview {
+  provider: 'pluggy' | 'belvo' | 'klavi';
+  name: string;
+  enabled: boolean;
+  supportedSync: boolean;
+  hasCredentials: boolean;
+  hasConnectionId: boolean;
+  status: OpenFinanceConnectionStatus;
+  statusLabel: string;
+  connectionIdMasked: string | null;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  institutions: OpenFinanceConnectionInstitution[];
+  totalBalance: number;
+  accountCount: number;
+}
+
+export interface OpenFinanceOverview {
+  providers: OpenFinanceProviderOverview[];
+  totalBalance: number;
+  accountCount: number;
+}
+
 export interface CashFlowWeek {
   weekStart: string;
   weekEnd: string;
