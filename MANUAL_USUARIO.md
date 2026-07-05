@@ -67,6 +67,15 @@ Mostra o saldo projetado especificamente até o último dia do mês atual, a par
 
 Ao lado do saldo projetado, a tela lista os `Principais fatores` — os lançamentos e contas futuras de maior valor que mais influenciam essa projeção, com data e valor. A previsão é recalculada automaticamente conforme novos lançamentos entram.
 
+### Open Finance — saldo consolidado e fluxo de caixa
+
+Essas seções só aparecem depois que você conecta pelo menos uma conta via Open Finance (em `Configurações > Open Finance`).
+
+- `Saldo consolidado`: soma o saldo de todas as contas conectadas, com uma lista mostrando o saldo de cada conta e a instituição a que pertence. Use o seletor `Todos os bancos` para filtrar a lista por uma instituição específica.
+- `Fluxo de caixa consolidado`: projeta o saldo semana a semana para as próximas semanas, usando apenas os lançamentos e contas a pagar das contas conectadas via Open Finance. Mostra entradas, saídas e o saldo projetado de cada semana, além dos `Principais fatores` da projeção — cobranças recorrentes aparecem marcadas com o selo `Recorrente`.
+
+Os dois blocos são atualizados automaticamente conforme os dados são sincronizados em `Configurações > Open Finance`.
+
 ### Contas a pagar
 
 Mostra contas próximas do vencimento. Cada item exibe descrição, data de vencimento, situação e valor.

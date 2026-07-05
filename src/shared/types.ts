@@ -231,6 +231,47 @@ export interface EndOfMonthForecast {
   factors: ForecastFactor[];
 }
 
+// ── Open Finance: consolidação e fluxo de caixa ───────────────────────────────
+
+export interface ConsolidatedBalanceAccount {
+  id: string;
+  name: string;
+  type: string;
+  balance: number;
+}
+
+export interface ConsolidatedBalanceGroup {
+  bankName: string;
+  total: number;
+  accounts: ConsolidatedBalanceAccount[];
+}
+
+export interface ConsolidatedBalance {
+  total: number;
+  byInstitution: ConsolidatedBalanceGroup[];
+}
+
+export interface CashFlowWeek {
+  weekStart: string;
+  weekEnd: string;
+  income: number;
+  expense: number;
+  balance: number;
+}
+
+export interface CashFlowFactor {
+  label: string;
+  date: string;
+  amount: number;
+  type: 'income' | 'expense';
+  recurring: boolean;
+}
+
+export interface CashFlowForecast {
+  weeks: CashFlowWeek[];
+  factors: CashFlowFactor[];
+}
+
 // ── Importação de extratos ────────────────────────────────────────────────────
 
 export interface ImportPreviewRow {

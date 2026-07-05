@@ -1,7 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate, getDaysUntilDue, isCreditLikeAccountType } from '../../shared/utils';
 import { createDonut, createAreaChart } from '../components/charts';
-import type { Account, Bill, TransactionWithDetails, MonthlySummary, ForecastPoint, EndOfMonthForecast, InvestmentSummary, Goal, MarketQuote } from '../../shared/types';
+import type { Account, Bill, TransactionWithDetails, MonthlySummary, ForecastPoint, EndOfMonthForecast, InvestmentSummary, Goal, MarketQuote, ConsolidatedBalance, CashFlowForecast } from '../../shared/types';
 
 function monthLabel(month: number, year: number): string {
   return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
@@ -28,7 +28,7 @@ export async function render(el: HTMLElement): Promise<void> {
       ? monthLabel(fromMonth, fromYear)
       : `${monthLabel(fromMonth, fromYear)} – ${monthLabel(toMonth, toYear)}`;
 
-    const [accounts, summary, recent, bills, expenses, forecast, endOfMonthForecast, invSummary, assetSummary, goals, debtSummary, quotes] = await Promise.all([
+    const [accounts, summary, recent, bills, expenses, forecast, endOfMonthForecast, invSummary, assetSummary, goals, debtSummary, quotes, consolidatedBalance, cashFlow] = await Promise.all([
       invoke<Account[]>('accounts:list'),
       invoke<MonthlySummary>('transactions:getSummaryRange', { dateFrom, dateTo }),
       invoke<TransactionWithDetails[]>('transactions:list', { dateFrom, dateTo, limit: 5 }),
@@ -41,6 +41,8 @@ export async function render(el: HTMLElement): Promise<void> {
       invoke<Goal[]>('goals:list'),
       invoke<{ total_debt: number }>('debts:getSummary'),
       invoke<MarketQuote[]>('market:getQuotes'),
+      invoke<ConsolidatedBalance>('openFinance:getConsolidatedBalance'),
+      invoke<CashFlowForecast>('openFinance:getCashFlowForecast', 8),
     ]);
 
     const totalBalance  = accounts.reduce((s, a) => s + (isCreditLikeAccountType(a.type) ? -a.balance : a.balance), 0);
@@ -191,6 +193,74 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
     </div>
 
+    ${consolidatedBalance.byInstitution.length > 0 ? `
+      <!-- Open Finance: saldo consolidado -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">Open Finance — saldo consolidado</div>
+        <div class="card-hr"></div>
+        <div class="card-body">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+            <div>
+              <div class="stat-label">Saldo total conectado</div>
+              <div class="stat-value" style="color:var(--accent)">${formatCurrency(consolidatedBalance.total)}</div>
+            </div>
+            <select class="form-ctrl" id="of-bank-filter" style="max-width:240px">
+              <option value="">Todos os bancos</option>
+              ${consolidatedBalance.byInstitution.map(b => `<option value="${esc(b.bankName)}">${esc(b.bankName)} · ${formatCurrency(b.total)}</option>`).join('')}
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            ${consolidatedBalance.byInstitution.flatMap(b => b.accounts.map(a => `
+              <div class="of-account-row" data-bank="${esc(b.bankName)}" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border)">
+                <div>
+                  <div style="font-weight:500">${esc(a.name)}</div>
+                  <div style="font-size:0.76rem;color:var(--text-3)">${esc(b.bankName)}</div>
+                </div>
+                <div style="font-weight:600">${formatCurrency(a.balance)}</div>
+              </div>
+            `)).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Open Finance: fluxo de caixa consolidado -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">Fluxo de caixa consolidado — próximas ${cashFlow.weeks.length} semanas</div>
+        <div class="card-hr"></div>
+        <div class="card-body">
+          <div class="table-wrap">
+            <table class="table" style="margin:0">
+              <thead><tr><th>Semana</th><th>Entradas</th><th>Saídas</th><th style="text-align:right">Saldo projetado</th></tr></thead>
+              <tbody>
+                ${cashFlow.weeks.map(w => `
+                  <tr>
+                    <td>${formatDate(w.weekStart)} – ${formatDate(w.weekEnd)}</td>
+                    <td style="color:var(--accent)">+${formatCurrency(w.income)}</td>
+                    <td style="color:var(--danger)">-${formatCurrency(w.expense)}</td>
+                    <td style="text-align:right;font-weight:600;color:${w.balance >= 0 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(w.balance)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          ${cashFlow.factors.length > 0 ? `
+            <div style="margin-top:16px">
+              <div class="stat-label" style="margin-bottom:8px">Principais fatores</div>
+              ${cashFlow.factors.map(f => `
+                <div style="display:flex;justify-content:space-between;gap:12px;font-size:0.82rem;margin-bottom:6px">
+                  <span style="color:var(--text-2)">
+                    ${esc(f.label)} · ${formatDate(f.date)}
+                    ${f.recurring ? '<span class="badge badge-warn" style="margin-left:4px">Recorrente</span>' : ''}
+                  </span>
+                  <strong style="color:${f.type === 'income' ? 'var(--accent)' : 'var(--danger)'}">${f.type === 'income' ? '+' : ''}${formatCurrency(f.amount)}</strong>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    ` : ''}
+
     <!-- Bills -->
     <div class="card">
       <div class="card-header">
@@ -293,6 +363,12 @@ export async function render(el: HTMLElement): Promise<void> {
       fromMonth = now.getMonth() + 1; fromYear = now.getFullYear();
       toMonth   = now.getMonth() + 1; toYear   = now.getFullYear();
       load();
+    });
+    el.querySelector<HTMLSelectElement>('#of-bank-filter')?.addEventListener('change', e => {
+      const bank = (e.target as HTMLSelectElement).value;
+      el.querySelectorAll<HTMLElement>('.of-account-row').forEach(row => {
+        row.style.display = !bank || row.dataset.bank === bank ? 'flex' : 'none';
+      });
     });
   }
 

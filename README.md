@@ -3,10 +3,12 @@
 Aplicativo desktop para controle de finanças pessoais, construído com **Electron + TypeScript + SQLite**.
 
 O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
+![alt text](fina.png)
 
 ## Destaques da versão 13.0
 
 - Sincronização Open Finance (Pluggy) com filtro de conta e período: depois da primeira sincronização, é possível importar apenas uma conta ou um intervalo de datas específico, em vez de sincronizar tudo de novo.
+- Saldo consolidado e fluxo de caixa semanal no Dashboard para contas conectadas via Open Finance, com filtro por banco e destaque para os principais fatores (incluindo cobranças recorrentes).
 
 ## Destaques da versão 12.0
 
@@ -152,7 +154,7 @@ npm start
 
 | Módulo | Descrição |
 |---|---|
-| Dashboard | Resumo financeiro, previsão de saldo 30 dias e até o fim do mês (com principais fatores), indicadores de mercado |
+| Dashboard | Resumo financeiro, previsão de saldo 30 dias e até o fim do mês (com principais fatores), saldo e fluxo de caixa consolidados de contas Open Finance, indicadores de mercado |
 | Diagnóstico | Leitura da situação financeira, classificação e próximos passos |
 | Score | Pontuação de saúde financeira baseada em sobra mensal, reserva, dívidas, orçamento e gastos variáveis |
 | Revisão semanal | Checklist financeiro da semana com resumo dos últimos 7 dias |

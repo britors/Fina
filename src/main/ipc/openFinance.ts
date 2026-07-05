@@ -3,7 +3,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getDb } from '../database';
-import type { AccountType, TransactionType } from '../../shared/types';
+import type { AccountType, CashFlowFactor, CashFlowForecast, CashFlowWeek, ConsolidatedBalance, TransactionType } from '../../shared/types';
 
 type OpenFinanceProvider = 'pluggy' | 'belvo' | 'klavi';
 
@@ -159,8 +159,112 @@ function assertProvider(provider: string): asserts provider is OpenFinanceProvid
   }
 }
 
+function getConsolidatedBalance(): ConsolidatedBalance {
+  const db = getDb();
+  const accounts = db.prepare(`
+    SELECT id, name, type, bank_name, balance
+    FROM accounts
+    WHERE openfinance_provider IS NOT NULL
+    ORDER BY bank_name, name
+  `).all() as { id: string; name: string; type: string; bank_name: string | null; balance: number }[];
+
+  const groups = new Map<string, { bankName: string; total: number; accounts: { id: string; name: string; type: string; balance: number }[] }>();
+  for (const acc of accounts) {
+    const key = acc.bank_name ?? 'Outras conexões';
+    if (!groups.has(key)) groups.set(key, { bankName: key, total: 0, accounts: [] });
+    const group = groups.get(key)!;
+    group.total += acc.balance;
+    group.accounts.push({ id: acc.id, name: acc.name, type: acc.type, balance: acc.balance });
+  }
+
+  return {
+    total: accounts.reduce((sum, a) => sum + a.balance, 0),
+    byInstitution: [...groups.values()],
+  };
+}
+
+// Fluxo de caixa consolidado, escopado apenas às contas conectadas via Open
+// Finance (diferente da previsão geral do Dashboard, que soma todas as
+// contas). Agrupa por semana e reaproveita o mesmo cruzamento de
+// transações/contas a pagar futuras já usado no restante do app.
+function getCashFlowForecast(weeksAhead = 8): CashFlowForecast {
+  const db = getDb();
+  const linkedIds = (db.prepare(`SELECT id FROM accounts WHERE openfinance_provider IS NOT NULL`).all() as { id: string }[]).map(r => r.id);
+  if (linkedIds.length === 0) return { weeks: [], factors: [] };
+
+  const placeholders = linkedIds.map(() => '?').join(',');
+  const { total } = db.prepare(`SELECT COALESCE(SUM(balance),0) as total FROM accounts WHERE id IN (${placeholders})`)
+    .get(...linkedIds) as { total: number };
+
+  const horizonDays = weeksAhead * 7;
+  const futureTxs = db.prepare(`
+    SELECT date, type, description, amount
+    FROM transactions
+    WHERE status = 'confirmed' AND date > date('now') AND date <= date('now', '+' || ? || ' days')
+      AND account_id IN (${placeholders})
+  `).all(horizonDays, ...linkedIds) as { date: string; type: string; description: string; amount: number }[];
+
+  const futureBills = db.prepare(`
+    SELECT due_date as date, description, amount, recurring
+    FROM bills
+    WHERE status != 'paid' AND due_date >= date('now') AND due_date <= date('now', '+' || ? || ' days')
+      AND account_id IN (${placeholders})
+  `).all(horizonDays, ...linkedIds) as { date: string; description: string; amount: number; recurring: number }[];
+
+  const flow = new Map<string, number>();
+  const factors: CashFlowFactor[] = [];
+
+  for (const tx of futureTxs) {
+    const delta = tx.type === 'income' ? tx.amount : -tx.amount;
+    flow.set(tx.date, (flow.get(tx.date) ?? 0) + delta);
+    factors.push({ label: tx.description, date: tx.date, amount: delta, type: delta >= 0 ? 'income' : 'expense', recurring: false });
+  }
+  for (const bill of futureBills) {
+    flow.set(bill.date, (flow.get(bill.date) ?? 0) - bill.amount);
+    factors.push({ label: bill.description, date: bill.date, amount: -bill.amount, type: 'expense', recurring: !!bill.recurring });
+  }
+
+  const weeks: CashFlowWeek[] = [];
+  let running = total;
+  const now = new Date();
+  for (let w = 0; w < weeksAhead; w++) {
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() + w * 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+
+    let income = 0;
+    let expense = 0;
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(weekStart);
+      day.setDate(day.getDate() + d);
+      const delta = flow.get(day.toISOString().slice(0, 10)) ?? 0;
+      if (delta > 0) income += delta; else expense += -delta;
+      running += delta;
+    }
+
+    weeks.push({
+      weekStart: weekStart.toISOString().slice(0, 10),
+      weekEnd: weekEnd.toISOString().slice(0, 10),
+      income: Math.round(income * 100) / 100,
+      expense: Math.round(expense * 100) / 100,
+      balance: Math.round(running * 100) / 100,
+    });
+  }
+
+  const topFactors = factors
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+    .slice(0, 6);
+
+  return { weeks, factors: topFactors };
+}
+
 export function registerOpenFinanceHandlers(): void {
   ipcMain.handle('openFinance:getSettings', () => settings());
+
+  ipcMain.handle('openFinance:getConsolidatedBalance', () => getConsolidatedBalance());
+
+  ipcMain.handle('openFinance:getCashFlowForecast', (_e, weeksAhead?: number) => getCashFlowForecast(weeksAhead));
 
   ipcMain.handle('openFinance:saveProvider', (_e, data: SaveProviderPayload) => {
     assertProvider(data.provider);
