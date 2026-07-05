@@ -39,6 +39,12 @@ interface SyncResult {
   transactionsSkipped: number;
 }
 
+interface SyncOptions {
+  accountId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 type RemoteAccount = {
   id: string;
   name: string;
@@ -184,12 +190,13 @@ export function registerOpenFinanceHandlers(): void {
     return { ok: !!apiKey };
   });
 
-  ipcMain.handle('openFinance:syncProvider', async (_e, provider: string): Promise<SyncResult> => {
+  ipcMain.handle('openFinance:syncProvider', async (_e, payload: { provider: string } & SyncOptions): Promise<SyncResult> => {
+    const { provider, ...options } = payload;
     assertProvider(provider);
     if (provider !== 'pluggy') {
       throw new Error('Sincronização automática disponível nesta versão apenas para Pluggy.');
     }
-    return syncPluggy();
+    return syncPluggy(options);
   });
 }
 
@@ -325,11 +332,13 @@ async function loadPluggyAccounts(apiKey: string, itemId: string): Promise<Remot
   return parsePluggyAccounts(payload);
 }
 
-async function loadPluggyTransactions(apiKey: string, account: RemoteAccount): Promise<RemoteTransaction[]> {
+async function loadPluggyTransactions(apiKey: string, account: RemoteAccount, dateFrom?: string, dateTo?: string): Promise<RemoteTransaction[]> {
   const transactions: RemoteTransaction[] = [];
   let cursor = '';
   for (let page = 0; page < 20; page++) {
     const qs = new URLSearchParams({ accountId: account.id });
+    if (dateFrom) qs.set('from', dateFrom);
+    if (dateTo) qs.set('to', dateTo);
     if (cursor) qs.set('cursor', cursor);
     const payload = await pluggyGet<unknown>(`/v2/transactions?${qs.toString()}`, apiKey);
     transactions.push(...parsePluggyTransactions(payload, account.id));
@@ -385,7 +394,7 @@ function importTransaction(tx: RemoteTransaction, accountId: string): boolean {
   return true;
 }
 
-async function syncPluggy(): Promise<SyncResult> {
+async function syncPluggy(options: SyncOptions = {}): Promise<SyncResult> {
   if (!providerEnabled('pluggy')) throw new Error('Ative a integração Pluggy antes de sincronizar.');
   const itemId = providerConnectionId('pluggy');
   if (!itemId) throw new Error('Informe o Item ID da Pluggy antes de sincronizar.');
@@ -398,6 +407,8 @@ async function syncPluggy(): Promise<SyncResult> {
   let transactionsImported = 0;
   let transactionsSkipped = 0;
 
+  // Atualiza saldos e descobre contas novas sempre, independente do filtro
+  // de conta abaixo — é uma chamada única e leve, e mantém os saldos em dia.
   const db = getDb();
   db.transaction(() => {
     for (const remote of remoteAccounts) {
@@ -411,7 +422,9 @@ async function syncPluggy(): Promise<SyncResult> {
   for (const remote of remoteAccounts) {
     const localAccountId = accountMap.get(remote.id);
     if (!localAccountId) continue;
-    const transactions = await loadPluggyTransactions(apiKey, remote);
+    if (options.accountId && options.accountId !== localAccountId) continue;
+
+    const transactions = await loadPluggyTransactions(apiKey, remote, options.dateFrom, options.dateTo);
     db.transaction(() => {
       for (const tx of transactions) {
         if (importTransaction(tx, localAccountId)) transactionsImported++;

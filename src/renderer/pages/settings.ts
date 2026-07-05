@@ -2,7 +2,7 @@ import { invoke, send, on } from '../api';
 import { setTopbarActions } from '../components/topbar';
 import { applyAccent, applyTheme } from '../theme';
 import { openCategoryModal } from '../components/categoryModal';
-import type { Category, UpdateStatus } from '../../shared/types';
+import type { Account, Category, UpdateStatus } from '../../shared/types';
 
 type Settings = Record<string, string>;
 
@@ -1073,7 +1073,11 @@ function modelOptionsHtml(models: string[], selected: string): string {
 }
 
 async function renderOpenFinance(el: HTMLElement): Promise<void> {
-  let openFinance = await invoke<OpenFinanceSettings>('openFinance:getSettings');
+  const [openFinanceLoaded, allAccounts] = await Promise.all([
+    invoke<OpenFinanceSettings>('openFinance:getSettings'),
+    invoke<Account[]>('accounts:list'),
+  ]);
+  let openFinance = openFinanceLoaded;
 
   el.innerHTML = `
     <div class="settings-section-label">OPEN FINANCE</div>
@@ -1086,7 +1090,11 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
     <div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.2);border-radius:8px;padding:12px 16px;font-size:0.8rem;color:var(--text-2);line-height:1.6;margin-top:14px">
       Configure as credenciais dos agregadores que serão usados para conectar contas via Open Finance. O Fina guarda segredos criptografados fora do banco de dados.
     </div>
-    ${OPEN_FINANCE_PROVIDERS.map(provider => providerCard(provider, openFinance.providers[provider.id])).join('')}
+    ${OPEN_FINANCE_PROVIDERS.map(provider => providerCard(
+      provider,
+      openFinance.providers[provider.id],
+      allAccounts.filter(a => a.openfinance_provider === provider.id),
+    )).join('')}
   `;
 
   OPEN_FINANCE_PROVIDERS.forEach(provider => {
@@ -1131,8 +1139,13 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
     });
 
     el.querySelector(`#of-sync-${provider.id}`)?.addEventListener('click', async () => {
+      const accountId = el.querySelector<HTMLSelectElement>(`#of-${provider.id}-sync-account`)?.value || undefined;
+      const dateFrom = el.querySelector<HTMLInputElement>(`#of-${provider.id}-sync-from`)?.value || undefined;
+      const dateTo = el.querySelector<HTMLInputElement>(`#of-${provider.id}-sync-to`)?.value || undefined;
       try {
-        const result = await invoke<{ accountsCreated: number; accountsUpdated: number; transactionsImported: number; transactionsSkipped: number }>('openFinance:syncProvider', provider.id);
+        const result = await invoke<{ accountsCreated: number; accountsUpdated: number; transactionsImported: number; transactionsSkipped: number }>('openFinance:syncProvider', {
+          provider: provider.id, accountId, dateFrom, dateTo,
+        });
         alert([
           `${provider.name} sincronizado.`,
           `Contas criadas: ${result.accountsCreated}`,
@@ -1140,6 +1153,7 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
           `Lançamentos importados: ${result.transactionsImported}`,
           `Duplicados ignorados: ${result.transactionsSkipped}`,
         ].join('\n'));
+        renderOpenFinance(el);
       } catch (err) {
         alert(err instanceof Error ? err.message : `Não foi possível sincronizar ${provider.name}.`);
       }
@@ -1150,6 +1164,7 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
 function providerCard(
   provider: { id: OpenFinanceProvider; name: string; description: string; auth: 'client' | 'apikey' },
   settings: OpenFinanceProviderSettings,
+  linkedAccounts: Account[],
 ): string {
   return `
     <div class="card" style="margin-top:16px">
@@ -1210,6 +1225,28 @@ function providerCard(
         ${provider.id !== 'pluggy' ? `
           <div style="font-size:0.78rem;color:var(--warning);line-height:1.5;margin:-4px 0 12px">
             Credenciais preparadas. Sincronização automática será ligada quando o adaptador deste provedor for finalizado.
+          </div>
+        ` : ''}
+        ${provider.id === 'pluggy' && linkedAccounts.length > 0 ? `
+          <div class="form-row" style="margin-bottom:12px">
+            <div class="form-group">
+              <label class="form-label">Conta a sincronizar</label>
+              <select class="form-ctrl" id="of-${provider.id}-sync-account">
+                <option value="">Todas as contas</option>
+                ${linkedAccounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">De</label>
+              <input class="form-ctrl" id="of-${provider.id}-sync-from" type="date">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Até</label>
+              <input class="form-ctrl" id="of-${provider.id}-sync-to" type="date">
+            </div>
+          </div>
+          <div style="font-size:0.76rem;color:var(--text-3);margin:-8px 0 12px">
+            Deixe em branco para sincronizar todas as contas e todo o período disponível.
           </div>
         ` : ''}
         <div style="display:flex;justify-content:flex-end;gap:8px">

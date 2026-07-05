@@ -4,6 +4,10 @@ Aplicativo desktop para controle de finanças pessoais, construído com **Electr
 
 O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
 
+## Destaques da versão 13.0
+
+- Sincronização Open Finance (Pluggy) com filtro de conta e período: depois da primeira sincronização, é possível importar apenas uma conta ou um intervalo de datas específico, em vez de sincronizar tudo de novo.
+
 ## Destaques da versão 12.0
 
 - Perguntas rápidas sugeridas no Assistente IA, contextuais ao score, reserva e categoria de maior gasto do mês.

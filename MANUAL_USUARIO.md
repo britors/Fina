@@ -1294,6 +1294,24 @@ O Fina avisa se a criptografia segura do sistema não estiver disponível. Nesse
 
 Mesmo com essa configuração ativa, o envio de dados exige confirmação na tela `Assistente IA`.
 
+### Open Finance
+
+Permite configurar os agregadores (Pluggy, Belvo, Klavi) usados para conectar contas via Open Finance. Nesta versão, a sincronização automática funciona apenas com a Pluggy — os outros dois já aceitam credenciais, mas ainda não sincronizam.
+
+Campos e opções por provedor:
+
+- `Ativar integração`: liga ou desliga o provedor nas sincronizações.
+- `Ambiente de testes`: usa o sandbox do provedor enquanto você valida a conexão.
+- `Client ID` / `Client Secret` (ou `API key`, dependendo do provedor): credenciais fornecidas pelo agregador.
+- `Item ID` (Pluggy) ou identificador da conexão: referência retornada depois de conectar uma instituição pelo widget do provedor.
+- `Testar`: verifica se as credenciais estão corretas.
+- `Sincronizar`: importa contas, saldos e lançamentos da instituição conectada.
+- `Remover credenciais`: apaga as credenciais salvas desse provedor.
+
+Depois da primeira sincronização, o Fina passa a mostrar os campos `Conta a sincronizar`, `De` e `Até` acima do botão `Sincronizar` — use-os para importar apenas uma conta específica ou um período determinado nas próximas vezes, em vez de sincronizar tudo de novo. Deixe em branco para continuar sincronizando todas as contas e todo o período disponível.
+
+Lançamentos e contas já importados não são duplicados numa nova sincronização, mesmo sincronizando o mesmo período novamente.
+
 ### Dados e backup
 
 Mostra o caminho do arquivo de banco de dados e permite cuidar dos backups.
