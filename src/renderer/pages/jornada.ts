@@ -24,7 +24,7 @@ const STEPS: Step[] = [
     body: 'Cadastre meios de pagamento e mantenha transações atualizadas para o Fina refletir a realidade.',
     route: 'transactions',
     action: 'Organizar transações',
-    icon: 'ti-arrows-transfer',
+    icon: 'ti-transfer',
   },
   {
     id: 'leaks',

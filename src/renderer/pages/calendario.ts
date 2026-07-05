@@ -146,7 +146,7 @@ function emptyCell(): string {
 
 function eventChip(event: DayEvent): string {
   const color = event.type === 'income' ? 'var(--accent)' : event.type === 'transfer' ? 'var(--text-3)' : 'var(--danger)';
-  const icon = event.kind === 'bill' ? 'ti-calendar-dollar' : event.type === 'income' ? 'ti-arrow-up-right' : event.type === 'transfer' ? 'ti-arrows-transfer' : 'ti-arrow-down-right';
+  const icon = event.kind === 'bill' ? 'ti-calendar-dollar' : event.type === 'income' ? 'ti-arrow-up-right' : event.type === 'transfer' ? 'ti-transfer' : 'ti-arrow-down-right';
   return `
     <div title="${esc(event.title)}" style="display:flex;align-items:center;gap:5px;min-width:0;font-size:0.72rem;color:${color};background:var(--bg);border:0.5px solid var(--border);border-radius:6px;padding:4px 6px">
       <i class="ti ${icon}" style="flex-shrink:0"></i>
