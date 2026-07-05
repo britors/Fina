@@ -18,6 +18,8 @@ export interface Account {
   color: string | null;
   currency: AccountCurrency;
   original_balance: number | null;
+  openfinance_provider?: string | null;
+  openfinance_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -45,6 +47,8 @@ export interface Transaction {
   notes: string | null;
   recurring: 0 | 1;
   owner: string | null;
+  openfinance_provider?: string | null;
+  openfinance_id?: string | null;
   created_at: string;
   updated_at: string;
 }

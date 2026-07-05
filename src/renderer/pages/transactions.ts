@@ -232,6 +232,8 @@ interface TxDraft {
 function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draft?: TxDraft): void {
   const today = new Date().toISOString().split('T')[0];
   const initialPayments = initialPaymentSplits(tx?.payments, tx?.account_id, tx?.amount ?? draft?.amount);
+  const initialType = tx ? tx.type : 'expense';
+  const showInitialInstallments = !tx && initialType === 'expense' && initialPayments.length === 1 && isCreditCardAccount(initialPayments[0].account_id);
   const overlay = openModal({
     title: tx ? 'Editar transação' : 'Nova transação',
     body: `
@@ -276,6 +278,10 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
           <button class="btn btn-secondary btn-sm" type="button" id="btn-add-payment"><i class="ti ti-plus"></i> Adicionar meio</button>
           <div id="payment-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
         </div>
+      </div>
+      <div class="form-group" id="installments-group" style="display:${showInitialInstallments ? '' : 'none'}">
+        <label class="form-label">Parcelas</label>
+        <input class="form-ctrl" id="f-installments" type="number" min="1" max="60" step="1" value="1">
       </div>
       <div class="form-group" id="f-to-account-group" style="display:${tx?.type === 'transfer' ? '' : 'none'}">
         <label class="form-label">Meio de pagamento destino</label>
@@ -322,6 +328,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
       const status    = (document.getElementById('f-status')   as HTMLSelectElement).value;
       const notes     = (document.getElementById('f-notes')    as HTMLTextAreaElement).value.trim();
       const owner     = (document.getElementById('f-owner') as HTMLSelectElement | null)?.value || null;
+      const installments = parseInt((document.getElementById('f-installments') as HTMLInputElement | null)?.value ?? '1', 10) || 1;
 
       if (!desc || isNaN(amount) || !date || !account || !category) {
         alert('Preencha todos os campos obrigatórios.');
@@ -331,8 +338,16 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         alert('Selecione um meio de pagamento de destino diferente do meio de origem.');
         return false;
       }
+      if (installments > 1 && (tx || type !== 'expense')) {
+        alert('Parcelas estão disponíveis apenas para novos lançamentos de despesa.');
+        return false;
+      }
       const payments = type === 'transfer' ? [] : collectPayments(overlay, amount);
       if (type !== 'transfer' && !payments) return false;
+      if (installments > 1 && (!payments || payments.length !== 1 || !isCreditCardAccount(payments[0].account_id))) {
+        alert('Parcelas estão disponíveis apenas para um único meio de pagamento do tipo cartão de crédito.');
+        return false;
+      }
 
       const payload = {
         description: desc, amount, type, account_id: type === 'transfer' ? account : payments![0].account_id,
@@ -340,10 +355,12 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         category_id: category, date, status, notes: notes || null, recurring: 0, payments, owner,
       };
       if (tx) { await invoke('transactions:update', { id: tx.id, ...payload }); }
+      else if (installments > 1) { await invoke('transactions:createInstallments', { ...payload, installments }); }
       else    { await invoke('transactions:create', payload); }
       onDone();
     },
   });
+  overlay.dataset.syncFirstPaymentAmount = tx ? 'false' : 'true';
 
   overlay.querySelector('#f-type')?.addEventListener('change', e => {
     const isTransfer = (e.target as HTMLSelectElement).value === 'transfer';
@@ -351,16 +368,24 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
     (overlay.querySelector('#single-account-group') as HTMLElement).style.display = isTransfer ? '' : 'none';
     (overlay.querySelector('#payment-splits-group') as HTMLElement).style.display = isTransfer ? 'none' : '';
     updatePaymentSummary(overlay);
+    updateInstallmentsVisibility(overlay, !!tx);
   });
-  overlay.querySelector('#f-amount')?.addEventListener('input', () => updatePaymentSummary(overlay));
-  overlay.querySelector('#btn-add-payment')?.addEventListener('click', () => {
-    const list = overlay.querySelector<HTMLElement>('#payment-splits')!;
-    list.insertAdjacentHTML('beforeend', paymentRowHtml('', remainingAmount(overlay)));
-    bindPaymentRows(overlay);
+  overlay.querySelector('#f-amount')?.addEventListener('input', () => {
+    syncFirstPaymentAmount(overlay);
     updatePaymentSummary(overlay);
   });
-  bindPaymentRows(overlay);
+  overlay.querySelector('#btn-add-payment')?.addEventListener('click', () => {
+    overlay.dataset.syncFirstPaymentAmount = 'false';
+    const list = overlay.querySelector<HTMLElement>('#payment-splits')!;
+    list.insertAdjacentHTML('beforeend', paymentRowHtml('', remainingAmount(overlay)));
+    bindPaymentRows(overlay, !!tx);
+    updatePaymentSummary(overlay);
+    updateInstallmentsVisibility(overlay, !!tx);
+  });
+  bindPaymentRows(overlay, !!tx);
+  syncFirstPaymentAmount(overlay);
   updatePaymentSummary(overlay);
+  updateInstallmentsVisibility(overlay, !!tx);
 }
 
 function openImportModal(): void {
@@ -488,6 +513,10 @@ function initialPaymentSplits(payments: PaymentSplitWithAccount[] | undefined, a
   return [{ account_id: accountId ?? accounts[0]?.id ?? '', amount: amount ?? 0 }];
 }
 
+function isCreditCardAccount(accountId: string | undefined): boolean {
+  return accounts.find(account => account.id === accountId)?.type === 'credit_card';
+}
+
 function paymentRowsHtml(payments: PaymentSplit[]): string {
   return payments.map(payment => paymentRowHtml(payment.account_id, payment.amount)).join('');
 }
@@ -505,18 +534,39 @@ function paymentRowHtml(accountId: string, amount: number): string {
   `;
 }
 
-function bindPaymentRows(overlay: HTMLElement): void {
+function bindPaymentRows(overlay: HTMLElement, editing = false): void {
   overlay.querySelectorAll<HTMLElement>('.payment-row').forEach(row => {
+    if (row.dataset.bound === 'true') return;
+    row.dataset.bound = 'true';
     row.querySelectorAll('input, select').forEach(ctrl => {
-      ctrl.addEventListener('input', () => updatePaymentSummary(overlay));
-      ctrl.addEventListener('change', () => updatePaymentSummary(overlay));
+      ctrl.addEventListener('input', () => {
+        if ((ctrl as HTMLElement).classList.contains('payment-amount')) {
+          overlay.dataset.syncFirstPaymentAmount = 'false';
+        }
+        updatePaymentSummary(overlay);
+      });
+      ctrl.addEventListener('change', () => {
+        updatePaymentSummary(overlay);
+        updateInstallmentsVisibility(overlay, editing);
+      });
     });
     row.querySelector<HTMLElement>('.payment-remove')?.addEventListener('click', () => {
       if (overlay.querySelectorAll('.payment-row').length <= 1) return;
       row.remove();
       updatePaymentSummary(overlay);
+      updateInstallmentsVisibility(overlay, editing);
     });
   });
+}
+
+function syncFirstPaymentAmount(overlay: HTMLElement): void {
+  if (overlay.dataset.syncFirstPaymentAmount !== 'true') return;
+  const rows = [...overlay.querySelectorAll<HTMLElement>('.payment-row')];
+  if (rows.length !== 1) return;
+  const totalInput = overlay.querySelector<HTMLInputElement>('#f-amount');
+  const firstPaymentInput = rows[0].querySelector<HTMLInputElement>('.payment-amount');
+  if (!totalInput || !firstPaymentInput) return;
+  firstPaymentInput.value = totalInput.value;
 }
 
 function collectPayments(overlay: HTMLElement, total: number): PaymentSplit[] | null {
@@ -561,4 +611,18 @@ function updatePaymentSummary(overlay: HTMLElement): void {
     .reduce((sum, input) => sum + (parseFloat(input.value) || 0), 0);
   const rest = Math.round((total - used) * 100) / 100;
   summary.innerHTML = `Total: <strong>${formatCurrency(total)}</strong> · Distribuído: <strong>${formatCurrency(used)}</strong> · Restante: <strong style="color:${Math.abs(rest) < 0.005 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(rest)}</strong>`;
+}
+
+function updateInstallmentsVisibility(overlay: HTMLElement, editing: boolean): void {
+  const group = overlay.querySelector<HTMLElement>('#installments-group');
+  if (!group) return;
+  const type = overlay.querySelector<HTMLSelectElement>('#f-type')?.value;
+  const rows = [...overlay.querySelectorAll<HTMLElement>('.payment-row')];
+  const accountId = rows[0]?.querySelector<HTMLSelectElement>('.payment-account')?.value;
+  const visible = !editing && type === 'expense' && rows.length === 1 && isCreditCardAccount(accountId);
+  group.style.display = visible ? '' : 'none';
+  if (!visible) {
+    const input = group.querySelector<HTMLInputElement>('#f-installments');
+    if (input) input.value = '1';
+  }
 }

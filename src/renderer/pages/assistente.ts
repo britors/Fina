@@ -3,12 +3,7 @@ import { invoke } from '../api';
 type AIProvider = 'openai' | 'gemini';
 
 interface AISettings {
-  enabled: boolean;
   provider: AIProvider;
-  model: string;
-  consent: boolean;
-  hasKey: boolean;
-  encryptionAvailable: boolean;
 }
 
 interface SummaryPreview {
@@ -30,65 +25,26 @@ export async function render(el: HTMLElement): Promise<void> {
 
   async function renderPage(): Promise<void> {
     el.innerHTML = `
-      <div class="grid-2" style="grid-template-columns:.9fr 1.1fr">
-        <div class="card">
-          <div class="card-header">Configuração rápida</div>
-          <div class="card-hr"></div>
-          <div class="card-body">
-            ${!settings.encryptionAvailable ? `
-              <div class="alert alert-error">A criptografia segura do sistema não está disponível. A chave de IA não poderá ser salva.</div>
-            ` : ''}
-            <div class="form-group">
-              <label class="form-label">Provedor</label>
-              <select class="form-ctrl" id="ai-provider">
-                <option value="openai" ${settings.provider === 'openai' ? 'selected' : ''}>ChatGPT / OpenAI</option>
-                <option value="gemini" ${settings.provider === 'gemini' ? 'selected' : ''}>Gemini / Google</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Modelo</label>
-              <input class="form-ctrl" id="ai-model" value="${esc(settings.model)}">
-            </div>
-            <div class="form-group">
-              <label class="form-label">API key ${settings.hasKey ? '(salva)' : ''}</label>
-              <input class="form-ctrl" id="ai-key" type="password" placeholder="${settings.hasKey ? 'Digite uma nova chave para substituir' : 'Cole sua chave de API'}">
-            </div>
-            <label style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;color:var(--text-2);line-height:1.5">
-              <input id="ai-enabled" type="checkbox" ${settings.enabled ? 'checked' : ''} style="margin-top:3px;accent-color:var(--accent)">
-              <span>Ativar assistente de IA</span>
-            </label>
-            <label style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px;color:var(--text-2);line-height:1.5">
-              <input id="ai-consent" type="checkbox" ${settings.consent ? 'checked' : ''} style="margin-top:3px;accent-color:var(--accent)">
-              <span>Entendo que dados financeiros agregados poderão ser enviados ao provedor escolhido quando eu solicitar uma análise.</span>
-            </label>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn-primary" id="btn-save-ai"><i class="ti ti-device-floppy"></i> Salvar</button>
-              <button class="btn btn-ghost" id="btn-clear-key"><i class="ti ti-key-off"></i> Remover chave</button>
-            </div>
+      <div class="card">
+        <div class="card-header">Privacidade dos dados</div>
+        <div class="card-hr"></div>
+        <div class="card-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <div style="font-weight:600;margin-bottom:8px;color:var(--accent)">Enviado somente com consentimento</div>
+            <ul style="padding-left:18px;color:var(--text-2);line-height:1.7">
+              ${preview.fieldsShared.map(f => `<li>${esc(f)}</li>`).join('')}
+            </ul>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">Privacidade dos dados</div>
-          <div class="card-hr"></div>
-          <div class="card-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-            <div>
-              <div style="font-weight:600;margin-bottom:8px;color:var(--accent)">Enviado somente com consentimento</div>
-              <ul style="padding-left:18px;color:var(--text-2);line-height:1.7">
-                ${preview.fieldsShared.map(f => `<li>${esc(f)}</li>`).join('')}
-              </ul>
-            </div>
-            <div>
-              <div style="font-weight:600;margin-bottom:8px;color:var(--danger)">Não enviado por padrão</div>
-              <ul style="padding-left:18px;color:var(--text-2);line-height:1.7">
-                ${preview.fieldsNotShared.map(f => `<li>${esc(f)}</li>`).join('')}
-              </ul>
-            </div>
+          <div>
+            <div style="font-weight:600;margin-bottom:8px;color:var(--danger)">Não enviado por padrão</div>
+            <ul style="padding-left:18px;color:var(--text-2);line-height:1.7">
+              ${preview.fieldsNotShared.map(f => `<li>${esc(f)}</li>`).join('')}
+            </ul>
           </div>
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" style="margin-top:16px">
         <div class="card-header">Perguntar ao assistente</div>
         <div class="card-hr"></div>
         <div class="card-body">
@@ -106,27 +62,7 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
     `;
 
-    el.querySelector('#btn-save-ai')?.addEventListener('click', saveSettings);
-    el.querySelector('#btn-clear-key')?.addEventListener('click', clearKey);
     el.querySelector('#btn-ask-ai')?.addEventListener('click', ask);
-  }
-
-  async function saveSettings(): Promise<void> {
-    const provider = (el.querySelector<HTMLSelectElement>('#ai-provider')!).value as AIProvider;
-    const model = el.querySelector<HTMLInputElement>('#ai-model')!.value.trim();
-    const enabled = el.querySelector<HTMLInputElement>('#ai-enabled')!.checked;
-    const consent = el.querySelector<HTMLInputElement>('#ai-consent')!.checked;
-    const apiKey = el.querySelector<HTMLInputElement>('#ai-key')!.value.trim();
-    settings = await invoke<AISettings>('ai:saveSettings', { provider, model, enabled, consent });
-    if (apiKey) settings = await invoke<AISettings>('ai:setApiKey', { provider, apiKey });
-    alert('Configurações de IA salvas.');
-    await renderPage();
-  }
-
-  async function clearKey(): Promise<void> {
-    if (!confirm('Remover a chave de API salva para o provedor atual?')) return;
-    settings = await invoke<AISettings>('ai:clearApiKey', settings.provider);
-    await renderPage();
   }
 
   async function ask(): Promise<void> {

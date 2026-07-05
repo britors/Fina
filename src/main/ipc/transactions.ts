@@ -14,6 +14,7 @@ const JOIN = `
 
 type TransactionInput = Omit<Transaction, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[] };
 type TransactionUpdateInput = Partial<Transaction> & { id: string; payments?: PaymentSplit[] };
+type InstallmentTransactionInput = TransactionInput & { installments: number };
 
 export function balanceDelta(type: TransactionType, amount: number): number {
   return type === 'income' ? amount : -amount;
@@ -78,6 +79,44 @@ function replaceTransactionPayments(transactionId: string, payments: PaymentSpli
   const stmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount) VALUES (?,?,?,?)');
   for (const payment of payments) {
     stmt.run(randomUUID(), transactionId, payment.account_id, payment.amount);
+  }
+}
+
+function insertTransaction(data: TransactionInput, id: string, primaryAccountId: string, payments: PaymentSplit[]): void {
+  getDb().prepare(
+    'INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, type, date, status, notes, recurring, owner) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+  ).run(id, primaryAccountId, data.to_account_id ?? null, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null);
+  replaceTransactionPayments(id, payments);
+}
+
+function splitInstallmentAmounts(amount: number, installments: number): number[] {
+  const cents = Math.round(amount * 100);
+  const base = Math.floor(cents / installments);
+  const remainder = cents % installments;
+  return Array.from({ length: installments }, (_, index) => (base + (index < remainder ? 1 : 0)) / 100);
+}
+
+function addMonthsIso(date: string, months: number): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const target = new Date(year, month - 1 + months, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  const safeDay = Math.min(day, lastDay);
+  return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+}
+
+function assertCanInstall(data: InstallmentTransactionInput, payments: PaymentSplit[]): void {
+  if (!Number.isInteger(data.installments) || data.installments < 2 || data.installments > 60) {
+    throw new Error('Informe uma quantidade de parcelas entre 2 e 60.');
+  }
+  if (data.type !== 'expense') {
+    throw new Error('Parcelas estão disponíveis apenas para despesas.');
+  }
+  if (payments.length !== 1) {
+    throw new Error('Parcelas estão disponíveis apenas para um único meio de pagamento.');
+  }
+  const account = getDb().prepare('SELECT type FROM accounts WHERE id = ?').get(payments[0].account_id) as { type: string } | undefined;
+  if (account?.type !== 'credit_card') {
+    throw new Error('Parcelas estão disponíveis apenas para cartão de crédito.');
   }
 }
 
@@ -153,15 +192,44 @@ export function registerTransactionHandlers(): void {
     const id = randomUUID();
     const db = getDb();
     db.transaction(() => {
-      db.prepare(
-        'INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, type, date, status, notes, recurring, owner) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
-      ).run(id, primaryAccountId, data.to_account_id ?? null, data.category_id, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null);
-      replaceTransactionPayments(id, payments);
+      insertTransaction(data, id, primaryAccountId, payments);
       if (data.status === 'confirmed') {
         applyBalanceEffect({ ...data, id, account_id: primaryAccountId, payments }, 1);
       }
     })();
     return enrichTransaction(db.prepare(`${JOIN} WHERE t.id = ?`).get(id) as (Transaction & { account_name: string }) | undefined);
+  });
+
+  ipcMain.handle('transactions:createInstallments', (_e, data: InstallmentTransactionInput) => {
+    const payments = normalizePayments(data);
+    assertCanInstall(data, payments);
+
+    const ids = Array.from({ length: data.installments }, () => randomUUID());
+    const amounts = splitInstallmentAmounts(data.amount, data.installments);
+    const primaryAccountId = payments[0].account_id;
+    const db = getDb();
+
+    db.transaction(() => {
+      amounts.forEach((amount, index) => {
+        const installmentData: TransactionInput = {
+          ...data,
+          amount,
+          account_id: primaryAccountId,
+          date: addMonthsIso(data.date, index),
+          description: `${data.description} (${index + 1}/${data.installments})`,
+          payments: [{ account_id: primaryAccountId, amount }],
+        };
+        const installmentPayments = [{ account_id: primaryAccountId, amount }];
+        insertTransaction(installmentData, ids[index], primaryAccountId, installmentPayments);
+        if (data.status === 'confirmed') {
+          applyBalanceEffect({ ...installmentData, id: ids[index], payments: installmentPayments }, 1);
+        }
+      });
+    })();
+
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = db.prepare(`${JOIN} WHERE t.id IN (${placeholders}) ORDER BY t.date ASC, t.created_at ASC`).all(...ids) as (Transaction & { account_name: string })[];
+    return enrichTransactions(rows);
   });
 
   ipcMain.handle('transactions:update', (_e, { id, ...data }: TransactionUpdateInput) => {

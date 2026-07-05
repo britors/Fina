@@ -21,11 +21,15 @@ interface AskPayload {
 }
 
 const DEFAULT_MODELS: Record<AIProvider, string> = {
-  openai: 'gpt-5.5',
-  gemini: 'gemini-3.5-flash',
+  openai: 'gpt-5.1',
+  gemini: 'gemini-3-pro',
 };
 
 const PROVIDERS: AIProvider[] = ['openai', 'gemini'];
+const FALLBACK_MODELS: Record<AIProvider, string[]> = {
+  openai: ['gpt-5.1', 'gpt-5.1-mini', 'gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini'],
+  gemini: ['gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash'],
+};
 
 function secretsPath(): string {
   return path.join(app.getPath('userData'), 'ai-secrets.json');
@@ -104,6 +108,54 @@ function settings(): AISettings {
     hasKey: !!getApiKey(provider),
     encryptionAvailable: safeStorage.isEncryptionAvailable(),
   };
+}
+
+async function listOpenAIModels(apiKey: string): Promise<string[]> {
+  const res = await fetch('https://api.openai.com/v1/models', {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const json = await res.json() as { data?: { id?: string }[]; error?: { message?: string } };
+  if (!res.ok) throw new Error(json.error?.message ?? `OpenAI retornou HTTP ${res.status}`);
+  return (json.data ?? [])
+    .map(model => model.id ?? '')
+    .filter(id =>
+      /^(gpt-|o[0-9]|chatgpt-)/.test(id) &&
+      !id.includes('embedding') &&
+      !id.includes('audio') &&
+      !id.includes('transcribe') &&
+      !id.includes('tts') &&
+      !id.includes('image'),
+    )
+    .sort((a, b) => a.localeCompare(b));
+}
+
+async function listGeminiModels(apiKey: string): Promise<string[]> {
+  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+    headers: { 'x-goog-api-key': apiKey },
+  });
+  const json = await res.json() as {
+    models?: { name?: string; supportedGenerationMethods?: string[] }[];
+    error?: { message?: string };
+  };
+  if (!res.ok) throw new Error(json.error?.message ?? `Gemini retornou HTTP ${res.status}`);
+  return (json.models ?? [])
+    .filter(model => (model.supportedGenerationMethods ?? []).some(method => method === 'generateContent' || method === 'generateMessage'))
+    .map(model => (model.name ?? '').replace(/^models\//, ''))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+async function listModels(provider: AIProvider): Promise<string[]> {
+  const apiKey = getApiKey(provider);
+  if (!apiKey) return FALLBACK_MODELS[provider];
+  try {
+    const remote = provider === 'openai'
+      ? await listOpenAIModels(apiKey)
+      : await listGeminiModels(apiKey);
+    return remote.length ? remote : FALLBACK_MODELS[provider];
+  } catch {
+    return FALLBACK_MODELS[provider];
+  }
 }
 
 function financialSummary(): object {
@@ -281,6 +333,13 @@ async function callGemini(apiKey: string, model: string, prompt: string): Promis
 
 export function registerAIHandlers(): void {
   ipcMain.handle('ai:getSettings', () => settings());
+
+  ipcMain.handle('ai:listModels', async (_e, provider?: AIProvider) => {
+    const safeProvider = provider && PROVIDERS.includes(provider) ? provider : currentProvider();
+    const models = await listModels(safeProvider);
+    const selected = currentModel(safeProvider);
+    return models.includes(selected) ? models : [selected, ...models];
+  });
 
   ipcMain.handle('ai:saveSettings', (_e, data: { enabled: boolean; provider: AIProvider; model: string; consent: boolean }) => {
     const provider = PROVIDERS.includes(data.provider) ? data.provider : 'openai';

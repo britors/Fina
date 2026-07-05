@@ -16,6 +16,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
   async function renderPage(): Promise<void> {
     const budgets = await invoke<BudgetWithProgress[]>('budgets:list', { month, year });
+    const periodLabel = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
     const totalCarried = budgets.reduce((s, b) => s + b.carried_in, 0);
     const totalLimit = budgets.reduce((s, b) => s + b.limit_amount, 0) + totalCarried;
@@ -23,10 +24,16 @@ export async function render(el: HTMLElement): Promise<void> {
     const globalPct  = calculateBudgetPercentage(totalSpent, totalLimit);
 
     el.innerHTML = `
-      <!-- Month picker -->
-      <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <!-- Month filter -->
+      <div class="filters" style="margin-bottom:16px">
+        <span style="font-size:0.8rem;color:var(--text-2)">Mês do orçamento</span>
+        <button class="btn btn-secondary btn-sm" id="budget-prev-month" title="Mês anterior"><i class="ti ti-chevron-left"></i></button>
         <input type="month" class="form-ctrl" style="width:160px" id="month-picker"
           value="${year}-${String(month).padStart(2,'0')}">
+        <button class="btn btn-secondary btn-sm" id="budget-next-month" title="Próximo mês"><i class="ti ti-chevron-right"></i></button>
+        <button class="btn btn-ghost btn-sm" id="budget-current-month">Mês atual</button>
+        <div style="flex:1"></div>
+        <span style="font-size:0.8rem;color:var(--text-3);text-transform:capitalize">${periodLabel}</span>
       </div>
 
       <!-- Overview -->
@@ -34,7 +41,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="stat-card">
           <div class="stat-label">Orçamento total</div>
           <div class="stat-value">${formatCurrency(totalLimit)}</div>
-          <div class="stat-sub">${totalCarried > 0 ? `Inclui ${formatCurrency(totalCarried)} de envelopes trazidos do mês anterior` : 'Definido para o mês'}</div>
+          <div class="stat-sub">${totalCarried > 0 ? `Inclui ${formatCurrency(totalCarried)} de envelopes trazidos do mês anterior` : `Definido para ${periodLabel}`}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Gasto até agora</div>
@@ -46,7 +53,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="stat-card">
           <div class="stat-label">Ainda disponível</div>
           <div class="stat-value stat-green">${formatCurrency(Math.max(0, totalLimit - totalSpent))}</div>
-          <div class="stat-sub">para este mês</div>
+          <div class="stat-sub">para ${periodLabel}</div>
         </div>
       </div>
 
@@ -78,6 +85,23 @@ export async function render(el: HTMLElement): Promise<void> {
     el.querySelector<HTMLInputElement>('#month-picker')?.addEventListener('change', e => {
       const [y, m] = (e.target as HTMLInputElement).value.split('-').map(Number);
       year = y; month = m;
+      renderPage();
+    });
+    el.querySelector('#budget-prev-month')?.addEventListener('click', () => {
+      const d = new Date(year, month - 2, 1);
+      month = d.getMonth() + 1;
+      year = d.getFullYear();
+      renderPage();
+    });
+    el.querySelector('#budget-next-month')?.addEventListener('click', () => {
+      const d = new Date(year, month, 1);
+      month = d.getMonth() + 1;
+      year = d.getFullYear();
+      renderPage();
+    });
+    el.querySelector('#budget-current-month')?.addEventListener('click', () => {
+      month = now.getMonth() + 1;
+      year = now.getFullYear();
       renderPage();
     });
 

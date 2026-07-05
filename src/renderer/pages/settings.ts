@@ -21,6 +21,7 @@ export async function render(el: HTMLElement): Promise<void> {
     { id: 'family',        label: 'Família/Casal'     },
     { id: 'categories',    label: 'Categorias'        },
     { id: 'ai',            label: 'IA'                },
+    { id: 'openfinance',   label: 'Open Finance'      },
     { id: 'data',          label: 'Dados e backup'    },
     { id: 'security',      label: 'Segurança'         },
     { id: 'about',         label: 'Sobre'             },
@@ -59,6 +60,7 @@ function renderSection(el: HTMLElement, id: string, s: Settings, dbPath: string)
   else if (id === 'family')        renderFamily(el, s);
   else if (id === 'categories')    renderCategories(el);
   else if (id === 'ai')            renderAI(el);
+  else if (id === 'openfinance')   renderOpenFinance(el);
   else if (id === 'data')          renderData(el, s, dbPath);
   else if (id === 'security')      renderSecurity(el);
   else if (id === 'about')         renderAbout(el);
@@ -935,8 +937,32 @@ type AISettings = {
   encryptionAvailable: boolean;
 };
 
+type OpenFinanceProvider = 'pluggy' | 'belvo' | 'klavi';
+
+type OpenFinanceProviderSettings = {
+  enabled: boolean;
+  hasClientId: boolean;
+  hasClientSecret: boolean;
+  hasApiKey: boolean;
+  sandbox: boolean;
+  connectionId: string;
+};
+
+type OpenFinanceSettings = {
+  encryptionAvailable: boolean;
+  providers: Record<OpenFinanceProvider, OpenFinanceProviderSettings>;
+};
+
+const OPEN_FINANCE_PROVIDERS: { id: OpenFinanceProvider; name: string; description: string; auth: 'client' | 'apikey' }[] = [
+  { id: 'pluggy', name: 'Pluggy', description: 'API Open Finance para contas, saldos, transações, investimentos e pagamentos.', auth: 'client' },
+  { id: 'belvo',  name: 'Belvo',  description: 'Dados bancários, enriquecimento, recorrências, verificação de conta/renda e Pix.', auth: 'client' },
+  { id: 'klavi',  name: 'Klavi',  description: 'Open Finance para crédito, risco, inteligência de mercado e pagamentos.', auth: 'apikey' },
+];
+
 async function renderAI(el: HTMLElement): Promise<void> {
   let ai = await invoke<AISettings>('ai:getSettings');
+  let aiModels = await invoke<string[]>('ai:listModels', ai.provider).catch(() => [ai.model]);
+  if (!aiModels.includes(ai.model)) aiModels = [ai.model, ...aiModels];
 
   el.innerHTML = `
     <div class="settings-section-label">ASSISTENTE DE IA</div>
@@ -977,7 +1003,9 @@ async function renderAI(el: HTMLElement): Promise<void> {
         <div class="settings-row-sub">Modelo usado nas respostas do assistente</div>
       </div>
       <div class="settings-row-right">
-        <input class="form-ctrl" id="ai-model" value="${esc(ai.model)}" style="width:180px">
+        <select class="form-ctrl" id="ai-model" style="width:220px">
+          ${modelOptionsHtml(aiModels, ai.model)}
+        </select>
       </div>
     </div>
     <div class="settings-row">
@@ -1013,7 +1041,7 @@ async function renderAI(el: HTMLElement): Promise<void> {
 
   el.querySelector('#ai-save')?.addEventListener('click', async () => {
     const provider = el.querySelector<HTMLSelectElement>('#ai-provider')!.value as 'openai' | 'gemini';
-    const model = el.querySelector<HTMLInputElement>('#ai-model')!.value.trim();
+    const model = el.querySelector<HTMLSelectElement>('#ai-model')!.value.trim();
     const enabled = el.querySelector<HTMLInputElement>('#ai-enabled')!.checked;
     const consent = el.querySelector<HTMLInputElement>('#ai-consent')!.checked;
     const apiKey = el.querySelector<HTMLInputElement>('#ai-key')!.value.trim();
@@ -1023,11 +1051,176 @@ async function renderAI(el: HTMLElement): Promise<void> {
     renderAI(el);
   });
 
+  el.querySelector<HTMLSelectElement>('#ai-provider')?.addEventListener('change', async e => {
+    const provider = (e.target as HTMLSelectElement).value as 'openai' | 'gemini';
+    const select = el.querySelector<HTMLSelectElement>('#ai-model')!;
+    select.innerHTML = '<option value="">Carregando modelos...</option>';
+    select.disabled = true;
+    const models = await invoke<string[]>('ai:listModels', provider).catch(() => []);
+    select.innerHTML = modelOptionsHtml(models, models[0] ?? '');
+    select.disabled = false;
+  });
+
   el.querySelector('#ai-clear-key')?.addEventListener('click', async () => {
     if (!confirm('Remover a chave de API salva para o provedor atual?')) return;
     ai = await invoke<AISettings>('ai:clearApiKey', ai.provider);
     renderAI(el);
   });
+}
+
+function modelOptionsHtml(models: string[], selected: string): string {
+  return models.map(model => `<option value="${esc(model)}" ${model === selected ? 'selected' : ''}>${esc(model)}</option>`).join('');
+}
+
+async function renderOpenFinance(el: HTMLElement): Promise<void> {
+  let openFinance = await invoke<OpenFinanceSettings>('openFinance:getSettings');
+
+  el.innerHTML = `
+    <div class="settings-section-label">OPEN FINANCE</div>
+    <div class="settings-hr"></div>
+    ${!openFinance.encryptionAvailable ? `
+      <div class="alert alert-error" style="margin-top:14px">
+        A criptografia segura do sistema não está disponível. As credenciais de Open Finance não poderão ser salvas.
+      </div>
+    ` : ''}
+    <div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.2);border-radius:8px;padding:12px 16px;font-size:0.8rem;color:var(--text-2);line-height:1.6;margin-top:14px">
+      Configure as credenciais dos agregadores que serão usados para conectar contas via Open Finance. O Fina guarda segredos criptografados fora do banco de dados.
+    </div>
+    ${OPEN_FINANCE_PROVIDERS.map(provider => providerCard(provider, openFinance.providers[provider.id])).join('')}
+  `;
+
+  OPEN_FINANCE_PROVIDERS.forEach(provider => {
+    el.querySelector(`#of-save-${provider.id}`)?.addEventListener('click', async () => {
+      const enabled = el.querySelector<HTMLInputElement>(`#of-${provider.id}-enabled`)!.checked;
+      const sandbox = el.querySelector<HTMLInputElement>(`#of-${provider.id}-sandbox`)!.checked;
+      const clientId = el.querySelector<HTMLInputElement>(`#of-${provider.id}-client-id`)?.value.trim();
+      const clientSecret = el.querySelector<HTMLInputElement>(`#of-${provider.id}-client-secret`)?.value.trim();
+      const apiKey = el.querySelector<HTMLInputElement>(`#of-${provider.id}-api-key`)?.value.trim();
+      const connectionId = el.querySelector<HTMLInputElement>(`#of-${provider.id}-connection-id`)?.value.trim();
+
+      try {
+        openFinance = await invoke<OpenFinanceSettings>('openFinance:saveProvider', {
+          provider: provider.id,
+          enabled,
+          sandbox,
+          clientId,
+          clientSecret,
+          apiKey,
+          connectionId,
+        });
+        alert(`Credenciais da ${provider.name} salvas.`);
+        renderOpenFinance(el);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : `Não foi possível salvar as credenciais da ${provider.name}.`);
+      }
+    });
+
+    el.querySelector(`#of-clear-${provider.id}`)?.addEventListener('click', async () => {
+      if (!confirm(`Remover as credenciais salvas da ${provider.name}?`)) return;
+      openFinance = await invoke<OpenFinanceSettings>('openFinance:clearProviderSecrets', provider.id);
+      renderOpenFinance(el);
+    });
+
+    el.querySelector(`#of-test-${provider.id}`)?.addEventListener('click', async () => {
+      try {
+        await invoke('openFinance:testProvider', provider.id);
+        alert(`${provider.name} respondeu corretamente.`);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : `Não foi possível testar ${provider.name}.`);
+      }
+    });
+
+    el.querySelector(`#of-sync-${provider.id}`)?.addEventListener('click', async () => {
+      try {
+        const result = await invoke<{ accountsCreated: number; accountsUpdated: number; transactionsImported: number; transactionsSkipped: number }>('openFinance:syncProvider', provider.id);
+        alert([
+          `${provider.name} sincronizado.`,
+          `Contas criadas: ${result.accountsCreated}`,
+          `Contas atualizadas: ${result.accountsUpdated}`,
+          `Lançamentos importados: ${result.transactionsImported}`,
+          `Duplicados ignorados: ${result.transactionsSkipped}`,
+        ].join('\n'));
+      } catch (err) {
+        alert(err instanceof Error ? err.message : `Não foi possível sincronizar ${provider.name}.`);
+      }
+    });
+  });
+}
+
+function providerCard(
+  provider: { id: OpenFinanceProvider; name: string; description: string; auth: 'client' | 'apikey' },
+  settings: OpenFinanceProviderSettings,
+): string {
+  return `
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">
+        <span>${provider.name}</span>
+        <span class="badge ${settings.enabled ? 'badge-confirmed' : 'badge-pending'}">${settings.enabled ? 'Ativo' : 'Inativo'}</span>
+      </div>
+      <div class="card-hr"></div>
+      <div class="card-body">
+        <div style="font-size:0.82rem;color:var(--text-2);line-height:1.6;margin-bottom:14px">${provider.description}</div>
+        <div class="settings-row" style="padding-left:0;padding-right:0">
+          <div>
+            <div class="settings-row-label">Ativar integração</div>
+            <div class="settings-row-sub">Permite usar este provedor nas sincronizações de Open Finance</div>
+          </div>
+          <div class="settings-row-right">
+            <label class="toggle">
+              <input type="checkbox" id="of-${provider.id}-enabled" ${settings.enabled ? 'checked' : ''}>
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+          </div>
+        </div>
+        <div class="settings-row" style="padding-left:0;padding-right:0">
+          <div>
+            <div class="settings-row-label">Ambiente de testes</div>
+            <div class="settings-row-sub">Use sandbox enquanto valida a integração</div>
+          </div>
+          <div class="settings-row-right">
+            <label class="toggle">
+              <input type="checkbox" id="of-${provider.id}-sandbox" ${settings.sandbox ? 'checked' : ''}>
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+          </div>
+        </div>
+        ${provider.auth === 'client' ? `
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Client ID ${settings.hasClientId ? '(salvo)' : ''}</label>
+              <input class="form-ctrl" id="of-${provider.id}-client-id" type="password" placeholder="${settings.hasClientId ? 'Novo client ID' : 'Client ID'}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Client Secret ${settings.hasClientSecret ? '(salvo)' : ''}</label>
+              <input class="form-ctrl" id="of-${provider.id}-client-secret" type="password" placeholder="${settings.hasClientSecret ? 'Novo client secret' : 'Client Secret'}">
+            </div>
+          </div>
+        ` : `
+          <div class="form-group">
+            <label class="form-label">API key ${settings.hasApiKey ? '(salva)' : ''}</label>
+            <input class="form-ctrl" id="of-${provider.id}-api-key" type="password" placeholder="${settings.hasApiKey ? 'Nova API key' : 'API key'}">
+          </div>
+        `}
+        <div class="form-group">
+          <label class="form-label">${provider.id === 'pluggy' ? 'Item ID' : 'Identificador da conexão'} ${settings.connectionId ? '(salvo)' : ''}</label>
+          <input class="form-ctrl" id="of-${provider.id}-connection-id" value="${esc(settings.connectionId)}" placeholder="${provider.id === 'pluggy' ? 'Item ID retornado pelo Pluggy Connect' : 'Link/connection ID do provedor'}">
+        </div>
+        ${provider.id !== 'pluggy' ? `
+          <div style="font-size:0.78rem;color:var(--warning);line-height:1.5;margin:-4px 0 12px">
+            Credenciais preparadas. Sincronização automática será ligada quando o adaptador deste provedor for finalizado.
+          </div>
+        ` : ''}
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="btn btn-ghost btn-sm" id="of-test-${provider.id}">Testar</button>
+          <button class="btn btn-secondary btn-sm" id="of-sync-${provider.id}">Sincronizar</button>
+          <button class="btn btn-ghost btn-sm" id="of-clear-${provider.id}">Remover credenciais</button>
+          <button class="btn btn-primary btn-sm" id="of-save-${provider.id}">Salvar ${provider.name}</button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function esc(s?: string): string {

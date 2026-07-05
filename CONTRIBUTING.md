@@ -43,6 +43,14 @@ npm start            # abre o app
    npm run typecheck
    ```
 6. Abra um **Pull Request** para `main` com uma descrição clara do que foi feito e por quê.
+7. Faça merge apenas depois da revisão e aprovação do PR.
+
+## Regra do fluxo
+
+- `main` é branch de integração final.
+- Mudanças novas devem entrar em branch separada.
+- Cada branch deve virar um Pull Request antes de chegar em `main`.
+- O merge para `main` acontece só depois de review e validação.
 
 ---
 

@@ -81,11 +81,16 @@ function accountCard(a: Account): string {
     checking: '#8B5CF6', savings: '#1D9E75', credit_card: '#7F77DD', meal_voucher: '#D85A30', food_voucher: '#10B981', wallet: '#EF9F27',
   };
   const color = a.color ?? typeColors[a.type] ?? '#9CA3AF';
+  const isCreditCard = a.type === 'credit_card';
+  const isVoucher = a.type === 'meal_voucher' || a.type === 'food_voucher';
   const isCredit = isCreditLikeAccountType(a.type);
   // Crédito/vales são dívida positiva; conta corrente/poupança/carteira usam
   // saldo negativo para representar uso do limite (cheque especial).
   const usedLimit = isCredit ? a.balance : Math.max(0, -a.balance);
-  const isNegative = isCredit ? a.balance > 0 : a.balance < 0;
+  const availableToSpend = a.credit_limit != null ? a.credit_limit - usedLimit : -usedLimit;
+  const balanceLabel = isVoucher ? 'Disponível para gastar' : isCreditCard ? 'Fatura atual' : 'Saldo disponível';
+  const balanceValue = isVoucher ? formatCurrency(availableToSpend) : isCredit ? formatDebt(a.balance) : formatCurrency(a.balance);
+  const isNegative = isVoucher ? availableToSpend < 0 : isCredit ? a.balance > 0 : a.balance < 0;
 
   return `
     <div class="account-card">
@@ -102,9 +107,9 @@ function accountCard(a: Account): string {
         </div>
       </div>
       <div class="account-name">${esc(a.name)}</div>
-      <div class="account-bal-label">${isCredit ? 'Fatura atual' : 'Saldo disponível'}${a.currency !== 'BRL' ? ` · convertido de ${CURRENCY_SYMBOLS[a.currency]}` : ''}</div>
+      <div class="account-bal-label">${balanceLabel}${a.currency !== 'BRL' ? ` · convertido de ${CURRENCY_SYMBOLS[a.currency]}` : ''}</div>
       <div class="account-balance" style="color:${isNegative ? 'var(--danger)' : 'var(--text)'}">
-        ${isCredit ? formatDebt(a.balance) : formatCurrency(a.balance)}
+        ${balanceValue}
       </div>
       ${a.currency !== 'BRL' && a.original_balance != null ? `
         <div style="font-size:12px;color:var(--text-3);margin-top:2px">${CURRENCY_SYMBOLS[a.currency]} ${a.original_balance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>

@@ -23,6 +23,7 @@ import { registerDebtHandlers } from './ipc/debts';
 import { registerMarketHandlers } from './ipc/market';
 import { registerIRPFHandlers } from './ipc/irpf';
 import { registerAIHandlers } from './ipc/ai';
+import { registerOpenFinanceHandlers } from './ipc/openFinance';
 import { registerOCRHandlers } from './ipc/ocr';
 import { initUpdater } from './updater';
 import { startNotificationScheduler } from './notifications';
@@ -137,6 +138,7 @@ function registerHandlers(): void {
   registerMarketHandlers();
   registerIRPFHandlers();
   registerAIHandlers();
+  registerOpenFinanceHandlers();
   registerOCRHandlers();
   registerSecurityHandlers();
   registerBackgroundServiceHandlers();
