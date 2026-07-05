@@ -10,6 +10,7 @@ export async function render(el: HTMLElement): Promise<void> {
   const now = new Date();
   let month = now.getMonth() + 1;
   let year  = now.getFullYear();
+  let showAll = false;
 
   setTopbarActions(`
     <button class="btn btn-secondary" id="btn-ai-create-budget"><i class="ti ti-sparkles"></i> Criar com IA</button>
@@ -17,7 +18,7 @@ export async function render(el: HTMLElement): Promise<void> {
   `);
 
   async function renderPage(): Promise<void> {
-    const budgets = await invoke<BudgetWithProgress[]>('budgets:list', { month, year });
+    const budgets = await invoke<BudgetWithProgress[]>('budgets:list', showAll ? undefined : { month, year });
     const periodLabel = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
     const totalCarried = budgets.reduce((s, b) => s + b.carried_in, 0);
@@ -29,50 +30,53 @@ export async function render(el: HTMLElement): Promise<void> {
       <!-- Month filter -->
       <div class="filters" style="margin-bottom:16px">
         <span style="font-size:0.8rem;color:var(--text-2)">Mês do orçamento</span>
-        <button class="btn btn-secondary btn-sm" id="budget-prev-month" title="Mês anterior"><i class="ti ti-chevron-left"></i></button>
-        <input type="month" class="form-ctrl" style="width:160px" id="month-picker"
+        <button class="btn btn-secondary btn-sm" id="budget-prev-month" title="Mês anterior" ${showAll ? 'disabled' : ''}><i class="ti ti-chevron-left"></i></button>
+        <input type="month" class="form-ctrl" style="width:160px" id="month-picker" ${showAll ? 'disabled' : ''}
           value="${year}-${String(month).padStart(2,'0')}">
-        <button class="btn btn-secondary btn-sm" id="budget-next-month" title="Próximo mês"><i class="ti ti-chevron-right"></i></button>
+        <button class="btn btn-secondary btn-sm" id="budget-next-month" title="Próximo mês" ${showAll ? 'disabled' : ''}><i class="ti ti-chevron-right"></i></button>
         <button class="btn btn-ghost btn-sm" id="budget-current-month">Mês atual</button>
+        <button class="btn btn-ghost btn-sm ${showAll ? 'active' : ''}" id="budget-clear-filter">Todos</button>
         <div style="flex:1"></div>
-        <span style="font-size:0.8rem;color:var(--text-3);text-transform:capitalize">${periodLabel}</span>
+        <span style="font-size:0.8rem;color:var(--text-3);text-transform:capitalize">${showAll ? 'Todos os períodos' : periodLabel}</span>
       </div>
 
       <!-- Overview -->
-      <div class="grid-3" style="margin-bottom:16px">
-        <div class="stat-card">
-          <div class="stat-label">Orçamento total</div>
-          <div class="stat-value">${formatCurrency(totalLimit)}</div>
-          <div class="stat-sub">${totalCarried > 0 ? `Inclui ${formatCurrency(totalCarried)} de envelopes trazidos do mês anterior` : `Definido para ${periodLabel}`}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Gasto até agora</div>
-          <div class="stat-value" style="color:${globalPct > 90 ? 'var(--danger)' : globalPct > 70 ? 'var(--warning)' : 'var(--text)'}">
-            ${formatCurrency(totalSpent)}
+      ${!showAll ? `
+        <div class="grid-3" style="margin-bottom:16px">
+          <div class="stat-card">
+            <div class="stat-label">Orçamento total</div>
+            <div class="stat-value">${formatCurrency(totalLimit)}</div>
+            <div class="stat-sub">${totalCarried > 0 ? `Inclui ${formatCurrency(totalCarried)} de envelopes trazidos do mês anterior` : `Definido para ${periodLabel}`}</div>
           </div>
-          <div class="stat-sub">${globalPct.toFixed(0)}% do orçamento</div>
+          <div class="stat-card">
+            <div class="stat-label">Gasto até agora</div>
+            <div class="stat-value" style="color:${globalPct > 90 ? 'var(--danger)' : globalPct > 70 ? 'var(--warning)' : 'var(--text)'}">
+              ${formatCurrency(totalSpent)}
+            </div>
+            <div class="stat-sub">${globalPct.toFixed(0)}% do orçamento</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Ainda disponível</div>
+            <div class="stat-value stat-green">${formatCurrency(Math.max(0, totalLimit - totalSpent))}</div>
+            <div class="stat-sub">para ${periodLabel}</div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Ainda disponível</div>
-          <div class="stat-value stat-green">${formatCurrency(Math.max(0, totalLimit - totalSpent))}</div>
-          <div class="stat-sub">para ${periodLabel}</div>
-        </div>
-      </div>
 
-      <!-- Global bar -->
-      ${totalLimit > 0 ? `
-        <div class="card" style="margin-bottom:16px">
-          <div class="card-body" style="padding:14px 20px">
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-2);margin-bottom:8px">
-              <span>Progresso geral do mês</span>
-              <span>${globalPct.toFixed(0)}% · ${formatCurrency(totalSpent)} de ${formatCurrency(totalLimit)}</span>
-            </div>
-            <div class="prog-track" style="height:10px">
-              <div class="prog-fill ${globalPct > 100 ? 'prog-over' : globalPct > 80 ? 'prog-warn' : 'prog-ok'}"
-                style="width:${Math.min(globalPct,100).toFixed(1)}%"></div>
+        <!-- Global bar -->
+        ${totalLimit > 0 ? `
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-body" style="padding:14px 20px">
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-2);margin-bottom:8px">
+                <span>Progresso geral do mês</span>
+                <span>${globalPct.toFixed(0)}% · ${formatCurrency(totalSpent)} de ${formatCurrency(totalLimit)}</span>
+              </div>
+              <div class="prog-track" style="height:10px">
+                <div class="prog-fill ${globalPct > 100 ? 'prog-over' : globalPct > 80 ? 'prog-warn' : 'prog-ok'}"
+                  style="width:${Math.min(globalPct,100).toFixed(1)}%"></div>
+              </div>
             </div>
           </div>
-        </div>
+        ` : ''}
       ` : ''}
 
       <!-- Budget rows -->
@@ -80,7 +84,7 @@ export async function render(el: HTMLElement): Promise<void> {
         ? `<div class="empty"><i class="ti ti-target"></i>
             <div class="empty-title">Nenhum orçamento cadastrado</div>
             <p>Clique em "Novo orçamento" para definir limites.</p></div>`
-        : budgets.map(b => budgetRow(b)).join('')
+        : budgets.map(b => budgetRow(b, showAll)).join('')
       }
     `;
 
@@ -102,8 +106,13 @@ export async function render(el: HTMLElement): Promise<void> {
       renderPage();
     });
     el.querySelector('#budget-current-month')?.addEventListener('click', () => {
+      showAll = false;
       month = now.getMonth() + 1;
       year = now.getFullYear();
+      renderPage();
+    });
+    el.querySelector('#budget-clear-filter')?.addEventListener('click', () => {
+      showAll = true;
       renderPage();
     });
 
@@ -135,13 +144,14 @@ export async function render(el: HTMLElement): Promise<void> {
   await renderPage();
 }
 
-function budgetRow(b: BudgetWithProgress): string {
+function budgetRow(b: BudgetWithProgress, showPeriod = false): string {
   const pct = b.percentage;
   const effectiveLimit = b.limit_amount + b.carried_in;
   const exceeded = b.spent > effectiveLimit;
   const cls = exceeded ? 'prog-over' : pct > 80 ? 'prog-warn' : 'prog-ok';
   const badgeCls = exceeded ? 'badge-exceeded' : pct > 80 ? 'badge-warn' : 'badge-ok';
   const badgeLabel = exceeded ? 'Excedido' : pct > 80 ? 'Atenção' : 'No limite';
+  const periodLabel = new Date(b.year, b.month - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
 
   return `
     <div class="budget-row ${exceeded ? 'exceeded' : ''}">
@@ -151,7 +161,7 @@ function budgetRow(b: BudgetWithProgress): string {
             <i class="ti ${b.category_icon}" style="color:${b.category_color};font-size:15px"></i>
           </div>
           <div>
-            <div class="budget-row-name">${esc(b.category_name)}</div>
+            <div class="budget-row-name">${esc(b.category_name)}${showPeriod ? ` <span style="font-weight:400;color:var(--text-3);text-transform:capitalize">· ${periodLabel}</span>` : ''}</div>
             ${b.carry_over ? `<div class="budget-row-spent"><i class="ti ti-repeat"></i> Envelope: mantém saldo para o próximo mês${b.carried_in > 0 ? ` · +${formatCurrency(b.carried_in)} trazido do mês anterior` : ''}</div>` : ''}
           </div>
         </div>
