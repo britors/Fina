@@ -3,6 +3,23 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getDb } from '../database';
+import type {
+  Account,
+  AIBillDraft,
+  AIBudgetDraft,
+  AICreateDraft,
+  AICreateDraftTarget,
+  AITransactionBatchDraft,
+  AIDebtDraft,
+  AIGoalDraft,
+  AITransactionDraft,
+  BillStatus,
+  DebtStatus,
+  DebtType,
+  GoalType,
+  TransactionStatus,
+  TransactionType,
+} from '../../shared/types';
 
 type AIProvider = 'openai' | 'gemini';
 
@@ -17,6 +34,17 @@ interface AISettings {
 
 interface AskPayload {
   question: string;
+  consentConfirmed: boolean;
+}
+
+interface CreateDraftPayload {
+  target: AICreateDraftTarget;
+  prompt: string;
+  consentConfirmed: boolean;
+}
+
+interface CreateTransactionBatchPayload {
+  prompt: string;
   consentConfirmed: boolean;
 }
 
@@ -391,6 +419,262 @@ function buildDecisionPrompt(decision: { title: string; body: string; impact: st
   ].join('\n');
 }
 
+const DRAFT_TARGETS: AICreateDraftTarget[] = ['transaction', 'bill', 'budget', 'debt', 'goal'];
+const TRANSACTION_TYPES: TransactionType[] = ['income', 'expense', 'transfer'];
+const TRANSACTION_STATUSES: TransactionStatus[] = ['confirmed', 'pending'];
+const BILL_STATUSES: BillStatus[] = ['pending', 'paid', 'overdue'];
+const DEBT_TYPES: DebtType[] = ['emprestimo', 'financiamento', 'cartao', 'cheque_especial', 'pessoal', 'outro'];
+const DEBT_STATUSES: DebtStatus[] = ['em_dia', 'em_atraso', 'renegociada', 'quitada'];
+const GOAL_TYPES: GoalType[] = ['viagem', 'imovel', 'evento', 'emergencia', 'outro'];
+
+function buildCreateDraftPrompt(target: AICreateDraftTarget, userPrompt: string, summary: object): string {
+  const today = new Date().toISOString().slice(0, 10);
+  return [
+    'Transforme o pedido do usuário em um rascunho estruturado para o formulário indicado.',
+    'Responda somente com JSON válido, sem markdown e sem texto fora do JSON.',
+    'Não invente dados que não estejam no pedido; quando faltar algo, omita o campo e inclua aviso em "warnings".',
+    'Resolva datas relativas usando a data atual informada.',
+    'Use ponto como separador decimal em números.',
+    '',
+    `Data atual: ${today}`,
+    `Formulário alvo: ${target}`,
+    '',
+    'Schemas aceitos:',
+    'transaction: {"description":string,"amount":number,"type":"income|expense|transfer","date":"YYYY-MM-DD","status":"confirmed|pending","category_hint":string,"account_hint":string,"notes":string,"explanation":string,"warnings":string[]}',
+    'bill: {"description":string,"amount":number,"due_date":"YYYY-MM-DD","status":"pending|paid|overdue","category_hint":string,"account_hint":string,"explanation":string,"warnings":string[]}',
+    'budget: {"category_hint":string,"month":number,"year":number,"limit_amount":number,"carry_over":boolean,"explanation":string,"warnings":string[]}',
+    'debt: {"description":string,"type":"emprestimo|financiamento|cartao|cheque_especial|pessoal|outro","creditor":string,"status":"em_dia|em_atraso|renegociada|quitada","original_amount":number,"outstanding_balance":number,"interest_rate":number,"installments_total":number,"installments_remaining":number,"installment_amount":number,"next_due_date":"YYYY-MM-DD","explanation":string,"warnings":string[]}',
+    'goal: {"name":string,"type":"viagem|imovel|evento|emergencia|outro","target_amount":number,"current_amount":number,"target_date":"YYYY-MM-DD","account_hint":string,"description":string,"explanation":string,"warnings":string[]}',
+    '',
+    'Pedido do usuário:',
+    userPrompt,
+    '',
+    'Resumo financeiro agregado do Fina, para contexto quando útil:',
+    JSON.stringify(summary, null, 2),
+  ].join('\n');
+}
+
+function buildTransactionBatchPrompt(userPrompt: string, summary: object): string {
+  const today = new Date().toISOString().slice(0, 10);
+  return [
+    'Transforme o texto do usuário em uma lista de rascunhos de lançamentos financeiros.',
+    'Responda somente com JSON válido, sem markdown e sem texto fora do JSON.',
+    'Não invente dados que não estejam no pedido; quando faltar algo em um item, omita o campo e inclua aviso em "warnings" daquele item.',
+    'Resolva datas relativas usando a data atual informada.',
+    'Use ponto como separador decimal em números.',
+    'Limite a resposta a no máximo 20 lançamentos.',
+    '',
+    `Data atual: ${today}`,
+    '',
+    'Schema obrigatório:',
+    '{"explanation":string,"warnings":string[],"items":[{"description":string,"amount":number,"type":"income|expense|transfer","date":"YYYY-MM-DD","status":"confirmed|pending","category_hint":string,"account_hint":string,"notes":string,"explanation":string,"warnings":string[]}]}',
+    '',
+    'Texto do usuário:',
+    userPrompt,
+    '',
+    'Resumo financeiro agregado do Fina, para contexto quando útil:',
+    JSON.stringify(summary, null, 2),
+  ].join('\n');
+}
+
+function normalizeText(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function asString(value: unknown): string | undefined {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text || undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  const num = typeof value === 'number' ? value : typeof value === 'string' ? parseFloat(value.replace(',', '.')) : NaN;
+  return Number.isFinite(num) ? Math.round(num * 100) / 100 : undefined;
+}
+
+function asInt(value: unknown): number | undefined {
+  const num = asNumber(value);
+  return num == null ? undefined : Math.trunc(num);
+}
+
+function asBool01(value: unknown): 0 | 1 | undefined {
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (value === 1 || value === '1' || value === 'true') return 1;
+  if (value === 0 || value === '0' || value === 'false') return 0;
+  return undefined;
+}
+
+function asEnum<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
+  const text = asString(value);
+  return text && allowed.includes(text as T) ? text as T : undefined;
+}
+
+function asDate(value: unknown): string | undefined {
+  const text = asString(value);
+  return text && /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : undefined;
+}
+
+function asWarnings(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(asString).filter((v): v is string => !!v).slice(0, 6) : [];
+}
+
+function extractJson(text: string): Record<string, unknown> {
+  const trimmed = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+  try {
+    return asObject(JSON.parse(trimmed));
+  } catch {
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start >= 0 && end > start) return asObject(JSON.parse(trimmed.slice(start, end + 1)));
+    throw new Error('A IA não retornou um JSON válido para preencher o formulário.');
+  }
+}
+
+function listAccounts(): Account[] {
+  return getDb().prepare('SELECT * FROM accounts ORDER BY created_at, name').all() as Account[];
+}
+
+function matchAccount(hint: unknown, preferredType?: string): string | undefined {
+  const accounts = listAccounts();
+  if (accounts.length === 0) return undefined;
+  const text = normalizeText(asString(hint) ?? '');
+  if (text) {
+    const direct = accounts.find(account => normalizeText(`${account.name} ${account.bank_name ?? ''} ${account.type}`).includes(text));
+    if (direct) return direct.id;
+  }
+  const byType = preferredType ? accounts.find(account => account.type === preferredType) : undefined;
+  return byType?.id ?? accounts[0]?.id;
+}
+
+function matchCategory(hint: unknown, type: 'income' | 'expense'): string | undefined {
+  const categories = getDb().prepare('SELECT id, name FROM categories WHERE type = ? ORDER BY created_at, name').all(type) as { id: string; name: string }[];
+  if (categories.length === 0) return undefined;
+  const text = normalizeText(asString(hint) ?? '');
+  if (text) {
+    const direct = categories.find(category => {
+      const name = normalizeText(category.name);
+      return name.includes(text) || text.includes(name);
+    });
+    if (direct) return direct.id;
+  }
+  return categories[0]?.id;
+}
+
+function normalizeCreateDraft(target: AICreateDraftTarget, raw: Record<string, unknown>): AICreateDraft {
+  const explanation = asString(raw.explanation) ?? 'Rascunho gerado pela IA. Revise todos os campos antes de salvar.';
+  const warnings = asWarnings(raw.warnings);
+
+  if (target === 'transaction') {
+    const type = asEnum(raw.type, TRANSACTION_TYPES) ?? 'expense';
+    const categoryType = type === 'income' ? 'income' : 'expense';
+    const draft: AITransactionDraft = {
+      target,
+      explanation,
+      warnings,
+      description: asString(raw.description),
+      amount: asNumber(raw.amount),
+      type,
+      date: asDate(raw.date),
+      status: asEnum(raw.status, TRANSACTION_STATUSES) ?? 'confirmed',
+      notes: asString(raw.notes) ?? null,
+      account_id: matchAccount(raw.account_hint),
+      category_id: matchCategory(raw.category_hint ?? raw.description, categoryType),
+    };
+    if (!draft.description) draft.warnings.push('Revise a descrição antes de salvar.');
+    if (draft.amount == null) draft.warnings.push('Informe o valor antes de salvar.');
+    return draft;
+  }
+
+  if (target === 'bill') {
+    const draft: AIBillDraft = {
+      target,
+      explanation,
+      warnings,
+      description: asString(raw.description),
+      amount: asNumber(raw.amount),
+      due_date: asDate(raw.due_date),
+      status: asEnum(raw.status, BILL_STATUSES) ?? 'pending',
+      account_id: matchAccount(raw.account_hint) ?? null,
+      category_id: matchCategory(raw.category_hint ?? raw.description, 'expense') ?? null,
+    };
+    if (!draft.description) draft.warnings.push('Revise a descrição antes de salvar.');
+    if (draft.amount == null) draft.warnings.push('Informe o valor antes de salvar.');
+    if (!draft.due_date) draft.warnings.push('Informe o vencimento antes de salvar.');
+    return draft;
+  }
+
+  if (target === 'budget') {
+    const now = new Date();
+    const draft: AIBudgetDraft = {
+      target,
+      explanation,
+      warnings,
+      category_id: matchCategory(raw.category_hint, 'expense'),
+      month: asInt(raw.month) ?? now.getMonth() + 1,
+      year: asInt(raw.year) ?? now.getFullYear(),
+      limit_amount: asNumber(raw.limit_amount),
+      carry_over: asBool01(raw.carry_over) ?? 0,
+    };
+    if (!draft.category_id) draft.warnings.push('Selecione uma categoria antes de salvar.');
+    if (draft.limit_amount == null) draft.warnings.push('Informe o limite antes de salvar.');
+    return draft;
+  }
+
+  if (target === 'debt') {
+    const draft: AIDebtDraft = {
+      target,
+      explanation,
+      warnings,
+      description: asString(raw.description),
+      type: asEnum(raw.type, DEBT_TYPES) ?? 'outro',
+      creditor: asString(raw.creditor) ?? null,
+      status: asEnum(raw.status, DEBT_STATUSES) ?? 'em_dia',
+      original_amount: asNumber(raw.original_amount),
+      outstanding_balance: asNumber(raw.outstanding_balance ?? raw.original_amount),
+      interest_rate: asNumber(raw.interest_rate) ?? 0,
+      installments_total: asInt(raw.installments_total) ?? 1,
+      installments_remaining: asInt(raw.installments_remaining ?? raw.installments_total) ?? 1,
+      installment_amount: asNumber(raw.installment_amount) ?? 0,
+      next_due_date: asDate(raw.next_due_date) ?? null,
+    };
+    if (!draft.description) draft.warnings.push('Informe a descrição da dívida antes de salvar.');
+    return draft;
+  }
+
+  const goalDraft: AIGoalDraft = {
+    target: 'goal',
+    explanation,
+    warnings,
+    name: asString(raw.name),
+    type: asEnum(raw.type, GOAL_TYPES) ?? 'outro',
+    target_amount: asNumber(raw.target_amount),
+    current_amount: asNumber(raw.current_amount) ?? 0,
+    target_date: asDate(raw.target_date) ?? null,
+    account_id: matchAccount(raw.account_hint) ?? null,
+    description: asString(raw.description) ?? null,
+  };
+  if (!goalDraft.name) goalDraft.warnings.push('Informe o nome da meta antes de salvar.');
+  if (goalDraft.target_amount == null) goalDraft.warnings.push('Informe o valor alvo antes de salvar.');
+  return goalDraft;
+}
+
+function normalizeTransactionBatch(raw: Record<string, unknown>): AITransactionBatchDraft {
+  const items = Array.isArray(raw.items) ? raw.items.slice(0, 20) : [];
+  const drafts = items.map(item => normalizeCreateDraft('transaction', asObject(item)) as AITransactionDraft);
+  if (drafts.length === 0) {
+    throw new Error('A IA não encontrou lançamentos no texto informado.');
+  }
+  return {
+    target: 'transaction_batch',
+    explanation: asString(raw.explanation) ?? 'Rascunhos de lançamentos gerados pela IA. Revise os itens antes de salvar.',
+    warnings: asWarnings(raw.warnings),
+    drafts,
+  };
+}
+
 async function callOpenAI(apiKey: string, model: string, prompt: string): Promise<string> {
   const res = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -548,6 +832,22 @@ export function registerAIHandlers(): void {
     const answer = await askProvider(buildPrompt(question, financialSummary()), payload.consentConfirmed);
     saveConversation(question, answer);
     return answer;
+  });
+
+  ipcMain.handle('ai:createDraft', async (_e, payload: CreateDraftPayload): Promise<AICreateDraft> => {
+    const target = DRAFT_TARGETS.includes(payload.target) ? payload.target : null;
+    if (!target) throw new Error('Tipo de formulário inválido para criação com IA.');
+    const prompt = payload.prompt?.trim();
+    if (!prompt) throw new Error('Descreva o que você quer criar.');
+    const answer = await askProvider(buildCreateDraftPrompt(target, prompt, financialSummary()), payload.consentConfirmed);
+    return normalizeCreateDraft(target, extractJson(answer.answer));
+  });
+
+  ipcMain.handle('ai:createTransactionBatchDrafts', async (_e, payload: CreateTransactionBatchPayload): Promise<AITransactionBatchDraft> => {
+    const prompt = payload.prompt?.trim();
+    if (!prompt) throw new Error('Cole ou descreva os lançamentos que você quer criar.');
+    const answer = await askProvider(buildTransactionBatchPrompt(prompt, financialSummary()), payload.consentConfirmed);
+    return normalizeTransactionBatch(extractJson(answer.answer));
   });
 
   ipcMain.handle('ai:summary', async (_e, payload: { consentConfirmed: boolean }) => {

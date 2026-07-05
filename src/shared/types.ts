@@ -330,6 +330,82 @@ export interface BalanceDropAlert {
   days: number;
 }
 
+// ── IA: rascunhos de criação com confirmação ────────────────────────────────
+
+export type AICreateDraftTarget = 'transaction' | 'bill' | 'budget' | 'debt' | 'goal';
+
+export interface AICreateDraftBase {
+  target: AICreateDraftTarget;
+  explanation: string;
+  warnings: string[];
+}
+
+export interface AITransactionDraft extends AICreateDraftBase {
+  target: 'transaction';
+  description?: string;
+  amount?: number;
+  type?: TransactionType;
+  date?: string;
+  status?: TransactionStatus;
+  notes?: string | null;
+  account_id?: string;
+  category_id?: string;
+}
+
+export interface AITransactionBatchDraft {
+  target: 'transaction_batch';
+  explanation: string;
+  warnings: string[];
+  drafts: AITransactionDraft[];
+}
+
+export interface AIBillDraft extends AICreateDraftBase {
+  target: 'bill';
+  description?: string;
+  amount?: number;
+  due_date?: string;
+  status?: BillStatus;
+  account_id?: string | null;
+  category_id?: string | null;
+}
+
+export interface AIBudgetDraft extends AICreateDraftBase {
+  target: 'budget';
+  category_id?: string;
+  month?: number;
+  year?: number;
+  limit_amount?: number;
+  carry_over?: 0 | 1;
+}
+
+export interface AIDebtDraft extends AICreateDraftBase {
+  target: 'debt';
+  description?: string;
+  type?: DebtType;
+  creditor?: string | null;
+  status?: DebtStatus;
+  original_amount?: number;
+  outstanding_balance?: number;
+  interest_rate?: number;
+  installments_total?: number;
+  installments_remaining?: number;
+  installment_amount?: number;
+  next_due_date?: string | null;
+}
+
+export interface AIGoalDraft extends AICreateDraftBase {
+  target: 'goal';
+  name?: string;
+  type?: GoalType;
+  target_amount?: number;
+  current_amount?: number;
+  target_date?: string | null;
+  account_id?: string | null;
+  description?: string | null;
+}
+
+export type AICreateDraft = AITransactionDraft | AIBillDraft | AIBudgetDraft | AIDebtDraft | AIGoalDraft;
+
 // ── Importação de extratos ────────────────────────────────────────────────────
 
 export interface ImportPreviewRow {

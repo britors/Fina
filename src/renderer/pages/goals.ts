@@ -1,7 +1,8 @@
 import { invoke } from '../api';
 import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
-import type { Goal, GoalType, Account, Debt } from '../../shared/types';
+import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
+import type { Account, AIGoalDraft, Debt, Goal, GoalType } from '../../shared/types';
 
 const TYPE_META: Record<GoalType, { label: string; icon: string; color: string }> = {
   viagem:      { label: 'Viagem',              icon: 'ti-plane',       color: '#3B82F6' },
@@ -29,11 +30,22 @@ export async function render(el: HTMLElement): Promise<void> {
   }
 
   setTopbarActions(`
+    <button class="btn btn-secondary" id="btn-ai-create-goal">
+      <i class="ti ti-sparkles"></i> Criar com IA
+    </button>
     <button class="btn btn-primary" id="btn-new-goal">
       <i class="ti ti-plus"></i> Nova meta
     </button>
   `);
   document.getElementById('btn-new-goal')?.addEventListener('click', () => openModal(null));
+  document.getElementById('btn-ai-create-goal')?.addEventListener('click', () => {
+    openAICreateDraft<AIGoalDraft>({
+      target: 'goal',
+      title: 'Criar meta com IA',
+      placeholder: 'Ex: juntar R$ 8000 para férias até dezembro',
+      onDraft: draft => openModal(null, draft),
+    });
+  });
 
   async function renderPage(): Promise<void> {
     const totalTarget  = goals.reduce((s, g) => s + g.target_amount, 0);
@@ -176,7 +188,7 @@ export async function render(el: HTMLElement): Promise<void> {
     );
   }
 
-  function openModal(goal: Goal | null): void {
+  function openModal(goal: Goal | null, draft?: AIGoalDraft): void {
     const overlay = document.createElement('div');
     overlay.className = 'overlay';
     overlay.innerHTML = `
@@ -186,16 +198,17 @@ export async function render(el: HTMLElement): Promise<void> {
           <button class="btn btn-ghost btn-sm modal-close"><i class="ti ti-x"></i></button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+          ${!goal && draft?.explanation ? aiDraftNotice(draft) : ''}
           <div class="form-row">
             <div class="form-group" style="flex:2">
               <label class="form-label">Nome *</label>
-              <input class="form-ctrl" id="f-name" value="${esc(goal?.name ?? '')}" placeholder="Ex: Férias em Gramado">
+              <input class="form-ctrl" id="f-name" value="${esc(goal?.name ?? draft?.name ?? '')}" placeholder="Ex: Férias em Gramado">
             </div>
             <div class="form-group" style="flex:1">
               <label class="form-label">Tipo *</label>
               <select class="form-ctrl" id="f-type">
                 ${Object.entries(TYPE_META).map(([v, m]) =>
-                  `<option value="${v}" ${goal?.type === v ? 'selected' : ''}>${m.label}</option>`
+                  `<option value="${v}" ${(goal?.type ?? draft?.type) === v ? 'selected' : ''}>${m.label}</option>`
                 ).join('')}
               </select>
             </div>
@@ -203,29 +216,29 @@ export async function render(el: HTMLElement): Promise<void> {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Valor alvo</label>
-              <input class="form-ctrl" id="f-target" type="number" step="0.01" min="0" value="${goal?.target_amount ?? 0}">
+              <input class="form-ctrl" id="f-target" type="number" step="0.01" min="0" value="${goal?.target_amount ?? draft?.target_amount ?? 0}">
             </div>
             <div class="form-group">
               <label class="form-label">Valor acumulado</label>
-              <input class="form-ctrl" id="f-current" type="number" step="0.01" min="0" value="${goal?.current_amount ?? 0}">
+              <input class="form-ctrl" id="f-current" type="number" step="0.01" min="0" value="${goal?.current_amount ?? draft?.current_amount ?? 0}">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Data alvo</label>
-              <input class="form-ctrl" id="f-date" type="date" value="${goal?.target_date ?? ''}">
+              <input class="form-ctrl" id="f-date" type="date" value="${goal?.target_date ?? draft?.target_date ?? ''}">
             </div>
             <div class="form-group">
               <label class="form-label">Meio de pagamento vinculado</label>
               <select class="form-ctrl" id="f-account">
                 <option value="">— Nenhuma —</option>
-                ${accounts.map(a => `<option value="${a.id}" ${goal?.account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+                ${accounts.map(a => `<option value="${a.id}" ${(goal?.account_id ?? draft?.account_id) === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
               </select>
             </div>
           </div>
           <div class="form-group">
             <label class="form-label">Descrição</label>
-            <input class="form-ctrl" id="f-desc" value="${esc(goal?.description ?? '')}" placeholder="Observações opcionais">
+            <input class="form-ctrl" id="f-desc" value="${esc(goal?.description ?? draft?.description ?? '')}" placeholder="Observações opcionais">
           </div>
         </div>
         <div class="modal-footer">

@@ -411,6 +411,23 @@ Você pode remover a chave salva a qualquer momento em `Configurações > IA`.
 
 Em `Configurações > IA`, ao escolher ChatGPT/OpenAI ou Gemini/Google, o Fina mostra a lista de modelos disponíveis para o provedor. Se houver uma chave salva, o aplicativo tenta buscar a lista pela API do provedor; se não houver chave ou a consulta falhar, mostra uma lista padrão.
 
+### Criar com IA
+
+As telas `Lançamentos`, `Contas a pagar`, `Orçamento`, `Dívidas` e `Metas` têm o botão `Criar com IA`.
+
+Ao usar esse botão:
+
+- descreva em linguagem natural o que quer criar;
+- confirme o consentimento de envio do pedido e do resumo financeiro agregado;
+- a IA gera apenas um rascunho estruturado;
+- o formulário normal da tela abre pré-preenchido;
+- todos os campos continuam editáveis;
+- nada é salvo automaticamente.
+
+O registro só é criado quando você revisa o formulário e clica em `Salvar`. Se a IA estiver desativada em `Configurações > IA`, o botão avisa que é preciso ativar a integração antes de usar.
+
+Na tela `Lançamentos`, o botão `Criar lote com IA` aceita uma lista informal com vários itens. O Fina mostra uma prévia editável em tabela; marque apenas os itens que deseja salvar, revise descrição, valor, tipo, data, categoria e meio de pagamento, e confirme o salvamento do lote revisado.
+
 ## Lançamentos
 
 A tela `Lançamentos` é usada para registrar e consultar receitas, despesas e transferências.
@@ -420,6 +437,8 @@ A tela `Lançamentos` é usada para registrar e consultar receitas, despesas e t
 - `Escanear comprovante`: lê o valor, a data e o estabelecimento de uma foto de comprovante ou nota fiscal já salva no computador e abre o cadastro de novo lançamento já preenchido com esses dados para revisão. O reconhecimento roda localmente no computador; a imagem não é enviada para nenhum servidor.
 - `Importar extrato`: importa transações a partir de arquivos CSV, OFX ou QFX.
 - `Exportar CSV`: exporta as transações filtradas para um arquivo CSV.
+- `Criar com IA`: gera um rascunho de lançamento a partir de texto livre e abre o cadastro para revisão.
+- `Criar lote com IA`: transforma uma lista de lançamentos em uma prévia editável e salva somente os itens selecionados após confirmação.
 - `Novo lançamento`: abre o cadastro de uma nova transação.
 
 ### Filtros
@@ -571,6 +590,7 @@ A tela `Orçamento` permite definir limites mensais por categoria de despesa.
 
 ### Botão da tela
 
+- `Criar com IA`: gera um rascunho de orçamento a partir de texto livre e abre o cadastro para revisão.
 - `Novo orçamento`: cria um limite para uma categoria em um mês e ano.
 
 ### Filtro de mês
@@ -662,6 +682,7 @@ A tela `Agenda` controla contas a pagar e contas pagas.
 
 ### Botão da tela
 
+- `Criar com IA`: gera um rascunho de conta a pagar a partir de texto livre e abre o cadastro para revisão.
 - `Nova conta`: cadastra uma nova conta a pagar.
 
 ### Resumo
@@ -941,6 +962,7 @@ A tela `Metas` ajuda a acompanhar objetivos financeiros.
 
 ### Botão da tela
 
+- `Criar com IA`: gera um rascunho de meta a partir de texto livre e abre o cadastro para revisão.
 - `Nova meta`: cadastra uma meta.
 
 ### Resumo
@@ -999,6 +1021,7 @@ A tela `Dívidas` controla empréstimos, financiamentos, cartões e outros compr
 
 ### Botão da tela
 
+- `Criar com IA`: gera um rascunho de dívida a partir de texto livre e abre o cadastro para revisão.
 - `Nova dívida`: cadastra uma dívida.
 
 ### Resumo

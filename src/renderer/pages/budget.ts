@@ -3,7 +3,8 @@ import { formatCurrency, calculateBudgetPercentage } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { openCategoryModal } from '../components/categoryModal';
 import { setTopbarActions } from '../components/topbar';
-import type { BudgetWithProgress, Category } from '../../shared/types';
+import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
+import type { AIBudgetDraft, BudgetWithProgress, Category } from '../../shared/types';
 
 export async function render(el: HTMLElement): Promise<void> {
   const now = new Date();
@@ -11,6 +12,7 @@ export async function render(el: HTMLElement): Promise<void> {
   let year  = now.getFullYear();
 
   setTopbarActions(`
+    <button class="btn btn-secondary" id="btn-ai-create-budget"><i class="ti ti-sparkles"></i> Criar com IA</button>
     <button class="btn btn-primary" id="btn-new-budget"><i class="ti ti-plus"></i> Novo orçamento</button>
   `);
 
@@ -122,6 +124,14 @@ export async function render(el: HTMLElement): Promise<void> {
   }
 
   document.getElementById('btn-new-budget')?.addEventListener('click', () => openBudgetModal(null, renderPage, month, year));
+  document.getElementById('btn-ai-create-budget')?.addEventListener('click', () => {
+    openAICreateDraft<AIBudgetDraft>({
+      target: 'budget',
+      title: 'Criar orçamento com IA',
+      placeholder: 'Ex: limitar supermercado a R$ 900 neste mês',
+      onDraft: draft => openBudgetModal(null, renderPage, draft.month ?? month, draft.year ?? year, draft),
+    });
+  });
   await renderPage();
 }
 
@@ -164,7 +174,7 @@ function budgetRow(b: BudgetWithProgress): string {
   `;
 }
 
-async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void, month?: number, year?: number): Promise<void> {
+async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void, month?: number, year?: number, draft?: AIBudgetDraft): Promise<void> {
   const cats = await invoke<Category[]>('categories:list', 'expense');
 
   function catOptions(list: Category[], selectedId?: string): string {
@@ -174,11 +184,12 @@ async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void,
   const overlay = openModal({
     title: b ? 'Editar orçamento' : 'Novo orçamento',
     body: `
+      ${!b && draft?.explanation ? aiDraftNotice(draft) : ''}
       <div class="form-group">
         <label class="form-label">Categoria</label>
         <div style="display:flex;gap:8px">
           <select class="form-ctrl" id="f-cat" style="flex:1">
-            ${catOptions(cats, b?.category_id)}
+            ${catOptions(cats, b?.category_id ?? draft?.category_id)}
           </select>
           <button class="btn btn-ghost btn-sm" id="btn-new-cat" type="button"><i class="ti ti-plus"></i> Nova</button>
         </div>
@@ -186,20 +197,20 @@ async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void,
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Mês</label>
-          <input class="form-ctrl" id="f-month" type="number" min="1" max="12" value="${b?.month ?? month ?? new Date().getMonth() + 1}">
+          <input class="form-ctrl" id="f-month" type="number" min="1" max="12" value="${b?.month ?? draft?.month ?? month ?? new Date().getMonth() + 1}">
         </div>
         <div class="form-group">
           <label class="form-label">Ano</label>
-          <input class="form-ctrl" id="f-year" type="number" min="2000" value="${b?.year ?? year ?? new Date().getFullYear()}">
+          <input class="form-ctrl" id="f-year" type="number" min="2000" value="${b?.year ?? draft?.year ?? year ?? new Date().getFullYear()}">
         </div>
       </div>
       <div class="form-group">
         <label class="form-label">Limite (R$)</label>
-        <input class="form-ctrl" id="f-limit" type="number" step="0.01" value="${b?.limit_amount ?? ''}">
+        <input class="form-ctrl" id="f-limit" type="number" step="0.01" value="${b?.limit_amount ?? draft?.limit_amount ?? ''}">
       </div>
       <div class="form-group">
         <label style="display:flex;align-items:center;gap:8px;font-weight:400">
-          <input type="checkbox" id="f-carry-over" ${b?.carry_over ? 'checked' : ''}>
+          <input type="checkbox" id="f-carry-over" ${(b?.carry_over ?? draft?.carry_over) ? 'checked' : ''}>
           Modo envelope: manter o saldo não gasto para o próximo mês
         </label>
       </div>
