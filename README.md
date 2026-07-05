@@ -5,6 +5,13 @@ Aplicativo desktop para controle de finanças pessoais, construído com **Electr
 O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
 ![alt text](fina.png)
 
+## Destaques da versão 14.0
+
+- Nova tela `Open Finance` para centralizar provedores, instituições, contas e cartões conectados em uma visão única.
+- Status operacional por provedor, com último sync, último erro, saldo vinculado e quantidade de contas/cartões.
+- Sincronização Pluggy por provedor ou por conta específica diretamente pela central.
+- Ação `Desconectar` remove credenciais e identificador da conexão, mas mantém contas e lançamentos já importados como dados locais.
+
 ## Destaques da versão 13.1
 
 - Botão "Pagar fatura" em cartões de crédito: abre o lançamento já como transferência para o cartão, pedindo só meio de origem, valor e categoria — evita contar a mesma despesa duas vezes nos relatórios.
@@ -173,6 +180,7 @@ npm start
 | Fixas | Assinaturas e despesas recorrentes, com detecção automática de recorrências não cadastradas a partir do histórico de transações |
 | Calendário | Vencimentos e lançamentos por dia |
 | Relatórios | Histórico de até 12 meses, exportação PDF e CSV |
+| Open Finance | Central de provedores, instituições, contas e cartões conectados, com status, último sync/erro, sincronização Pluggy e desconexão segura |
 | Agenda | Contas a pagar e receber com recorrências automáticas |
 | Patrimônio | Imóveis, veículos, terrenos e outros bens |
 | Investimentos | Carteira com alocação e rendimento |
@@ -196,7 +204,7 @@ Os dados financeiros ficam em um banco SQLite local no computador do usuário. O
 
 A integração com IA é opcional, fica desativada por padrão e só funciona quando o usuário configura uma chave de API e confirma o consentimento. Quando usada, o Fina envia ao provedor escolhido apenas um resumo agregado e minimizado, evitando por padrão nome, e-mail, bancos, descrições de transações, observações pessoais e dados linha a linha.
 
-As credenciais de IA e Open Finance são salvas criptografadas fora do banco de dados quando a criptografia segura do sistema está disponível. A integração inicial de Open Finance permite configurar Pluggy, Belvo e Klavi; a sincronização automática implementada nesta versão usa Pluggy para importar contas, saldos e lançamentos. Pagamentos Pix ficam para uma etapa futura.
+As credenciais de IA e Open Finance são salvas criptografadas fora do banco de dados quando a criptografia segura do sistema está disponível. A integração de Open Finance permite configurar Pluggy, Belvo e Klavi; a sincronização automática implementada nesta versão usa Pluggy para importar contas, saldos e lançamentos. A tela Open Finance centraliza conexões, status, último sync/erro e desconexão segura sem apagar os dados financeiros locais. Pagamentos Pix ficam para uma etapa futura.
 
 Leia [PRIVACY.md](PRIVACY.md) para detalhes sobre dados locais, backups, integrações de mercado e uso de IA.
 

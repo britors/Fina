@@ -76,6 +76,29 @@ Essas seções só aparecem depois que você conecta pelo menos uma conta via Op
 
 Os dois blocos são atualizados automaticamente conforme os dados são sincronizados em `Configurações > Open Finance`.
 
+### Central Open Finance
+
+A tela `Open Finance` centraliza a gestão das conexões com agregadores e instituições financeiras.
+
+No topo, o Fina mostra:
+
+- `Saldo conectado`: soma dos saldos das contas e cartões vindos de Open Finance.
+- `Provedores ativos`: quantos agregadores estão habilitados.
+- `Instituições conectadas`: bancos/instituições encontrados nas contas sincronizadas.
+
+Cada provedor mostra:
+
+- status da conexão, como `Ativo`, `Pendente de sincronização`, `Configuração incompleta`, `Inativo` ou `Credenciais preparadas`;
+- identificador mascarado da conexão, quando existir;
+- saldo vinculado e quantidade de contas/cartões;
+- última sincronização registrada;
+- último erro de sincronização, quando houver;
+- instituições, contas e cartões vinculados, com tipo e saldo.
+
+Na Pluggy, use `Sincronizar tudo` para atualizar todas as contas da conexão ou o botão de atualizar em uma linha específica para sincronizar apenas aquela conta. Belvo e Klavi aparecem na central quando configurados, mas a sincronização automática ainda depende de adaptadores futuros.
+
+Use `Desconectar` para remover credenciais e identificador da conexão do provedor. Essa ação desativa novas sincronizações, mas mantém contas e lançamentos já importados como dados locais.
+
 ### Contas a pagar
 
 Mostra contas próximas do vencimento. Cada item exibe descrição, data de vencimento, situação e valor.
@@ -1337,6 +1360,8 @@ Campos e opções por provedor:
 Depois da primeira sincronização, o Fina passa a mostrar os campos `Conta a sincronizar`, `De` e `Até` acima do botão `Sincronizar` — use-os para importar apenas uma conta específica ou um período determinado nas próximas vezes, em vez de sincronizar tudo de novo. Deixe em branco para continuar sincronizando todas as contas e todo o período disponível.
 
 Lançamentos e contas já importados não são duplicados numa nova sincronização, mesmo sincronizando o mesmo período novamente.
+
+A tela `Open Finance`, disponível no menu lateral, usa essas configurações para mostrar todas as instituições, contas e cartões conectados em um só lugar. Ela também registra o último sync e o último erro da conexão para facilitar diagnóstico de falhas.
 
 Abaixo dos provedores, o bloco `Alertas de queda de saldo` configura um aviso para quando o saldo de uma conta conectada cair de forma brusca:
 
