@@ -3,6 +3,9 @@ import { initTopbar  } from './components/topbar';
 import { initRouter  } from './router';
 import { invoke } from './api';
 import { applyAccent, applyTheme } from './theme';
+import { applyInitialSidebarState } from './components/layoutPrefs';
+
+applyInitialSidebarState();
 
 interface FocusSnapshot {
   el: HTMLElement | null;

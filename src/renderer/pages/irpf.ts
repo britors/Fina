@@ -22,12 +22,13 @@ export async function render(el: HTMLElement): Promise<void> {
     <button class="btn btn-secondary" id="btn-irpf-import">
       <i class="ti ti-upload"></i> Importar ano anterior
     </button>
-    <button class="btn btn-secondary" id="btn-irpf-csv" disabled>
-      <i class="ti ti-table-export"></i> Exportar CSV
-    </button>
-    <button class="btn btn-primary" id="btn-irpf-pdf" disabled>
-      <i class="ti ti-file-type-pdf"></i> Exportar PDF
-    </button>
+    <details class="topbar-dropdown">
+      <summary class="btn btn-primary"><i class="ti ti-download"></i> Exportar <i class="ti ti-chevron-down" style="font-size:11px"></i></summary>
+      <div class="topbar-dropdown-menu">
+        <button class="dd-item" id="btn-irpf-csv" disabled><i class="ti ti-table-export"></i> Exportar CSV</button>
+        <button class="dd-item" id="btn-irpf-pdf" disabled><i class="ti ti-file-type-pdf"></i> Exportar PDF</button>
+      </div>
+    </details>
   `);
 
   document.getElementById('irpf-year')?.addEventListener('change', (e) => {

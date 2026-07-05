@@ -40,21 +40,23 @@ export async function render(el: HTMLElement): Promise<void> {
   familyMembers = (settings.family_members ?? '').split(',').map(v => v.trim()).filter(Boolean);
 
   setTopbarActions(`
-    <button class="btn btn-secondary" id="btn-scan-receipt">
-      <i class="ti ti-scan"></i> Escanear comprovante
-    </button>
-    <button class="btn btn-secondary" id="btn-import">
-      <i class="ti ti-upload"></i> Importar extrato
-    </button>
+    <details class="topbar-dropdown">
+      <summary class="btn btn-secondary"><i class="ti ti-upload"></i> Importar <i class="ti ti-chevron-down" style="font-size:11px"></i></summary>
+      <div class="topbar-dropdown-menu">
+        <button class="dd-item" id="btn-scan-receipt"><i class="ti ti-scan"></i> Escanear comprovante</button>
+        <button class="dd-item" id="btn-import"><i class="ti ti-upload"></i> Importar extrato</button>
+      </div>
+    </details>
     <button class="btn btn-secondary" id="btn-export-csv">
       <i class="ti ti-download"></i> Exportar CSV
     </button>
-    <button class="btn btn-secondary" id="btn-ai-create-tx">
-      <i class="ti ti-sparkles"></i> Criar com IA
-    </button>
-    <button class="btn btn-secondary" id="btn-ai-batch-tx">
-      <i class="ti ti-list-plus"></i> Criar lote com IA
-    </button>
+    <details class="topbar-dropdown">
+      <summary class="btn btn-secondary"><i class="ti ti-sparkles"></i> Criar com IA <i class="ti ti-chevron-down" style="font-size:11px"></i></summary>
+      <div class="topbar-dropdown-menu">
+        <button class="dd-item" id="btn-ai-create-tx"><i class="ti ti-sparkles"></i> Lançamento único</button>
+        <button class="dd-item" id="btn-ai-batch-tx"><i class="ti ti-list-plus"></i> Lote de lançamentos</button>
+      </div>
+    </details>
     <button class="btn btn-primary" id="btn-new-tx">
       <i class="ti ti-plus"></i> Novo lançamento
     </button>

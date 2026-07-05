@@ -95,6 +95,26 @@ function groupForRoute(route: string): string | null {
   return NAV.find(group => group.items.some(item => item.route === route))?.id ?? null;
 }
 
+interface SearchEntry extends NavItem {
+  group: string;
+}
+
+const SEARCH_INDEX: SearchEntry[] = NAV.flatMap(group =>
+  group.items.map(item => ({ ...item, group: group.label }))
+);
+
+function normalize(s: string): string {
+  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+}
+
+function searchNav(query: string): SearchEntry[] {
+  const q = normalize(query.trim());
+  if (!q) return [];
+  return SEARCH_INDEX
+    .filter(entry => normalize(entry.label).includes(q) || normalize(entry.group).includes(q))
+    .slice(0, 8);
+}
+
 function readOpenGroups(): Set<string> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -142,6 +162,11 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
       <span class="sidebar-sub">Finanças pessoais</span>
     </div>
     <div class="sidebar-hr"></div>
+    <div class="sidebar-search">
+      <i class="ti ti-search sidebar-search-icon"></i>
+      <input type="text" class="sidebar-search-input" id="sidebar-search-input" placeholder="Buscar no menu... (Ctrl+K)" autocomplete="off">
+      <div class="sidebar-search-results" id="sidebar-search-results"></div>
+    </div>
     <nav class="sidebar-nav">
       ${NAV.map(group => `
         <div class="nav-section ${openGroups.has(group.id) ? 'open' : ''}" data-group="${group.id}">
@@ -187,6 +212,73 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
       section?.classList.toggle('open', !isOpen);
       btn.setAttribute('aria-expanded', String(!isOpen));
     });
+  });
+
+  initSidebarSearch(el);
+}
+
+function initSidebarSearch(el: HTMLElement): void {
+  const searchWrap  = el.querySelector<HTMLElement>('.sidebar-search')!;
+  const searchInput = el.querySelector<HTMLInputElement>('#sidebar-search-input')!;
+  const resultsEl   = el.querySelector<HTMLElement>('#sidebar-search-results')!;
+
+  let matches: SearchEntry[] = [];
+  let highlighted = 0;
+
+  function closeResults(): void {
+    resultsEl.classList.remove('open');
+    resultsEl.innerHTML = '';
+    matches = [];
+  }
+
+  function renderResults(): void {
+    if (matches.length === 0) { closeResults(); return; }
+    resultsEl.innerHTML = matches.map((m, i) => `
+      <div class="sidebar-search-item ${i === highlighted ? 'hl' : ''}" data-route="${m.route}">
+        <i class="ti ${m.icon}"></i>
+        <span>${m.label}</span>
+        <span class="ssi-group">${m.group}</span>
+      </div>
+    `).join('');
+    resultsEl.classList.add('open');
+  }
+
+  function selectMatch(route: string): void {
+    window.location.hash = `#${route}`;
+    searchInput.value = '';
+    closeResults();
+    searchInput.blur();
+  }
+
+  searchInput.addEventListener('input', () => {
+    matches = searchNav(searchInput.value);
+    highlighted = 0;
+    renderResults();
+  });
+
+  searchInput.addEventListener('keydown', e => {
+    if (matches.length === 0) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); highlighted = (highlighted + 1) % matches.length; renderResults(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); highlighted = (highlighted - 1 + matches.length) % matches.length; renderResults(); }
+    else if (e.key === 'Enter') { e.preventDefault(); selectMatch(matches[highlighted].route); }
+    else if (e.key === 'Escape') { closeResults(); searchInput.blur(); }
+  });
+
+  resultsEl.addEventListener('click', e => {
+    const item = (e.target as HTMLElement).closest<HTMLElement>('.sidebar-search-item');
+    if (item?.dataset.route) selectMatch(item.dataset.route);
+  });
+
+  document.addEventListener('click', e => {
+    if (!searchWrap.contains(e.target as Node)) closeResults();
+  });
+
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      searchInput.focus();
+      searchInput.select();
+    }
   });
 }
 

@@ -36,14 +36,21 @@ function carriedInFor(categoryId: string, month: number, year: number, depth = 0
 }
 
 export function registerBudgetHandlers(): void {
-  ipcMain.handle('budgets:list', (_e, { month, year }: { month: number; year: number }) => {
-    const rows = getDb().prepare(`
-      SELECT b.*, c.name as category_name, c.icon as category_icon, c.color as category_color
-      FROM budgets b
-      JOIN categories c ON b.category_id = c.id
-      WHERE b.month = ? AND b.year = ?
-      ORDER BY c.name
-    `).all(month, year) as (Budget & { category_name: string; category_icon: string; category_color: string })[];
+  ipcMain.handle('budgets:list', (_e, params: { month: number; year: number } | undefined) => {
+    const rows = params
+      ? getDb().prepare(`
+          SELECT b.*, c.name as category_name, c.icon as category_icon, c.color as category_color
+          FROM budgets b
+          JOIN categories c ON b.category_id = c.id
+          WHERE b.month = ? AND b.year = ?
+          ORDER BY c.name
+        `).all(params.month, params.year) as (Budget & { category_name: string; category_icon: string; category_color: string })[]
+      : getDb().prepare(`
+          SELECT b.*, c.name as category_name, c.icon as category_icon, c.color as category_color
+          FROM budgets b
+          JOIN categories c ON b.category_id = c.id
+          ORDER BY b.year DESC, b.month DESC, c.name
+        `).all() as (Budget & { category_name: string; category_icon: string; category_color: string })[];
 
     return rows.map(b => {
       const spent = monthSpent(b.category_id, b.month, b.year);
