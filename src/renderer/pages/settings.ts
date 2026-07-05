@@ -2,7 +2,7 @@ import { invoke, send, on } from '../api';
 import { setTopbarActions } from '../components/topbar';
 import { applyAccent, applyTheme } from '../theme';
 import { openCategoryModal } from '../components/categoryModal';
-import type { Account, Category, UpdateStatus } from '../../shared/types';
+import type { Account, BalanceAlertSettings, Category, UpdateStatus } from '../../shared/types';
 
 type Settings = Record<string, string>;
 
@@ -1073,11 +1073,13 @@ function modelOptionsHtml(models: string[], selected: string): string {
 }
 
 async function renderOpenFinance(el: HTMLElement): Promise<void> {
-  const [openFinanceLoaded, allAccounts] = await Promise.all([
+  const [openFinanceLoaded, allAccounts, balanceAlertLoaded] = await Promise.all([
     invoke<OpenFinanceSettings>('openFinance:getSettings'),
     invoke<Account[]>('accounts:list'),
+    invoke<BalanceAlertSettings>('openFinance:getBalanceAlertSettings'),
   ]);
   let openFinance = openFinanceLoaded;
+  let balanceAlert = balanceAlertLoaded;
 
   el.innerHTML = `
     <div class="settings-section-label">OPEN FINANCE</div>
@@ -1095,7 +1097,50 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
       openFinance.providers[provider.id],
       allAccounts.filter(a => a.openfinance_provider === provider.id),
     )).join('')}
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">Alertas de queda de saldo</div>
+      <div class="card-hr"></div>
+      <div class="card-body">
+        <div style="font-size:0.82rem;color:var(--text-2);line-height:1.6;margin-bottom:14px">
+          Avisa na tela Alertas quando o saldo de uma conta conectada cair mais do que o limite abaixo, comparado com o saldo de alguns dias atrás.
+        </div>
+        <div class="settings-row" style="padding-left:0;padding-right:0">
+          <div>
+            <div class="settings-row-label">Ativar alerta de queda de saldo</div>
+          </div>
+          <div class="settings-row-right">
+            <label class="toggle">
+              <input type="checkbox" id="of-balance-alert-enabled" ${balanceAlert.enabled ? 'checked' : ''}>
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Queda mínima (%)</label>
+            <input class="form-ctrl" id="of-balance-alert-threshold" type="number" min="1" max="100" step="1" value="${balanceAlert.thresholdPct}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Comparar com quantos dias atrás</label>
+            <input class="form-ctrl" id="of-balance-alert-days" type="number" min="1" max="90" step="1" value="${balanceAlert.days}">
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end">
+          <button class="btn btn-primary btn-sm" id="of-balance-alert-save">Salvar</button>
+        </div>
+      </div>
+    </div>
   `;
+
+  el.querySelector('#of-balance-alert-save')?.addEventListener('click', async () => {
+    const enabled = el.querySelector<HTMLInputElement>('#of-balance-alert-enabled')!.checked;
+    const thresholdPct = parseFloat(el.querySelector<HTMLInputElement>('#of-balance-alert-threshold')!.value) || 20;
+    const days = parseInt(el.querySelector<HTMLInputElement>('#of-balance-alert-days')!.value, 10) || 7;
+    balanceAlert = await invoke<BalanceAlertSettings>('openFinance:saveBalanceAlertSettings', { enabled, thresholdPct, days });
+    alert('Configuração de alerta de saldo salva.');
+  });
 
   OPEN_FINANCE_PROVIDERS.forEach(provider => {
     el.querySelector(`#of-save-${provider.id}`)?.addEventListener('click', async () => {

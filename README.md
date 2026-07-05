@@ -9,6 +9,7 @@ O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, pl
 
 - Sincronização Open Finance (Pluggy) com filtro de conta e período: depois da primeira sincronização, é possível importar apenas uma conta ou um intervalo de datas específico, em vez de sincronizar tudo de novo.
 - Saldo consolidado e fluxo de caixa semanal no Dashboard para contas conectadas via Open Finance, com filtro por banco e destaque para os principais fatores (incluindo cobranças recorrentes).
+- Alerta configurável de queda brusca de saldo em contas conectadas via Open Finance, com histórico de saldo por sincronização e aviso na tela Alertas.
 
 ## Destaques da versão 12.0
 
@@ -160,7 +161,7 @@ npm start
 | Revisão semanal | Checklist financeiro da semana com resumo dos últimos 7 dias |
 | Decisões | Prioridades sugeridas para recuperar margem, renegociar dívidas, formar reserva ou investir |
 | Plano mensal | Sugestão de uso da renda para dívidas, reserva, metas e investimentos |
-| Alertas | Riscos e oportunidades calculados a partir dos dados financeiros, incluindo detecção de gastos fora do padrão (valor incomum, duplicidade, recorrência alterada) |
+| Alertas | Riscos e oportunidades calculados a partir dos dados financeiros, incluindo detecção de gastos fora do padrão (valor incomum, duplicidade, recorrência alterada) e queda brusca de saldo em contas Open Finance |
 | Assistente IA | Análise educacional usando ChatGPT/OpenAI ou Gemini/Google com consentimento explícito |
 | Lançamentos | Receitas, despesas, transferências, parcelas em cartão de crédito, rateio por meios de pagamento, responsável no modo família, importação CSV/OFX e sugestão automática de categoria por histórico |
 | Meios de pagamento | Corrente, poupança, cartão de crédito, vale refeição, vale alimentação, carteira e saldos vindos de Open Finance |

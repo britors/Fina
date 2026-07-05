@@ -1,6 +1,6 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate, getCurrentYearMonth, isCreditLikeAccountType } from '../../shared/utils';
-import type { Account, AnomalyType, BillPriceIncrease, BudgetWithProgress, Debt, SpendingAnomaly } from '../../shared/types';
+import type { Account, AnomalyType, BalanceDropAlert, BillPriceIncrease, BudgetWithProgress, Debt, SpendingAnomaly } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
 type CategoryExpense = { name: string; color: string; total: number };
@@ -21,7 +21,7 @@ export async function render(el: HTMLElement): Promise<void> {
   const prevDate = new Date(now.year, now.month - 2, 1);
   const prev = { month: prevDate.getMonth() + 1, year: prevDate.getFullYear() };
 
-  const [history, debts, accounts, budgets, currentCats, prevCats, priceIncreases, anomalies] = await Promise.all([
+  const [history, debts, accounts, budgets, currentCats, prevCats, priceIncreases, anomalies, balanceDrops] = await Promise.all([
     invoke<MonthRow[]>('transactions:getMonthlyHistory', 3),
     invoke<Debt[]>('debts:list'),
     invoke<Account[]>('accounts:list'),
@@ -30,6 +30,7 @@ export async function render(el: HTMLElement): Promise<void> {
     invoke<CategoryExpense[]>('transactions:getExpensesByCategory', prev),
     invoke<BillPriceIncrease[]>('bills:getPriceIncreases'),
     invoke<SpendingAnomaly[]>('anomalies:list'),
+    invoke<BalanceDropAlert[]>('openFinance:getBalanceDropAlerts'),
   ]);
 
   const alerts = buildAlerts(history, debts, accounts, budgets, currentCats, prevCats, priceIncreases);
@@ -45,6 +46,21 @@ export async function render(el: HTMLElement): Promise<void> {
       ${metricCard('Atenção', String(counts.warning), 'Riscos para acompanhar', 'ti-alert-circle', 'var(--warning)')}
       ${metricCard('Oportunidades', String(counts.info), 'Ações preventivas', 'ti-bulb', 'var(--accent)')}
     </div>
+
+    ${balanceDrops.length > 0 ? `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">Quedas de saldo em contas conectadas</div>
+        <div class="card-hr"></div>
+        <div class="card-body">
+          <p style="font-size:0.8rem;color:var(--text-3);margin-bottom:12px">
+            Saldo de uma conta conectada via Open Finance caiu acima do limite configurado. Verifique se houve algum lançamento inesperado.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            ${balanceDrops.map(balanceDropCard).join('')}
+          </div>
+        </div>
+      </div>
+    ` : ''}
 
     ${anomalies.length > 0 ? `
       <div class="card" style="margin-bottom:20px">
@@ -221,6 +237,24 @@ const ANOMALY_META: Record<AnomalyType, { icon: string; label: string }> = {
   duplicate: { icon: 'ti-copy', label: 'Possível duplicidade' },
   recurring_change: { icon: 'ti-refresh-alert', label: 'Recorrência alterada' },
 };
+
+function balanceDropCard(a: BalanceDropAlert): string {
+  return `
+    <div style="display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:0.5px solid var(--border)">
+      <div style="width:38px;height:38px;border-radius:9px;background:rgba(216,90,48,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <i class="ti ti-trending-down" style="color:var(--danger);font-size:1.1rem"></i>
+      </div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <strong>${esc(a.accountName)}</strong>
+          <span class="badge" style="color:var(--danger);background:rgba(216,90,48,.15)">-${a.dropPct}%</span>
+        </div>
+        <div style="font-size:0.82rem;color:var(--text-2)">${esc(a.bankName)} · de ${formatCurrency(a.previousBalance)} para ${formatCurrency(a.currentBalance)} nos últimos ${a.days} dias</div>
+      </div>
+      <div style="font-weight:600;color:var(--danger)">${formatCurrency(a.currentBalance)}</div>
+    </div>
+  `;
+}
 
 function anomalyCard(a: SpendingAnomaly): string {
   const meta = ANOMALY_META[a.type];

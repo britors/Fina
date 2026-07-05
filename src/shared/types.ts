@@ -272,6 +272,22 @@ export interface CashFlowForecast {
   factors: CashFlowFactor[];
 }
 
+export interface BalanceAlertSettings {
+  enabled: boolean;
+  thresholdPct: number;
+  days: number;
+}
+
+export interface BalanceDropAlert {
+  accountId: string;
+  accountName: string;
+  bankName: string;
+  currentBalance: number;
+  previousBalance: number;
+  dropPct: number;
+  days: number;
+}
+
 // ── Importação de extratos ────────────────────────────────────────────────────
 
 export interface ImportPreviewRow {

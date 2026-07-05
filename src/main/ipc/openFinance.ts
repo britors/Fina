@@ -3,7 +3,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getDb } from '../database';
-import type { AccountType, CashFlowFactor, CashFlowForecast, CashFlowWeek, ConsolidatedBalance, TransactionType } from '../../shared/types';
+import type { AccountType, BalanceAlertSettings, BalanceDropAlert, CashFlowFactor, CashFlowForecast, CashFlowWeek, ConsolidatedBalance, TransactionType } from '../../shared/types';
 
 type OpenFinanceProvider = 'pluggy' | 'belvo' | 'klavi';
 
@@ -262,6 +262,12 @@ function getCashFlowForecast(weeksAhead = 8): CashFlowForecast {
 export function registerOpenFinanceHandlers(): void {
   ipcMain.handle('openFinance:getSettings', () => settings());
 
+  ipcMain.handle('openFinance:getBalanceAlertSettings', () => getBalanceAlertSettings());
+
+  ipcMain.handle('openFinance:saveBalanceAlertSettings', (_e, data: BalanceAlertSettings) => saveBalanceAlertSettings(data));
+
+  ipcMain.handle('openFinance:getBalanceDropAlerts', () => detectBalanceDrops());
+
   ipcMain.handle('openFinance:getConsolidatedBalance', () => getConsolidatedBalance());
 
   ipcMain.handle('openFinance:getCashFlowForecast', (_e, weeksAhead?: number) => getCashFlowForecast(weeksAhead));
@@ -476,6 +482,65 @@ function upsertAccount(account: RemoteAccount): { id: string; created: boolean }
   return { id, created: true };
 }
 
+function recordBalanceSnapshot(accountId: string, balance: number): void {
+  getDb().prepare(`INSERT INTO account_balance_snapshots (id, account_id, balance) VALUES (?,?,?)`)
+    .run(randomUUID(), accountId, balance);
+}
+
+function getBalanceAlertSettings(): BalanceAlertSettings {
+  return {
+    enabled: getSetting('openfinance_balance_alert_enabled', 'true') === 'true',
+    thresholdPct: parseFloat(getSetting('openfinance_balance_alert_threshold_pct', '20')) || 20,
+    days: parseInt(getSetting('openfinance_balance_alert_days', '7'), 10) || 7,
+  };
+}
+
+function saveBalanceAlertSettings(data: BalanceAlertSettings): BalanceAlertSettings {
+  setSettings({
+    openfinance_balance_alert_enabled: data.enabled ? 'true' : 'false',
+    openfinance_balance_alert_threshold_pct: String(data.thresholdPct),
+    openfinance_balance_alert_days: String(data.days),
+  });
+  return getBalanceAlertSettings();
+}
+
+// Compara o saldo atual de cada conta conectada com o snapshot mais antigo
+// disponível a partir de N dias atrás; sem histórico suficiente (poucos
+// syncs até agora), a conta simplesmente não gera alerta ainda.
+function detectBalanceDrops(): BalanceDropAlert[] {
+  const settings = getBalanceAlertSettings();
+  if (!settings.enabled) return [];
+
+  const db = getDb();
+  const accounts = db.prepare(`
+    SELECT id, name, bank_name, balance FROM accounts WHERE openfinance_provider IS NOT NULL
+  `).all() as { id: string; name: string; bank_name: string | null; balance: number }[];
+
+  const alerts: BalanceDropAlert[] = [];
+  for (const acc of accounts) {
+    const snapshot = db.prepare(`
+      SELECT balance FROM account_balance_snapshots
+      WHERE account_id = ? AND recorded_at <= datetime('now', '-' || ? || ' days')
+      ORDER BY recorded_at DESC LIMIT 1
+    `).get(acc.id, settings.days) as { balance: number } | undefined;
+    if (!snapshot || snapshot.balance <= 0) continue;
+
+    const dropPct = ((snapshot.balance - acc.balance) / snapshot.balance) * 100;
+    if (dropPct < settings.thresholdPct) continue;
+
+    alerts.push({
+      accountId: acc.id,
+      accountName: acc.name,
+      bankName: acc.bank_name ?? 'Open Finance',
+      currentBalance: acc.balance,
+      previousBalance: snapshot.balance,
+      dropPct: Math.round(dropPct * 10) / 10,
+      days: settings.days,
+    });
+  }
+  return alerts;
+}
+
 function importTransaction(tx: RemoteTransaction, accountId: string): boolean {
   const db = getDb();
   const existing = db.prepare('SELECT 1 FROM transactions WHERE openfinance_provider = ? AND openfinance_id = ?')
@@ -513,6 +578,8 @@ async function syncPluggy(options: SyncOptions = {}): Promise<SyncResult> {
 
   // Atualiza saldos e descobre contas novas sempre, independente do filtro
   // de conta abaixo — é uma chamada única e leve, e mantém os saldos em dia.
+  // Também registra um snapshot do saldo a cada sync, para permitir detectar
+  // quedas bruscas mais tarde (accounts.balance só guarda o valor atual).
   const db = getDb();
   db.transaction(() => {
     for (const remote of remoteAccounts) {
@@ -520,6 +587,7 @@ async function syncPluggy(options: SyncOptions = {}): Promise<SyncResult> {
       accountMap.set(remote.id, local.id);
       if (local.created) accountsCreated++;
       else accountsUpdated++;
+      recordBalanceSnapshot(local.id, remote.balance);
     }
   })();
 

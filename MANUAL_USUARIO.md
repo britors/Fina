@@ -308,6 +308,10 @@ Cada item mostra o motivo específico do alerta, junto com data, meio de pagamen
 
 A análise roda inteiramente sobre os dados já salvos localmente, sem enviar nada a terceiros.
 
+### Quedas de saldo em contas conectadas
+
+Se você tiver contas conectadas via Open Finance, essa seção mostra quando o saldo de alguma delas cair de forma brusca — comparando o saldo atual com um saldo anterior, conforme o limite e o período configurados em `Configurações > Open Finance`. Cada item mostra a conta, o banco, o percentual de queda e os valores antes/depois. Use como um sinal para verificar se houve algum lançamento inesperado nessa conta.
+
 ### Como usar
 
 Cada alerta mostra o motivo e uma ação sugerida. Use essa tela como uma revisão rápida antes de tomar decisões no mês.
@@ -1320,6 +1324,14 @@ Campos e opções por provedor:
 Depois da primeira sincronização, o Fina passa a mostrar os campos `Conta a sincronizar`, `De` e `Até` acima do botão `Sincronizar` — use-os para importar apenas uma conta específica ou um período determinado nas próximas vezes, em vez de sincronizar tudo de novo. Deixe em branco para continuar sincronizando todas as contas e todo o período disponível.
 
 Lançamentos e contas já importados não são duplicados numa nova sincronização, mesmo sincronizando o mesmo período novamente.
+
+Abaixo dos provedores, o bloco `Alertas de queda de saldo` configura um aviso para quando o saldo de uma conta conectada cair de forma brusca:
+
+- `Ativar alerta de queda de saldo`: liga ou desliga esse alerta.
+- `Queda mínima (%)`: percentual de queda a partir do qual o Fina avisa (padrão: 20%).
+- `Comparar com quantos dias atrás`: janela usada para comparar o saldo atual com um saldo anterior (padrão: 7 dias).
+
+Esse alerta depende de um histórico de saldo que só começa a ser guardado a partir da primeira sincronização depois que o recurso existe — contas recém-conectadas podem levar alguns dias de sincronizações até acumular histórico suficiente para gerar um alerta. Quando disparado, o aviso aparece na tela `Alertas`.
 
 ### Dados e backup
 
