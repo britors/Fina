@@ -9,6 +9,12 @@ let categories: Category[] = [];
 let familyEnabled = false;
 let familyMembers: string[] = [];
 
+interface OcrResult {
+  amount: number | null;
+  date: string | null;
+  merchant: string | null;
+}
+
 function monthLabel(month: number, year: number): string {
   return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
 }
@@ -47,25 +53,14 @@ export async function render(el: HTMLElement): Promise<void> {
     </button>
   `);
   document.getElementById('btn-new-tx')?.addEventListener('click', () => openTxModal(null, () => renderPage()));
-  document.getElementById('btn-scan-receipt')?.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-scan-receipt') as HTMLButtonElement;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="ti ti-loader-2"></i> Lendo comprovante...';
-    try {
-      const result = await invoke<{ amount: number | null; date: string | null; merchant: string | null } | null>('ocr:scanReceipt');
-      if (result) {
-        openTxModal(null, () => renderPage(), {
-          description: result.merchant ?? undefined,
-          amount: result.amount ?? undefined,
-          date: result.date ?? undefined,
-        });
-      }
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível ler o comprovante.');
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="ti ti-scan"></i> Escanear comprovante';
-    }
+  document.getElementById('btn-scan-receipt')?.addEventListener('click', () => {
+    openScanChoiceModal(result => {
+      openTxModal(null, () => renderPage(), {
+        description: result.merchant ?? undefined,
+        amount: result.amount ?? undefined,
+        date: result.date ?? undefined,
+      });
+    });
   });
   document.getElementById('btn-export-csv')?.addEventListener('click', async () => {
     const dateFrom = `${fromYear}-${String(fromMonth).padStart(2, '0')}-01`;
@@ -227,6 +222,93 @@ interface TxDraft {
   description?: string;
   amount?: number;
   date?: string;
+}
+
+function closeModalOverlay(overlay: HTMLElement): void {
+  overlay.querySelector<HTMLButtonElement>('[data-close]')?.click();
+}
+
+function openScanChoiceModal(onResult: (result: OcrResult) => void): void {
+  const overlay = openModal({
+    title: 'Escanear comprovante',
+    body: `
+      <p style="color:var(--text-2);margin-bottom:16px">Escolha como enviar a imagem do comprovante ou nota fiscal.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button type="button" class="btn btn-secondary" id="scan-choice-camera" style="justify-content:flex-start"><i class="ti ti-camera"></i> Tirar foto com a câmera</button>
+        <button type="button" class="btn btn-secondary" id="scan-choice-file" style="justify-content:flex-start"><i class="ti ti-folder"></i> Escolher arquivo salvo</button>
+      </div>
+    `,
+    saveLabel: 'Fechar',
+  });
+
+  overlay.querySelector('#scan-choice-camera')?.addEventListener('click', () => {
+    closeModalOverlay(overlay);
+    openCameraCaptureModal(onResult);
+  });
+  overlay.querySelector('#scan-choice-file')?.addEventListener('click', async () => {
+    closeModalOverlay(overlay);
+    try {
+      const result = await invoke<OcrResult | null>('ocr:scanReceipt');
+      if (result) onResult(result);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível ler o comprovante.');
+    }
+  });
+}
+
+function openCameraCaptureModal(onResult: (result: OcrResult) => void): void {
+  let stream: MediaStream | null = null;
+
+  const stopStream = (): void => {
+    stream?.getTracks().forEach(track => track.stop());
+    stream = null;
+  };
+
+  const overlay = openModal({
+    title: 'Tirar foto do comprovante',
+    body: `
+      <video id="ocr-camera-video" autoplay playsinline style="width:100%;border-radius:8px;background:#000;max-height:55vh"></video>
+      <p id="ocr-camera-error" style="color:var(--danger);margin-top:10px;display:none"></p>
+    `,
+    saveLabel: 'Capturar e usar',
+    onSave: async modalOverlay => {
+      const video = modalOverlay.querySelector<HTMLVideoElement>('#ocr-camera-video')!;
+      if (!stream || !video.videoWidth) return false;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d')!.drawImage(video, 0, 0);
+      const dataUrl = canvas.toDataURL('image/png');
+      stopStream();
+
+      const saveBtn = modalOverlay.querySelector<HTMLButtonElement>('[data-save]')!;
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="ti ti-loader-2"></i> Lendo...';
+
+      try {
+        const result = await invoke<OcrResult | null>('ocr:scanReceiptCapture', dataUrl);
+        if (result) onResult(result);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Não foi possível ler a foto.');
+      }
+      return true;
+    },
+  });
+
+  overlay.querySelector('.modal-close')?.addEventListener('click', stopStream);
+  overlay.querySelector('[data-close]')?.addEventListener('click', stopStream);
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(mediaStream => {
+      stream = mediaStream;
+      overlay.querySelector<HTMLVideoElement>('#ocr-camera-video')!.srcObject = mediaStream;
+    })
+    .catch(err => {
+      const errorEl = overlay.querySelector<HTMLElement>('#ocr-camera-error')!;
+      errorEl.textContent = `Não foi possível acessar a câmera: ${err instanceof Error ? err.message : 'permissão negada.'}`;
+      errorEl.style.display = 'block';
+    });
 }
 
 function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draft?: TxDraft): void {

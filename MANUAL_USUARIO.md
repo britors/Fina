@@ -381,7 +381,7 @@ A tela `Lançamentos` é usada para registrar e consultar receitas, despesas e t
 
 ### Botões da tela
 
-- `Escanear comprovante`: lê o valor, a data e o estabelecimento de uma foto de comprovante ou nota fiscal e abre o cadastro de novo lançamento já preenchido com esses dados para revisão. O reconhecimento roda localmente no computador; a imagem não é enviada para nenhum servidor.
+- `Escanear comprovante`: lê o valor, a data e o estabelecimento de um comprovante ou nota fiscal e abre o cadastro de novo lançamento já preenchido com esses dados para revisão. Ao clicar, escolha entre `Tirar foto com a câmera` (abre uma pré-visualização da câmera do computador; clique em `Capturar e usar` quando o comprovante estiver enquadrado) ou `Escolher arquivo salvo` (seleciona uma foto já salva no computador). Em ambos os casos, o reconhecimento roda localmente no computador; a imagem não é enviada para nenhum servidor.
 - `Importar extrato`: importa transações a partir de arquivos CSV, OFX ou QFX.
 - `Exportar CSV`: exporta as transações filtradas para um arquivo CSV.
 - `Novo lançamento`: abre o cadastro de uma nova transação.

@@ -59,7 +59,7 @@ function pngDimensions(dataUri: string): { width: number; height: number } | nul
 // deixando "VALOR TOTAL R$" e afins sem nenhum número na mesma linha. Nesse
 // caso, refazer o OCR só na faixa vertical dessas linhas (até a borda da
 // imagem) costuma recuperar os valores que se perderam na primeira passada.
-async function parseAmount(worker: Worker, imagePath: string, page: Page): Promise<number | null> {
+async function parseAmount(worker: Worker, image: string | Buffer, page: Page): Promise<number | null> {
   const text = page.text;
 
   for (const line of text.split('\n')) {
@@ -81,7 +81,7 @@ async function parseAmount(worker: Worker, imagePath: string, page: Page): Promi
 
     if (width > 0 && height > 0) {
       try {
-        const { data: focused } = await worker.recognize(imagePath, { rectangle: { left, top, width, height } });
+        const { data: focused } = await worker.recognize(image, { rectangle: { left, top, width, height } });
         const focusedMatches = [...focused.text.matchAll(MONEY_REGEX)].map(m => toNumber(m[1]));
         if (focusedMatches.length > 0) return focusedMatches[focusedMatches.length - 1];
       } catch {
@@ -114,14 +114,14 @@ function parseMerchant(text: string): string | null {
   return line ?? null;
 }
 
-export async function extractReceiptData(imagePath: string): Promise<ReceiptData> {
+export async function extractReceiptData(image: string | Buffer): Promise<ReceiptData> {
   const worker = await createWorker('por', 1, { cachePath: cacheDir() });
   try {
-    const { data } = await worker.recognize(imagePath, {}, { blocks: true, imageColor: true });
+    const { data } = await worker.recognize(image, {}, { blocks: true, imageColor: true });
     const rawText = data.text;
     return {
       rawText,
-      amount: await parseAmount(worker, imagePath, data),
+      amount: await parseAmount(worker, image, data),
       date: parseDate(rawText),
       merchant: parseMerchant(rawText),
     };
