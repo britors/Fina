@@ -63,7 +63,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="card-hr"></div>
         <div class="card-body">
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-            ${quickQuestions(preview).map(q => `<button type="button" class="badge ai-quick-question" style="cursor:pointer;border:0.5px solid var(--border);background:var(--bg)">${esc(q)}</button>`).join('')}
+            ${quickQuestions(preview).map(q => `<button type="button" class="badge ai-quick-question" style="cursor:pointer;border:0.5px solid var(--border);background:var(--bg);color:var(--text-2)">${esc(q)}</button>`).join('')}
           </div>
           <div class="form-group">
             <label class="form-label">Pergunta</label>
