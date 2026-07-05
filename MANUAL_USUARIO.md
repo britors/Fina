@@ -331,15 +331,17 @@ Se você não marcar a confirmação, a pergunta não é enviada.
 
 As respostas da IA são apenas informativas e educacionais. Elas não substituem conferência dos dados, planejamento próprio nem orientação profissional financeira, fiscal, jurídica ou de investimento.
 
-### Chave de API
+### Chave de API e modelos
 
 A chave é salva criptografada fora do banco de dados do Fina. Ela não aparece nos backups, exports, relatórios ou interface depois de salva.
 
-Você pode remover a chave salva a qualquer momento na própria tela do assistente ou em `Configurações > IA`.
+Você pode remover a chave salva a qualquer momento em `Configurações > IA`.
 
-## Transações
+Em `Configurações > IA`, ao escolher ChatGPT/OpenAI ou Gemini/Google, o Fina mostra a lista de modelos disponíveis para o provedor. Se houver uma chave salva, o aplicativo tenta buscar a lista pela API do provedor; se não houver chave ou a consulta falhar, mostra uma lista padrão.
 
-A tela `Transações` é usada para registrar e consultar receitas, despesas e transferências.
+## Lançamentos
+
+A tela `Lançamentos` é usada para registrar e consultar receitas, despesas e transferências.
 
 ### Botões da tela
 
@@ -405,6 +407,10 @@ Ao clicar em `Novo lançamento` ou `Editar`, preencha:
 
 Use `Salvar` para gravar. Use `Cancelar` para sair sem salvar.
 
+Ao criar um lançamento novo, o valor total é preenchido automaticamente no primeiro meio de pagamento. Se quiser dividir o pagamento entre mais de um meio, edite esse valor e use `Adicionar meio`.
+
+Quando o lançamento for uma despesa paga em um único meio de pagamento do tipo `Cartão de Crédito`, aparece o campo `Parcelas`. Informe a quantidade de parcelas para que o Fina crie lançamentos mensais separados, identificados como `(1/3)`, `(2/3)` e assim por diante. Em edição de lançamentos já existentes, o parcelamento não é refeito automaticamente.
+
 Ao usar `Escanear comprovante`, os valores extraídos são um palpite inicial — a leitura depende da nitidez da foto. Confira sempre os dados antes de salvar.
 
 ### Importar extrato
@@ -444,9 +450,11 @@ Cada meio de pagamento mostra:
 - Banco.
 - Tipo.
 - Nome.
-- Saldo disponível ou fatura atual.
+- Saldo disponível, fatura atual ou valor disponível para gastar, conforme o tipo.
 - Limite e limite disponível, quando for cartão de crédito ou vale.
 - Data de criação.
+
+Para `Vale Refeição` e `Vale Alimentação`, o valor principal do card mostra quanto ainda há disponível para gastar, em vez do total já usado.
 
 As ações disponíveis são:
 
@@ -474,9 +482,16 @@ A tela `Orçamento` permite definir limites mensais por categoria de despesa.
 
 - `Novo orçamento`: cria um limite para uma categoria em um mês e ano.
 
-### Seletor de mês
+### Filtro de mês
 
-Use o campo de mês no topo da tela para escolher o período do orçamento.
+Use o filtro no topo da tela para escolher o período do orçamento.
+
+Opções disponíveis:
+
+- Campo de mês.
+- Botão de mês anterior.
+- Botão de próximo mês.
+- Botão `Mês atual`.
 
 ### Resumo
 

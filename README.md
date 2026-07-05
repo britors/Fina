@@ -4,8 +4,14 @@ Aplicativo desktop para controle de finanças pessoais, construído com **Electr
 
 O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
 
-## Destaques da versão 11.0
+## Destaques da versão 11.1
 
+- Open Finance: credenciais para Pluggy, Belvo e Klavi, com sincronização inicial via Pluggy para contas, saldos e lançamentos.
+- Lista de modelos de IA por provedor em `Configurações > IA`, com busca pela API quando houver chave salva e fallback local.
+- Tela de `Lançamentos` renomeada no menu, com ícone próprio e campo de parcelamento para despesas em cartão de crédito.
+- Preenchimento automático do valor total no primeiro meio de pagamento ao criar lançamento.
+- Filtro de mês aprimorado na tela de orçamento, com mês anterior, próximo mês e mês atual.
+- Cards de vale refeição e vale alimentação mostrando o valor disponível para gastar.
 - Criptografia do banco de dados local com senha mestre.
 - Sincronização entre dispositivos via arquivo .fin numa pasta de nuvem própria (Dropbox, Google Drive etc.).
 - Serviço em segundo plano (Linux/Windows) para gerar recorrências e enviar alertas sem o app aberto.
@@ -137,9 +143,9 @@ npm start
 | Plano mensal | Sugestão de uso da renda para dívidas, reserva, metas e investimentos |
 | Alertas | Riscos e oportunidades calculados a partir dos dados financeiros |
 | Assistente IA | Análise educacional usando ChatGPT/OpenAI ou Gemini/Google com consentimento explícito |
-| Transações | Lançamentos com categorias, filtros, rateio por meios de pagamento, responsável no modo família e importação CSV/OFX |
-| Meios de pagamento | Corrente, poupança, cartão de crédito, vale refeição, vale alimentação, carteira |
-| Orçamento | Limites mensais por categoria com alertas e separação entre despesas essenciais e variáveis |
+| Lançamentos | Receitas, despesas, transferências, parcelas em cartão de crédito, rateio por meios de pagamento, responsável no modo família e importação CSV/OFX |
+| Meios de pagamento | Corrente, poupança, cartão de crédito, vale refeição, vale alimentação, carteira e saldos vindos de Open Finance |
+| Orçamento | Limites mensais por categoria com filtro de mês, alertas e separação entre despesas essenciais e variáveis |
 | Fixas | Assinaturas e despesas recorrentes |
 | Calendário | Vencimentos e lançamentos por dia |
 | Relatórios | Histórico de até 12 meses, exportação PDF e CSV |
@@ -156,15 +162,17 @@ npm start
 | Mercado | Câmbio (USD/EUR/BTC), bolsas (Ibovespa, S&P 500, Nasdaq) e Selic |
 | IRPF | Informe auxiliar com rendimentos, deduções, bens e dívidas |
 | Manual | Guia de uso das telas e funções dentro do app |
-| Configurações | Perfil, aparência, notificações, SMTP, categorias, modo família/casal, IA, dados e backup |
+| Configurações | Perfil, aparência, notificações, SMTP, categorias, modo família/casal, IA, Open Finance, dados e backup |
 
 ---
 
-## Privacidade e IA
+## Privacidade, IA e Open Finance
 
 Os dados financeiros ficam em um banco SQLite local no computador do usuário. O Fina não envia dados financeiros para servidores próprios.
 
 A integração com IA é opcional, fica desativada por padrão e só funciona quando o usuário configura uma chave de API e confirma o consentimento. Quando usada, o Fina envia ao provedor escolhido apenas um resumo agregado e minimizado, evitando por padrão nome, e-mail, bancos, descrições de transações, observações pessoais e dados linha a linha.
+
+As credenciais de IA e Open Finance são salvas criptografadas fora do banco de dados quando a criptografia segura do sistema está disponível. A integração inicial de Open Finance permite configurar Pluggy, Belvo e Klavi; a sincronização automática implementada nesta versão usa Pluggy para importar contas, saldos e lançamentos. Pagamentos Pix ficam para uma etapa futura.
 
 Leia [PRIVACY.md](PRIVACY.md) para detalhes sobre dados locais, backups, integrações de mercado e uso de IA.
 
