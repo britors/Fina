@@ -122,6 +122,16 @@ Dados que não são enviados por padrão:
 
 Se algum modo futuro precisar enviar dados detalhados, ele deve exigir consentimento separado e explicar exatamente o que será enviado.
 
+## Rascunho de renegociação por IA
+
+Na tela `Renegociação`, o botão `Gerar rascunho com IA` envia dados de uma dívida específica (não agregados, diferente do restante do Assistente IA), mas minimizados:
+
+Enviado: tipo da dívida, saldo devedor, parcela mensal, taxa de juros e status (em dia/em atraso).
+
+Nunca enviado neste fluxo: nome do credor e descrição da dívida — mesmo esses dois campos existindo no cadastro local da dívida.
+
+Assim como as demais ações de IA, exige a IA ativada e confirmação de consentimento antes de cada geração, com a tela mostrando exatamente o que será enviado.
+
 ## Histórico de conversas com o Assistente IA
 
 O Fina guarda localmente, no mesmo banco SQLite, um histórico das perguntas e respostas trocadas com o Assistente IA, para consulta posterior. Esse histórico não representa um envio de dado novo a terceiros — é apenas a mesma pergunta/resposta já trocada com o provedor no momento da pergunta, salva para uso offline.

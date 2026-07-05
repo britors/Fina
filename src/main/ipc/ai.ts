@@ -293,6 +293,39 @@ function buildSummaryPrompt(summary: object): string {
   ].join('\n');
 }
 
+const DEBT_TYPE_LABELS: Record<string, string> = {
+  emprestimo: 'Empréstimo pessoal',
+  financiamento: 'Financiamento',
+  cartao: 'Cartão de crédito',
+  cheque_especial: 'Cheque especial',
+  pessoal: 'Dívida pessoal',
+  outro: 'Outro',
+};
+
+interface RenegotiationDebtInfo {
+  type: string;
+  outstanding_balance: number;
+  installment_amount: number;
+  interest_rate: number;
+  status: string;
+}
+
+function buildRenegotiationPrompt(debt: RenegotiationDebtInfo, summary: object): string {
+  return [
+    'O usuário quer negociar a dívida abaixo com o credor (nome do credor e descrição não são compartilhados por privacidade):',
+    `Tipo: ${DEBT_TYPE_LABELS[debt.type] ?? debt.type}`,
+    `Saldo devedor: ${debt.outstanding_balance}`,
+    `Parcela mensal atual: ${debt.installment_amount}`,
+    `Taxa de juros ao mês: ${debt.interest_rate}%`,
+    `Status: ${debt.status === 'em_atraso' ? 'em atraso' : 'em dia'}`,
+    '',
+    'Escreva um rascunho curto de mensagem/roteiro que o usuário possa usar ao negociar com o credor (por telefone, chat ou e-mail), pedindo redução de juros e/ou alongamento de prazo, com tom educado e direto. Não invente nome de credor, valores ou condições além dos informados.',
+    '',
+    'Resumo financeiro agregado do Fina (contexto adicional, não é sobre esta dívida especificamente):',
+    JSON.stringify(summary, null, 2),
+  ].join('\n');
+}
+
 function buildDecisionPrompt(decision: { title: string; body: string; impact: string }, summary: object): string {
   return [
     'O usuário recebeu a seguinte decisão sugerida pelo Fina:',
@@ -472,6 +505,10 @@ export function registerAIHandlers(): void {
 
   ipcMain.handle('ai:explainDecision', async (_e, payload: { title: string; body: string; impact: string; consentConfirmed: boolean }) => {
     return askProvider(buildDecisionPrompt(payload, financialSummary()), payload.consentConfirmed);
+  });
+
+  ipcMain.handle('ai:renegotiationDraft', async (_e, payload: RenegotiationDebtInfo & { consentConfirmed: boolean }) => {
+    return askProvider(buildRenegotiationPrompt(payload, financialSummary()), payload.consentConfirmed);
   });
 
   ipcMain.handle('ai:history', () => listConversations());

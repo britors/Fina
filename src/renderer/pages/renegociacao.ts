@@ -1,5 +1,6 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
+import { runAIAction } from '../components/aiConsent';
 import type { Debt } from '../../shared/types';
 
 export async function render(el: HTMLElement): Promise<void> {
@@ -37,6 +38,24 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
     `}
   `;
+
+  el.querySelectorAll<HTMLButtonElement>('.btn-renegotiation-draft').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const d = sorted[Number(btn.dataset.index)];
+      runAIAction({
+        title: 'Rascunho de renegociação',
+        consentText: 'O Fina vai enviar o tipo, o saldo devedor, a parcela, a taxa de juros e o status desta dívida (sem nome do credor nem descrição) junto com o resumo financeiro agregado, para gerar um rascunho de mensagem de negociação.',
+        channel: 'ai:renegotiationDraft',
+        payload: {
+          type: d.type,
+          outstanding_balance: d.outstanding_balance,
+          installment_amount: d.installment_amount,
+          interest_rate: d.interest_rate,
+          status: d.status,
+        },
+      });
+    });
+  });
 }
 
 function debtCard(d: Debt, index: number): string {
@@ -73,6 +92,7 @@ function debtCard(d: Debt, index: number): string {
           <div style="margin-top:10px;font-size:0.82rem;color:var(--text-2);line-height:1.5">
             Peça redução de juros, alongamento do prazo sem tarifas extras e desconto para quitação parcial. Use a parcela-alvo como limite de negociação.
           </div>
+          <button type="button" class="btn btn-secondary btn-sm btn-renegotiation-draft" data-index="${index}" style="margin-top:12px"><i class="ti ti-sparkles"></i> Gerar rascunho com IA</button>
         </div>
       </div>
     </div>

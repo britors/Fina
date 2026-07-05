@@ -1041,6 +1041,10 @@ O Fina calcula uma referência de negociação, como reduzir a parcela mensal ou
 
 Use a sugestão como ponto de partida para conversar com banco, financeira ou credor. A tela não envia propostas automaticamente e não altera a dívida cadastrada.
 
+### Rascunho com IA
+
+Cada dívida tem um botão `Gerar rascunho com IA` que pede ao Assistente IA um rascunho de mensagem/roteiro para usar na negociação. Antes de enviar, o Fina mostra que apenas tipo, saldo devedor, parcela, taxa de juros e status são enviados — nome do credor e descrição da dívida nunca são compartilhados. Como nas demais ações de IA, é preciso confirmar o consentimento antes de gerar o rascunho.
+
 ## Reserva
 
 A tela `Reserva` ajuda a calcular e acompanhar uma reserva de emergência.
