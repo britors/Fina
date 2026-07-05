@@ -121,6 +121,17 @@ Dados que não são enviados por padrão:
 
 Se algum modo futuro precisar enviar dados detalhados, ele deve exigir consentimento separado e explicar exatamente o que será enviado.
 
+## Categorização automática por IA (planejado)
+
+Está planejado um recurso de sugestão automática de categoria na importação de extratos (CSV/OFX) e no OCR de comprovantes, usando a descrição do lançamento e/ou o nome do estabelecimento — dados que hoje estão na lista de "não enviados por padrão" desta política.
+
+Quando implementado, esse recurso deve seguir regras adicionais às do Assistente IA:
+
+- exigir uma tela de consentimento própria, separada da tela do Assistente IA, explicando com clareza exatamente qual texto será enviado (descrição/nome do estabelecimento) antes de cada uso;
+- continuar desativado por padrão mesmo que o Assistente IA já esteja ativado — são consentimentos independentes;
+- deixar claro que a sugestão de categoria é apenas uma sugestão, exigindo confirmação ou ajuste manual do usuário antes de salvar o lançamento;
+- não enviar outros dados do lançamento além do necessário para a sugestão (sem observações pessoais, sem dados de outros lançamentos).
+
 ## Limites das respostas de IA
 
 As respostas de IA são informativas e educacionais.
