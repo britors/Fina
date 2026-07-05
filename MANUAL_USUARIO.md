@@ -247,6 +247,10 @@ O Fina pode recomendar ações como:
 
 Cada decisão mostra o motivo e um botão para abrir a tela relacionada.
 
+### Detalhar com IA
+
+Cada decisão tem um botão `Detalhar com IA` que pede ao Assistente IA um passo a passo prático de como executar aquela decisão específica. Assim como no Assistente IA, é preciso ter a IA ativada em `Configurações > IA` e confirmar o consentimento de envio antes de cada uso — o Fina mostra exatamente o que será enviado (título, descrição e impacto da decisão, mais o resumo financeiro agregado) antes de gerar a resposta.
+
 ### Como usar
 
 Use essa tela quando estiver em dúvida sobre o próximo passo. Ela não altera seus dados automaticamente; apenas indica uma prioridade com base no cenário atual.

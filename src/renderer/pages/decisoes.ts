@@ -1,5 +1,6 @@
 import { invoke } from '../api';
 import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
+import { runAIAction } from '../components/aiConsent';
 import type { Account, BudgetWithProgress, Debt, Goal } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
@@ -62,10 +63,22 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
     ` : `
       <div style="display:flex;flex-direction:column;gap:12px">
-        ${decisions.map(decisionCard).join('')}
+        ${decisions.map((d, i) => decisionCard(d, i)).join('')}
       </div>
     `}
   `;
+
+  el.querySelectorAll<HTMLButtonElement>('.btn-explain-decision').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const decision = decisions[Number(btn.dataset.index)];
+      runAIAction({
+        title: `Detalhar: ${decision.title}`,
+        consentText: `O Fina vai enviar o título, a descrição e o impacto desta decisão junto com o resumo financeiro agregado (o mesmo já usado no Assistente IA) para gerar um passo a passo prático.`,
+        channel: 'ai:explainDecision',
+        payload: { title: decision.title, body: decision.body, impact: decision.impact },
+      });
+    });
+  });
 }
 
 function buildDecisions(data: {
@@ -125,7 +138,7 @@ function buildDecisions(data: {
   return decisions.sort((a, b) => priorityWeight(a.priority) - priorityWeight(b.priority));
 }
 
-function decisionCard(d: Decision): string {
+function decisionCard(d: Decision, index: number): string {
   const color = d.priority === 'Alta' ? 'var(--danger)' : d.priority === 'Média' ? 'var(--warning)' : 'var(--accent)';
   return `
     <div class="card">
@@ -141,6 +154,7 @@ function decisionCard(d: Decision): string {
           <div style="font-size:0.82rem;color:var(--text-2)">${d.body}</div>
           <div style="font-size:0.76rem;color:var(--text-3);margin-top:4px">${d.impact}</div>
         </div>
+        <button type="button" class="btn btn-secondary btn-sm btn-explain-decision" data-index="${index}"><i class="ti ti-sparkles"></i> Detalhar com IA</button>
         <a href="#${d.route}" class="btn btn-primary btn-sm">Abrir</a>
       </div>
     </div>

@@ -88,7 +88,7 @@ A integração com IA:
 - exige ativação manual;
 - exige chave de API do próprio usuário;
 - exige consentimento de envio;
-- exige confirmação antes de cada pergunta;
+- exige confirmação antes de cada pergunta ou ação de IA (inclusive fora da tela Assistente IA, como "Detalhar com IA" na tela Decisões), sempre mostrando o que será enviado;
 - pode ser desativada a qualquer momento.
 
 ## Dados enviados para IA

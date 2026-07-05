@@ -293,6 +293,20 @@ function buildSummaryPrompt(summary: object): string {
   ].join('\n');
 }
 
+function buildDecisionPrompt(decision: { title: string; body: string; impact: string }, summary: object): string {
+  return [
+    'O usuário recebeu a seguinte decisão sugerida pelo Fina:',
+    `Título: ${decision.title}`,
+    `Descrição: ${decision.body}`,
+    `Impacto esperado: ${decision.impact}`,
+    '',
+    'Explique, em um passo a passo prático e numerado, como executar essa decisão específica, considerando o resumo financeiro agregado abaixo.',
+    '',
+    'Resumo financeiro agregado do Fina:',
+    JSON.stringify(summary, null, 2),
+  ].join('\n');
+}
+
 async function callOpenAI(apiKey: string, model: string, prompt: string): Promise<string> {
   const res = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -454,6 +468,10 @@ export function registerAIHandlers(): void {
 
   ipcMain.handle('ai:summary', async (_e, payload: { consentConfirmed: boolean }) => {
     return askProvider(buildSummaryPrompt(financialSummary()), payload.consentConfirmed);
+  });
+
+  ipcMain.handle('ai:explainDecision', async (_e, payload: { title: string; body: string; impact: string; consentConfirmed: boolean }) => {
+    return askProvider(buildDecisionPrompt(payload, financialSummary()), payload.consentConfirmed);
   });
 
   ipcMain.handle('ai:history', () => listConversations());
