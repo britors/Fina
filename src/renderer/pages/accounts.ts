@@ -2,6 +2,7 @@ import { invoke } from '../api';
 import { formatCurrency, accountTypeLabel, isCreditLikeAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { setTopbarActions } from '../components/topbar';
+import { openPayInvoiceModal } from './transactions';
 import type { Account, AccountCurrency, AccountType } from '../../shared/types';
 
 const CURRENCY_LABELS: Record<AccountCurrency, string> = { BRL: 'Real (R$)', USD: 'Dólar (US$)', EUR: 'Euro (€)' };
@@ -65,6 +66,9 @@ export async function render(el: HTMLElement): Promise<void> {
         renderPage();
       });
     });
+    el.querySelectorAll<HTMLElement>('[data-pay-invoice]').forEach(btn => {
+      btn.addEventListener('click', () => openPayInvoiceModal(btn.dataset.payInvoice!, renderPage));
+    });
   }
 
   document.getElementById('btn-new-acc')?.addEventListener('click', () => openAccModal(null, renderPage));
@@ -102,6 +106,7 @@ function accountCard(a: Account): string {
           </div>
         </div>
         <div style="display:flex;gap:6px">
+          ${isCreditCard ? `<button class="btn btn-secondary btn-sm" data-pay-invoice="${a.id}">Pagar fatura</button>` : ''}
           <button class="btn btn-ghost btn-sm" data-edit-acc="${a.id}">Editar</button>
           <button class="btn btn-danger btn-sm" data-del-acc="${a.id}">✕</button>
         </div>
