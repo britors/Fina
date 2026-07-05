@@ -647,6 +647,19 @@ O topo mostra:
 - `Compromisso mensal`: soma dos valores das recorrências ativas.
 - `Próximo vencimento`: data e descrição da próxima despesa fixa a vencer.
 
+### Recorrências detectadas automaticamente
+
+Acima da lista de fixas, o Fina analisa o histórico de transações dos últimos 12 meses e mostra cobranças repetidas (mesma descrição, valor parecido, intervalo regular) que ainda não estão cadastradas como despesa fixa.
+
+Cada sugestão mostra quantas vezes a cobrança ocorreu, o intervalo estimado, a data da última ocorrência e o valor médio. Sugestões com 4 ocorrências ou mais recebem a marca `Possivelmente esquecida`, indicando uma cobrança recorrente de longa duração que talvez mereça revisão (cancelar ou manter conscientemente).
+
+Para cada sugestão você pode:
+
+- `Cadastrar como fixa`: abre o formulário de nova despesa fixa já preenchido com a descrição, o valor médio e o intervalo detectados, para você revisar e confirmar.
+- `Descartar`: remove a sugestão da lista permanentemente (por exemplo, quando já é algo conhecido e controlado de outra forma).
+
+A detecção roda inteiramente sobre os dados já salvos localmente — nenhuma informação é enviada a terceiros.
+
 ### Nova fixa ou edição
 
 Campos disponíveis:

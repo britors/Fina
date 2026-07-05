@@ -2,7 +2,7 @@ import { invoke } from '../api';
 import { formatCurrency, formatDate } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { setTopbarActions } from '../components/topbar';
-import type { Account, BillInterval, BillPriceIncrease, BillWithCategory, Category } from '../../shared/types';
+import type { Account, BillInterval, BillPriceIncrease, BillWithCategory, Category, DetectedRecurrence } from '../../shared/types';
 
 const INTERVAL_LABELS: Record<BillInterval, string> = {
   weekly:     'Semanal',
@@ -28,9 +28,10 @@ export async function render(el: HTMLElement): Promise<void> {
   `);
 
   async function renderPage(): Promise<void> {
-    const [all, priceIncreases] = await Promise.all([
+    const [all, priceIncreases, detections] = await Promise.all([
       invoke<BillWithCategory[]>('bills:list', {}),
       invoke<BillPriceIncrease[]>('bills:getPriceIncreases'),
+      invoke<DetectedRecurrence[]>('recurrenceDetection:list'),
     ]);
     const fixed = all.filter(b => b.recurring);
     const increaseByBill = new Map(priceIncreases.map(i => [i.bill_id, i]));
@@ -55,6 +56,21 @@ export async function render(el: HTMLElement): Promise<void> {
           <div class="stat-sub">${nextDue ? esc(nextDue.description) : 'nenhuma despesa fixa'}</div>
         </div>
       </div>
+
+      ${detections.length > 0 ? `
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">Recorrências detectadas automaticamente</div>
+          <div class="card-hr"></div>
+          <div class="card-body">
+            <p style="font-size:0.8rem;color:var(--text-3);margin-bottom:12px">
+              Cobranças repetidas identificadas no histórico de transações, ainda não cadastradas como fixas. Revise e confirme cada uma.
+            </p>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              ${detections.map(detectionCard).join('')}
+            </div>
+          </div>
+        </div>
+      ` : ''}
 
       ${fixed.length === 0 ? `
         <div class="empty">
@@ -115,16 +131,28 @@ export async function render(el: HTMLElement): Promise<void> {
         renderPage();
       });
     });
+    el.querySelectorAll<HTMLElement>('[data-track-detection]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const detection = detections.find(d => d.key === btn.dataset.trackDetection);
+        if (detection) openFixedModal(detectionToPrefill(detection), renderPage);
+      });
+    });
+    el.querySelectorAll<HTMLElement>('[data-dismiss-detection]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await invoke('recurrenceDetection:dismiss', btn.dataset.dismissDetection);
+        renderPage();
+      });
+    });
   }
 
   document.getElementById('btn-new-fixed')?.addEventListener('click', () => openFixedModal(null, renderPage));
   await renderPage();
 }
 
-function openFixedModal(bill: BillWithCategory | null, onDone: () => void): void {
+function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => void): void {
   const today = new Date().toISOString().slice(0, 10);
   openModal({
-    title: bill ? 'Editar despesa fixa' : 'Nova despesa fixa',
+    title: bill?.id ? 'Editar despesa fixa' : 'Nova despesa fixa',
     body: `
       <div class="form-group">
         <label class="form-label">Descrição</label>
@@ -190,11 +218,41 @@ function openFixedModal(bill: BillWithCategory | null, onDone: () => void): void
         payments: accountId ? [{ account_id: accountId, amount }] : [],
       };
 
-      if (bill) await invoke('bills:update', { id: bill.id, ...payload });
+      if (bill?.id) await invoke('bills:update', { id: bill.id, ...payload });
       else await invoke('bills:create', payload);
       onDone();
     },
   });
+}
+
+function detectionToPrefill(d: DetectedRecurrence): Partial<BillWithCategory> {
+  return {
+    description: d.description,
+    amount: d.avgAmount,
+    due_date: new Date().toISOString().slice(0, 10),
+    recurrence_interval: d.interval,
+  };
+}
+
+function detectionCard(d: DetectedRecurrence): string {
+  return `
+    <div style="display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:0.5px solid var(--border)">
+      <div style="flex:1">
+        <div style="font-weight:600">
+          ${esc(d.description)}
+          ${d.likelyForgotten ? '<span class="badge" style="color:var(--warning);background:rgba(234,179,8,0.12);margin-left:6px">Possivelmente esquecida</span>' : ''}
+        </div>
+        <div style="font-size:0.78rem;color:var(--text-3)">
+          ${d.occurrences}x nos últimos 12 meses · ${INTERVAL_LABELS[d.interval]} · última em ${formatDate(d.lastDate)}
+        </div>
+      </div>
+      <div style="font-weight:600;color:var(--danger)">${formatCurrency(d.avgAmount)}</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-secondary btn-sm" data-track-detection="${d.key}">Cadastrar como fixa</button>
+        <button class="btn btn-ghost btn-sm" data-dismiss-detection="${d.key}">Descartar</button>
+      </div>
+    </div>
+  `;
 }
 
 function paymentLabel(bill: BillWithCategory): string {

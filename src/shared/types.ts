@@ -118,6 +118,16 @@ export interface BillPriceHistory {
   changed_at: string;
 }
 
+export interface DetectedRecurrence {
+  key: string;
+  description: string;
+  occurrences: number;
+  avgAmount: number;
+  lastDate: string;
+  interval: BillInterval;
+  likelyForgotten: boolean;
+}
+
 export interface BillPriceIncrease {
   bill_id: string;
   description: string;
