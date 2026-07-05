@@ -3,7 +3,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getDb } from '../database';
-import type { AccountType, TransactionType } from '../../shared/types';
+import type { AccountType, BalanceAlertSettings, BalanceDropAlert, CashFlowFactor, CashFlowForecast, CashFlowWeek, ConsolidatedBalance, TransactionType } from '../../shared/types';
 
 type OpenFinanceProvider = 'pluggy' | 'belvo' | 'klavi';
 
@@ -37,6 +37,12 @@ interface SyncResult {
   accountsUpdated: number;
   transactionsImported: number;
   transactionsSkipped: number;
+}
+
+interface SyncOptions {
+  accountId?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 type RemoteAccount = {
@@ -153,8 +159,118 @@ function assertProvider(provider: string): asserts provider is OpenFinanceProvid
   }
 }
 
+function getConsolidatedBalance(): ConsolidatedBalance {
+  const db = getDb();
+  const accounts = db.prepare(`
+    SELECT id, name, type, bank_name, balance
+    FROM accounts
+    WHERE openfinance_provider IS NOT NULL
+    ORDER BY bank_name, name
+  `).all() as { id: string; name: string; type: string; bank_name: string | null; balance: number }[];
+
+  const groups = new Map<string, { bankName: string; total: number; accounts: { id: string; name: string; type: string; balance: number }[] }>();
+  for (const acc of accounts) {
+    const key = acc.bank_name ?? 'Outras conexões';
+    if (!groups.has(key)) groups.set(key, { bankName: key, total: 0, accounts: [] });
+    const group = groups.get(key)!;
+    group.total += acc.balance;
+    group.accounts.push({ id: acc.id, name: acc.name, type: acc.type, balance: acc.balance });
+  }
+
+  return {
+    total: accounts.reduce((sum, a) => sum + a.balance, 0),
+    byInstitution: [...groups.values()],
+  };
+}
+
+// Fluxo de caixa consolidado, escopado apenas às contas conectadas via Open
+// Finance (diferente da previsão geral do Dashboard, que soma todas as
+// contas). Agrupa por semana e reaproveita o mesmo cruzamento de
+// transações/contas a pagar futuras já usado no restante do app.
+function getCashFlowForecast(weeksAhead = 8): CashFlowForecast {
+  const db = getDb();
+  const linkedIds = (db.prepare(`SELECT id FROM accounts WHERE openfinance_provider IS NOT NULL`).all() as { id: string }[]).map(r => r.id);
+  if (linkedIds.length === 0) return { weeks: [], factors: [] };
+
+  const placeholders = linkedIds.map(() => '?').join(',');
+  const { total } = db.prepare(`SELECT COALESCE(SUM(balance),0) as total FROM accounts WHERE id IN (${placeholders})`)
+    .get(...linkedIds) as { total: number };
+
+  const horizonDays = weeksAhead * 7;
+  const futureTxs = db.prepare(`
+    SELECT date, type, description, amount
+    FROM transactions
+    WHERE status = 'confirmed' AND date > date('now') AND date <= date('now', '+' || ? || ' days')
+      AND account_id IN (${placeholders})
+  `).all(horizonDays, ...linkedIds) as { date: string; type: string; description: string; amount: number }[];
+
+  const futureBills = db.prepare(`
+    SELECT due_date as date, description, amount, recurring
+    FROM bills
+    WHERE status != 'paid' AND due_date >= date('now') AND due_date <= date('now', '+' || ? || ' days')
+      AND account_id IN (${placeholders})
+  `).all(horizonDays, ...linkedIds) as { date: string; description: string; amount: number; recurring: number }[];
+
+  const flow = new Map<string, number>();
+  const factors: CashFlowFactor[] = [];
+
+  for (const tx of futureTxs) {
+    const delta = tx.type === 'income' ? tx.amount : -tx.amount;
+    flow.set(tx.date, (flow.get(tx.date) ?? 0) + delta);
+    factors.push({ label: tx.description, date: tx.date, amount: delta, type: delta >= 0 ? 'income' : 'expense', recurring: false });
+  }
+  for (const bill of futureBills) {
+    flow.set(bill.date, (flow.get(bill.date) ?? 0) - bill.amount);
+    factors.push({ label: bill.description, date: bill.date, amount: -bill.amount, type: 'expense', recurring: !!bill.recurring });
+  }
+
+  const weeks: CashFlowWeek[] = [];
+  let running = total;
+  const now = new Date();
+  for (let w = 0; w < weeksAhead; w++) {
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() + w * 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+
+    let income = 0;
+    let expense = 0;
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(weekStart);
+      day.setDate(day.getDate() + d);
+      const delta = flow.get(day.toISOString().slice(0, 10)) ?? 0;
+      if (delta > 0) income += delta; else expense += -delta;
+      running += delta;
+    }
+
+    weeks.push({
+      weekStart: weekStart.toISOString().slice(0, 10),
+      weekEnd: weekEnd.toISOString().slice(0, 10),
+      income: Math.round(income * 100) / 100,
+      expense: Math.round(expense * 100) / 100,
+      balance: Math.round(running * 100) / 100,
+    });
+  }
+
+  const topFactors = factors
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+    .slice(0, 6);
+
+  return { weeks, factors: topFactors };
+}
+
 export function registerOpenFinanceHandlers(): void {
   ipcMain.handle('openFinance:getSettings', () => settings());
+
+  ipcMain.handle('openFinance:getBalanceAlertSettings', () => getBalanceAlertSettings());
+
+  ipcMain.handle('openFinance:saveBalanceAlertSettings', (_e, data: BalanceAlertSettings) => saveBalanceAlertSettings(data));
+
+  ipcMain.handle('openFinance:getBalanceDropAlerts', () => detectBalanceDrops());
+
+  ipcMain.handle('openFinance:getConsolidatedBalance', () => getConsolidatedBalance());
+
+  ipcMain.handle('openFinance:getCashFlowForecast', (_e, weeksAhead?: number) => getCashFlowForecast(weeksAhead));
 
   ipcMain.handle('openFinance:saveProvider', (_e, data: SaveProviderPayload) => {
     assertProvider(data.provider);
@@ -184,12 +300,13 @@ export function registerOpenFinanceHandlers(): void {
     return { ok: !!apiKey };
   });
 
-  ipcMain.handle('openFinance:syncProvider', async (_e, provider: string): Promise<SyncResult> => {
+  ipcMain.handle('openFinance:syncProvider', async (_e, payload: { provider: string } & SyncOptions): Promise<SyncResult> => {
+    const { provider, ...options } = payload;
     assertProvider(provider);
     if (provider !== 'pluggy') {
       throw new Error('Sincronização automática disponível nesta versão apenas para Pluggy.');
     }
-    return syncPluggy();
+    return syncPluggy(options);
   });
 }
 
@@ -325,11 +442,13 @@ async function loadPluggyAccounts(apiKey: string, itemId: string): Promise<Remot
   return parsePluggyAccounts(payload);
 }
 
-async function loadPluggyTransactions(apiKey: string, account: RemoteAccount): Promise<RemoteTransaction[]> {
+async function loadPluggyTransactions(apiKey: string, account: RemoteAccount, dateFrom?: string, dateTo?: string): Promise<RemoteTransaction[]> {
   const transactions: RemoteTransaction[] = [];
   let cursor = '';
   for (let page = 0; page < 20; page++) {
     const qs = new URLSearchParams({ accountId: account.id });
+    if (dateFrom) qs.set('from', dateFrom);
+    if (dateTo) qs.set('to', dateTo);
     if (cursor) qs.set('cursor', cursor);
     const payload = await pluggyGet<unknown>(`/v2/transactions?${qs.toString()}`, apiKey);
     transactions.push(...parsePluggyTransactions(payload, account.id));
@@ -363,6 +482,65 @@ function upsertAccount(account: RemoteAccount): { id: string; created: boolean }
   return { id, created: true };
 }
 
+function recordBalanceSnapshot(accountId: string, balance: number): void {
+  getDb().prepare(`INSERT INTO account_balance_snapshots (id, account_id, balance) VALUES (?,?,?)`)
+    .run(randomUUID(), accountId, balance);
+}
+
+function getBalanceAlertSettings(): BalanceAlertSettings {
+  return {
+    enabled: getSetting('openfinance_balance_alert_enabled', 'true') === 'true',
+    thresholdPct: parseFloat(getSetting('openfinance_balance_alert_threshold_pct', '20')) || 20,
+    days: parseInt(getSetting('openfinance_balance_alert_days', '7'), 10) || 7,
+  };
+}
+
+function saveBalanceAlertSettings(data: BalanceAlertSettings): BalanceAlertSettings {
+  setSettings({
+    openfinance_balance_alert_enabled: data.enabled ? 'true' : 'false',
+    openfinance_balance_alert_threshold_pct: String(data.thresholdPct),
+    openfinance_balance_alert_days: String(data.days),
+  });
+  return getBalanceAlertSettings();
+}
+
+// Compara o saldo atual de cada conta conectada com o snapshot mais antigo
+// disponível a partir de N dias atrás; sem histórico suficiente (poucos
+// syncs até agora), a conta simplesmente não gera alerta ainda.
+function detectBalanceDrops(): BalanceDropAlert[] {
+  const settings = getBalanceAlertSettings();
+  if (!settings.enabled) return [];
+
+  const db = getDb();
+  const accounts = db.prepare(`
+    SELECT id, name, bank_name, balance FROM accounts WHERE openfinance_provider IS NOT NULL
+  `).all() as { id: string; name: string; bank_name: string | null; balance: number }[];
+
+  const alerts: BalanceDropAlert[] = [];
+  for (const acc of accounts) {
+    const snapshot = db.prepare(`
+      SELECT balance FROM account_balance_snapshots
+      WHERE account_id = ? AND recorded_at <= datetime('now', '-' || ? || ' days')
+      ORDER BY recorded_at DESC LIMIT 1
+    `).get(acc.id, settings.days) as { balance: number } | undefined;
+    if (!snapshot || snapshot.balance <= 0) continue;
+
+    const dropPct = ((snapshot.balance - acc.balance) / snapshot.balance) * 100;
+    if (dropPct < settings.thresholdPct) continue;
+
+    alerts.push({
+      accountId: acc.id,
+      accountName: acc.name,
+      bankName: acc.bank_name ?? 'Open Finance',
+      currentBalance: acc.balance,
+      previousBalance: snapshot.balance,
+      dropPct: Math.round(dropPct * 10) / 10,
+      days: settings.days,
+    });
+  }
+  return alerts;
+}
+
 function importTransaction(tx: RemoteTransaction, accountId: string): boolean {
   const db = getDb();
   const existing = db.prepare('SELECT 1 FROM transactions WHERE openfinance_provider = ? AND openfinance_id = ?')
@@ -385,7 +563,7 @@ function importTransaction(tx: RemoteTransaction, accountId: string): boolean {
   return true;
 }
 
-async function syncPluggy(): Promise<SyncResult> {
+async function syncPluggy(options: SyncOptions = {}): Promise<SyncResult> {
   if (!providerEnabled('pluggy')) throw new Error('Ative a integração Pluggy antes de sincronizar.');
   const itemId = providerConnectionId('pluggy');
   if (!itemId) throw new Error('Informe o Item ID da Pluggy antes de sincronizar.');
@@ -398,6 +576,10 @@ async function syncPluggy(): Promise<SyncResult> {
   let transactionsImported = 0;
   let transactionsSkipped = 0;
 
+  // Atualiza saldos e descobre contas novas sempre, independente do filtro
+  // de conta abaixo — é uma chamada única e leve, e mantém os saldos em dia.
+  // Também registra um snapshot do saldo a cada sync, para permitir detectar
+  // quedas bruscas mais tarde (accounts.balance só guarda o valor atual).
   const db = getDb();
   db.transaction(() => {
     for (const remote of remoteAccounts) {
@@ -405,13 +587,16 @@ async function syncPluggy(): Promise<SyncResult> {
       accountMap.set(remote.id, local.id);
       if (local.created) accountsCreated++;
       else accountsUpdated++;
+      recordBalanceSnapshot(local.id, remote.balance);
     }
   })();
 
   for (const remote of remoteAccounts) {
     const localAccountId = accountMap.get(remote.id);
     if (!localAccountId) continue;
-    const transactions = await loadPluggyTransactions(apiKey, remote);
+    if (options.accountId && options.accountId !== localAccountId) continue;
+
+    const transactions = await loadPluggyTransactions(apiKey, remote, options.dateFrom, options.dateTo);
     db.transaction(() => {
       for (const tx of transactions) {
         if (importTransaction(tx, localAccountId)) transactionsImported++;

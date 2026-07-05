@@ -67,6 +67,15 @@ Mostra o saldo projetado especificamente até o último dia do mês atual, a par
 
 Ao lado do saldo projetado, a tela lista os `Principais fatores` — os lançamentos e contas futuras de maior valor que mais influenciam essa projeção, com data e valor. A previsão é recalculada automaticamente conforme novos lançamentos entram.
 
+### Open Finance — saldo consolidado e fluxo de caixa
+
+Essas seções só aparecem depois que você conecta pelo menos uma conta via Open Finance (em `Configurações > Open Finance`).
+
+- `Saldo consolidado`: soma o saldo de todas as contas conectadas, com uma lista mostrando o saldo de cada conta e a instituição a que pertence. Use o seletor `Todos os bancos` para filtrar a lista por uma instituição específica.
+- `Fluxo de caixa consolidado`: projeta o saldo semana a semana para as próximas semanas, usando apenas os lançamentos e contas a pagar das contas conectadas via Open Finance. Mostra entradas, saídas e o saldo projetado de cada semana, além dos `Principais fatores` da projeção — cobranças recorrentes aparecem marcadas com o selo `Recorrente`.
+
+Os dois blocos são atualizados automaticamente conforme os dados são sincronizados em `Configurações > Open Finance`.
+
 ### Contas a pagar
 
 Mostra contas próximas do vencimento. Cada item exibe descrição, data de vencimento, situação e valor.
@@ -298,6 +307,10 @@ Além dos alertas gerais, o Fina analisa os lançamentos dos últimos 60 dias e 
 Cada item mostra o motivo específico do alerta, junto com data, meio de pagamento e valor. Essa sinalização é apenas informativa — em nenhum momento ela bloqueia ou impede um lançamento normal. Use `Marcar como revisado` depois de conferir um item para que ele não apareça novamente nessa lista.
 
 A análise roda inteiramente sobre os dados já salvos localmente, sem enviar nada a terceiros.
+
+### Quedas de saldo em contas conectadas
+
+Se você tiver contas conectadas via Open Finance, essa seção mostra quando o saldo de alguma delas cair de forma brusca — comparando o saldo atual com um saldo anterior, conforme o limite e o período configurados em `Configurações > Open Finance`. Cada item mostra a conta, o banco, o percentual de queda e os valores antes/depois. Use como um sinal para verificar se houve algum lançamento inesperado nessa conta.
 
 ### Como usar
 
@@ -1293,6 +1306,32 @@ Campos e opções disponíveis:
 O Fina avisa se a criptografia segura do sistema não estiver disponível. Nesse caso, a chave de API não é salva.
 
 Mesmo com essa configuração ativa, o envio de dados exige confirmação na tela `Assistente IA`.
+
+### Open Finance
+
+Permite configurar os agregadores (Pluggy, Belvo, Klavi) usados para conectar contas via Open Finance. Nesta versão, a sincronização automática funciona apenas com a Pluggy — os outros dois já aceitam credenciais, mas ainda não sincronizam.
+
+Campos e opções por provedor:
+
+- `Ativar integração`: liga ou desliga o provedor nas sincronizações.
+- `Ambiente de testes`: usa o sandbox do provedor enquanto você valida a conexão.
+- `Client ID` / `Client Secret` (ou `API key`, dependendo do provedor): credenciais fornecidas pelo agregador.
+- `Item ID` (Pluggy) ou identificador da conexão: referência retornada depois de conectar uma instituição pelo widget do provedor.
+- `Testar`: verifica se as credenciais estão corretas.
+- `Sincronizar`: importa contas, saldos e lançamentos da instituição conectada.
+- `Remover credenciais`: apaga as credenciais salvas desse provedor.
+
+Depois da primeira sincronização, o Fina passa a mostrar os campos `Conta a sincronizar`, `De` e `Até` acima do botão `Sincronizar` — use-os para importar apenas uma conta específica ou um período determinado nas próximas vezes, em vez de sincronizar tudo de novo. Deixe em branco para continuar sincronizando todas as contas e todo o período disponível.
+
+Lançamentos e contas já importados não são duplicados numa nova sincronização, mesmo sincronizando o mesmo período novamente.
+
+Abaixo dos provedores, o bloco `Alertas de queda de saldo` configura um aviso para quando o saldo de uma conta conectada cair de forma brusca:
+
+- `Ativar alerta de queda de saldo`: liga ou desliga esse alerta.
+- `Queda mínima (%)`: percentual de queda a partir do qual o Fina avisa (padrão: 20%).
+- `Comparar com quantos dias atrás`: janela usada para comparar o saldo atual com um saldo anterior (padrão: 7 dias).
+
+Esse alerta depende de um histórico de saldo que só começa a ser guardado a partir da primeira sincronização depois que o recurso existe — contas recém-conectadas podem levar alguns dias de sincronizações até acumular histórico suficiente para gerar um alerta. Quando disparado, o aviso aparece na tela `Alertas`.
 
 ### Dados e backup
 

@@ -2,7 +2,7 @@ import { invoke, send, on } from '../api';
 import { setTopbarActions } from '../components/topbar';
 import { applyAccent, applyTheme } from '../theme';
 import { openCategoryModal } from '../components/categoryModal';
-import type { Category, UpdateStatus } from '../../shared/types';
+import type { Account, BalanceAlertSettings, Category, UpdateStatus } from '../../shared/types';
 
 type Settings = Record<string, string>;
 
@@ -1073,7 +1073,13 @@ function modelOptionsHtml(models: string[], selected: string): string {
 }
 
 async function renderOpenFinance(el: HTMLElement): Promise<void> {
-  let openFinance = await invoke<OpenFinanceSettings>('openFinance:getSettings');
+  const [openFinanceLoaded, allAccounts, balanceAlertLoaded] = await Promise.all([
+    invoke<OpenFinanceSettings>('openFinance:getSettings'),
+    invoke<Account[]>('accounts:list'),
+    invoke<BalanceAlertSettings>('openFinance:getBalanceAlertSettings'),
+  ]);
+  let openFinance = openFinanceLoaded;
+  let balanceAlert = balanceAlertLoaded;
 
   el.innerHTML = `
     <div class="settings-section-label">OPEN FINANCE</div>
@@ -1086,8 +1092,55 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
     <div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.2);border-radius:8px;padding:12px 16px;font-size:0.8rem;color:var(--text-2);line-height:1.6;margin-top:14px">
       Configure as credenciais dos agregadores que serão usados para conectar contas via Open Finance. O Fina guarda segredos criptografados fora do banco de dados.
     </div>
-    ${OPEN_FINANCE_PROVIDERS.map(provider => providerCard(provider, openFinance.providers[provider.id])).join('')}
+    ${OPEN_FINANCE_PROVIDERS.map(provider => providerCard(
+      provider,
+      openFinance.providers[provider.id],
+      allAccounts.filter(a => a.openfinance_provider === provider.id),
+    )).join('')}
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">Alertas de queda de saldo</div>
+      <div class="card-hr"></div>
+      <div class="card-body">
+        <div style="font-size:0.82rem;color:var(--text-2);line-height:1.6;margin-bottom:14px">
+          Avisa na tela Alertas quando o saldo de uma conta conectada cair mais do que o limite abaixo, comparado com o saldo de alguns dias atrás.
+        </div>
+        <div class="settings-row" style="padding-left:0;padding-right:0">
+          <div>
+            <div class="settings-row-label">Ativar alerta de queda de saldo</div>
+          </div>
+          <div class="settings-row-right">
+            <label class="toggle">
+              <input type="checkbox" id="of-balance-alert-enabled" ${balanceAlert.enabled ? 'checked' : ''}>
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Queda mínima (%)</label>
+            <input class="form-ctrl" id="of-balance-alert-threshold" type="number" min="1" max="100" step="1" value="${balanceAlert.thresholdPct}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Comparar com quantos dias atrás</label>
+            <input class="form-ctrl" id="of-balance-alert-days" type="number" min="1" max="90" step="1" value="${balanceAlert.days}">
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end">
+          <button class="btn btn-primary btn-sm" id="of-balance-alert-save">Salvar</button>
+        </div>
+      </div>
+    </div>
   `;
+
+  el.querySelector('#of-balance-alert-save')?.addEventListener('click', async () => {
+    const enabled = el.querySelector<HTMLInputElement>('#of-balance-alert-enabled')!.checked;
+    const thresholdPct = parseFloat(el.querySelector<HTMLInputElement>('#of-balance-alert-threshold')!.value) || 20;
+    const days = parseInt(el.querySelector<HTMLInputElement>('#of-balance-alert-days')!.value, 10) || 7;
+    balanceAlert = await invoke<BalanceAlertSettings>('openFinance:saveBalanceAlertSettings', { enabled, thresholdPct, days });
+    alert('Configuração de alerta de saldo salva.');
+  });
 
   OPEN_FINANCE_PROVIDERS.forEach(provider => {
     el.querySelector(`#of-save-${provider.id}`)?.addEventListener('click', async () => {
@@ -1131,8 +1184,13 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
     });
 
     el.querySelector(`#of-sync-${provider.id}`)?.addEventListener('click', async () => {
+      const accountId = el.querySelector<HTMLSelectElement>(`#of-${provider.id}-sync-account`)?.value || undefined;
+      const dateFrom = el.querySelector<HTMLInputElement>(`#of-${provider.id}-sync-from`)?.value || undefined;
+      const dateTo = el.querySelector<HTMLInputElement>(`#of-${provider.id}-sync-to`)?.value || undefined;
       try {
-        const result = await invoke<{ accountsCreated: number; accountsUpdated: number; transactionsImported: number; transactionsSkipped: number }>('openFinance:syncProvider', provider.id);
+        const result = await invoke<{ accountsCreated: number; accountsUpdated: number; transactionsImported: number; transactionsSkipped: number }>('openFinance:syncProvider', {
+          provider: provider.id, accountId, dateFrom, dateTo,
+        });
         alert([
           `${provider.name} sincronizado.`,
           `Contas criadas: ${result.accountsCreated}`,
@@ -1140,6 +1198,7 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
           `Lançamentos importados: ${result.transactionsImported}`,
           `Duplicados ignorados: ${result.transactionsSkipped}`,
         ].join('\n'));
+        renderOpenFinance(el);
       } catch (err) {
         alert(err instanceof Error ? err.message : `Não foi possível sincronizar ${provider.name}.`);
       }
@@ -1150,6 +1209,7 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
 function providerCard(
   provider: { id: OpenFinanceProvider; name: string; description: string; auth: 'client' | 'apikey' },
   settings: OpenFinanceProviderSettings,
+  linkedAccounts: Account[],
 ): string {
   return `
     <div class="card" style="margin-top:16px">
@@ -1210,6 +1270,28 @@ function providerCard(
         ${provider.id !== 'pluggy' ? `
           <div style="font-size:0.78rem;color:var(--warning);line-height:1.5;margin:-4px 0 12px">
             Credenciais preparadas. Sincronização automática será ligada quando o adaptador deste provedor for finalizado.
+          </div>
+        ` : ''}
+        ${provider.id === 'pluggy' && linkedAccounts.length > 0 ? `
+          <div class="form-row" style="margin-bottom:12px">
+            <div class="form-group">
+              <label class="form-label">Conta a sincronizar</label>
+              <select class="form-ctrl" id="of-${provider.id}-sync-account">
+                <option value="">Todas as contas</option>
+                ${linkedAccounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">De</label>
+              <input class="form-ctrl" id="of-${provider.id}-sync-from" type="date">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Até</label>
+              <input class="form-ctrl" id="of-${provider.id}-sync-to" type="date">
+            </div>
+          </div>
+          <div style="font-size:0.76rem;color:var(--text-3);margin:-8px 0 12px">
+            Deixe em branco para sincronizar todas as contas e todo o período disponível.
           </div>
         ` : ''}
         <div style="display:flex;justify-content:flex-end;gap:8px">
