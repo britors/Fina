@@ -4,7 +4,7 @@ Aplicativo desktop para controle de finanças pessoais, construído com **Electr
 
 O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
 
-## Destaques da versão 11.1
+## Destaques da versão 11.2
 
 - Open Finance: credenciais para Pluggy, Belvo e Klavi, com sincronização inicial via Pluggy para contas, saldos e lançamentos.
 - Lista de modelos de IA por provedor em `Configurações > IA`, com busca pela API quando houver chave salva e fallback local.
