@@ -9,6 +9,9 @@ interface AISettings {
 interface SummaryPreview {
   fieldsShared: string[];
   fieldsNotShared: string[];
+  summary: {
+    expenses_by_category_current_month: { category: string; total: number }[];
+  };
 }
 
 interface AIAnswer {
@@ -48,6 +51,9 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="card-header">Perguntar ao assistente</div>
         <div class="card-hr"></div>
         <div class="card-body">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+            ${quickQuestions(preview).map(q => `<button type="button" class="badge ai-quick-question" style="cursor:pointer;border:0.5px solid var(--border);background:var(--bg)">${esc(q)}</button>`).join('')}
+          </div>
           <div class="form-group">
             <label class="form-label">Pergunta</label>
             <textarea class="form-ctrl" id="ai-question" rows="3" placeholder="Ex: Como posso melhorar minha situação financeira nos próximos 3 meses?"></textarea>
@@ -63,6 +69,13 @@ export async function render(el: HTMLElement): Promise<void> {
     `;
 
     el.querySelector('#btn-ask-ai')?.addEventListener('click', ask);
+    el.querySelectorAll<HTMLButtonElement>('.ai-quick-question').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const textarea = el.querySelector<HTMLTextAreaElement>('#ai-question')!;
+        textarea.value = btn.textContent ?? '';
+        textarea.focus();
+      });
+    });
   }
 
   async function ask(): Promise<void> {
@@ -94,6 +107,19 @@ function answerBlock(answer: AIAnswer): string {
       <div style="margin-top:12px;font-size:0.78rem;color:var(--warning)">${esc(answer.disclaimer)}</div>
     </div>
   `;
+}
+
+function quickQuestions(preview: SummaryPreview): string[] {
+  const topCategory = preview.summary.expenses_by_category_current_month[0]?.category;
+  const questions = [
+    'Por que meu score caiu esse mês?',
+    'Minha reserva de emergência está no nível ideal?',
+    'Como está minha situação financeira geral esse mês?',
+  ];
+  if (topCategory) {
+    questions.splice(1, 0, `Como reduzir despesas em ${topCategory}?`);
+  }
+  return questions;
 }
 
 function esc(s: string): string {

@@ -289,6 +289,10 @@ A tela `Assistente IA` permite fazer perguntas sobre sua situação financeira u
 
 A integração fica desligada por padrão. Ela só funciona depois que você ativa a IA, salva uma chave de API e confirma o consentimento de envio de dados.
 
+### Perguntas rápidas
+
+Acima do campo de pergunta, o Fina mostra chips com perguntas prontas e contextuais ao seu momento financeiro atual, como "Por que meu score caiu esse mês?" ou "Como reduzir despesas em [categoria com maior gasto]?". Clique em um chip para preenchê-lo automaticamente no campo de pergunta.
+
 ### Provedores
 
 O Fina permite configurar:
