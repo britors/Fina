@@ -34,7 +34,7 @@ const NAV: NavGroup[] = [
   {
     id: 'movement',
     label: 'Movimentação',
-    icon: 'ti-arrows-transfer',
+    icon: 'ti-transfer',
     items: [
       { route: 'transactions', label: 'Lançamentos', icon: 'ti-receipt' },
       { route: 'accounts',     label: 'Meios de pagamento', icon: 'ti-building-bank' },
