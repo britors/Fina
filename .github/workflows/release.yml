@@ -12,6 +12,12 @@ jobs:
   release-linux:
     name: Linux (.deb + .rpm)
     runs-on: ubuntu-latest
+    env:
+      ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+      npm_config_fetch_retries: 5
+      npm_config_fetch_retry_mintimeout: 20000
+      npm_config_fetch_retry_maxtimeout: 120000
 
     steps:
       - uses: actions/checkout@v4
@@ -21,11 +27,19 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/electron
+            .cache/electron-builder
+          key: electron-linux-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - name: Install RPM tools
         run: sudo apt-get install -y rpm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Generate icons
         run: npm run generate-icons
