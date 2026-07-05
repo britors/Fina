@@ -331,6 +331,10 @@ Mesmo com a IA ativada, cada pergunta exige confirmação de envio do resumo fin
 
 Se você não marcar a confirmação, a pergunta não é enviada.
 
+### Resumo do mês
+
+O botão `Gerar resumo do mês` pede ao assistente um parágrafo em linguagem natural sobre a situação financeira do mês atual, sem precisar formular uma pergunta. Ele usa o mesmo resumo agregado e exige a mesma confirmação de consentimento das perguntas livres.
+
 ### Limitações
 
 As respostas da IA são apenas informativas e educacionais. Elas não substituem conferência dos dados, planejamento próprio nem orientação profissional financeira, fiscal, jurídica ou de investimento.

@@ -283,6 +283,16 @@ function buildPrompt(question: string, summary: object): string {
   ].join('\n');
 }
 
+function buildSummaryPrompt(summary: object): string {
+  return [
+    'Gere um resumo em linguagem natural sobre a situação financeira deste mês, com base apenas no resumo agregado abaixo.',
+    'Escreva um único parágrafo curto, direto e prático, destacando o saldo do mês, a categoria de maior gasto e uma variação relevante em relação aos meses anteriores.',
+    '',
+    'Resumo financeiro agregado do Fina:',
+    JSON.stringify(summary, null, 2),
+  ].join('\n');
+}
+
 async function callOpenAI(apiKey: string, model: string, prompt: string): Promise<string> {
   const res = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -329,6 +339,34 @@ async function callGemini(apiKey: string, model: string, prompt: string): Promis
   };
   if (!res.ok) throw new Error(json.error?.message ?? `Gemini retornou HTTP ${res.status}`);
   return json.output_text ?? json.steps?.flatMap(s => s.content ?? []).map(c => c.text ?? '').join('\n').trim() ?? '';
+}
+
+interface AIAnswer {
+  provider: AIProvider;
+  model: string;
+  answer: string;
+  disclaimer: string;
+}
+
+const ANSWER_DISCLAIMER = 'Resposta informativa e educacional. Confira os dados e procure profissional qualificado quando necessário.';
+
+async function askProvider(prompt: string, consentConfirmed: boolean): Promise<AIAnswer> {
+  const s = settings();
+  if (!s.enabled) throw new Error('A IA está desativada nas configurações.');
+  if (!s.consent || !consentConfirmed) throw new Error('Confirme o consentimento antes de enviar dados ao provedor de IA.');
+  const apiKey = getApiKey(s.provider);
+  if (!apiKey) throw new Error('Configure a chave de API antes de usar o assistente.');
+
+  const answer = s.provider === 'openai'
+    ? await callOpenAI(apiKey, s.model, prompt)
+    : await callGemini(apiKey, s.model, prompt);
+
+  return {
+    provider: s.provider,
+    model: s.model,
+    answer: answer || 'O provedor não retornou texto.',
+    disclaimer: ANSWER_DISCLAIMER,
+  };
 }
 
 export function registerAIHandlers(): void {
@@ -382,24 +420,12 @@ export function registerAIHandlers(): void {
   }));
 
   ipcMain.handle('ai:ask', async (_e, payload: AskPayload) => {
-    const s = settings();
-    if (!s.enabled) throw new Error('A IA está desativada nas configurações.');
-    if (!s.consent || !payload.consentConfirmed) throw new Error('Confirme o consentimento antes de enviar dados ao provedor de IA.');
     const question = payload.question?.trim();
     if (!question) throw new Error('Digite uma pergunta para o assistente.');
-    const apiKey = getApiKey(s.provider);
-    if (!apiKey) throw new Error('Configure a chave de API antes de usar o assistente.');
+    return askProvider(buildPrompt(question, financialSummary()), payload.consentConfirmed);
+  });
 
-    const prompt = buildPrompt(question, financialSummary());
-    const answer = s.provider === 'openai'
-      ? await callOpenAI(apiKey, s.model, prompt)
-      : await callGemini(apiKey, s.model, prompt);
-
-    return {
-      provider: s.provider,
-      model: s.model,
-      answer: answer || 'O provedor não retornou texto.',
-      disclaimer: 'Resposta informativa e educacional. Confira os dados e procure profissional qualificado quando necessário.',
-    };
+  ipcMain.handle('ai:summary', async (_e, payload: { consentConfirmed: boolean }) => {
+    return askProvider(buildSummaryPrompt(financialSummary()), payload.consentConfirmed);
   });
 }

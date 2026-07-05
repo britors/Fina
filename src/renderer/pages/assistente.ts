@@ -62,13 +62,17 @@ export async function render(el: HTMLElement): Promise<void> {
             <input id="ai-send-consent" type="checkbox" style="margin-top:3px;accent-color:var(--accent)">
             <span>Confirmo o envio do resumo financeiro agregado para ${settings.provider === 'openai' ? 'OpenAI' : 'Google/Gemini'} nesta pergunta.</span>
           </label>
-          <button class="btn btn-primary" id="btn-ask-ai"><i class="ti ti-send"></i> Enviar pergunta</button>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" id="btn-ask-ai"><i class="ti ti-send"></i> Enviar pergunta</button>
+            <button class="btn btn-secondary" id="btn-monthly-summary"><i class="ti ti-file-text"></i> Gerar resumo do mês</button>
+          </div>
           <div id="ai-result" style="margin-top:18px">${answer ? answerBlock(answer) : ''}</div>
         </div>
       </div>
     `;
 
     el.querySelector('#btn-ask-ai')?.addEventListener('click', ask);
+    el.querySelector('#btn-monthly-summary')?.addEventListener('click', generateMonthlySummary);
     el.querySelectorAll<HTMLButtonElement>('.ai-quick-question').forEach(btn => {
       btn.addEventListener('click', () => {
         const textarea = el.querySelector<HTMLTextAreaElement>('#ai-question')!;
@@ -91,6 +95,25 @@ export async function render(el: HTMLElement): Promise<void> {
       alert(err instanceof Error ? err.message : 'Não foi possível consultar o assistente.');
       btn.disabled = false;
       btn.innerHTML = '<i class="ti ti-send"></i> Enviar pergunta';
+    }
+  }
+
+  async function generateMonthlySummary(): Promise<void> {
+    const btn = el.querySelector<HTMLButtonElement>('#btn-monthly-summary')!;
+    const consentConfirmed = el.querySelector<HTMLInputElement>('#ai-send-consent')!.checked;
+    if (!consentConfirmed) {
+      alert('Confirme o consentimento de envio antes de gerar o resumo.');
+      return;
+    }
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader ti-spin"></i> Gerando...';
+    try {
+      answer = await invoke<AIAnswer>('ai:summary', { consentConfirmed });
+      await renderPage();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível gerar o resumo do mês.');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-file-text"></i> Gerar resumo do mês';
     }
   }
 
