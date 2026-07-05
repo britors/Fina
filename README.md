@@ -4,7 +4,7 @@ Aplicativo desktop para controle de finanças pessoais, construído com **Electr
 
 O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
 
-## Destaques da versão 11.4
+## Destaques da versão 12.0
 
 - Perguntas rápidas sugeridas no Assistente IA, contextuais ao score, reserva e categoria de maior gasto do mês.
 - Botões "Resumo do dia", "Resumo da semana" e "Resumo do mês" no Assistente IA, com parágrafo em linguagem natural sobre a movimentação financeira do período, sob demanda.
