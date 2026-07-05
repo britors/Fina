@@ -335,6 +335,12 @@ Se você não marcar a confirmação, a pergunta não é enviada.
 
 O botão `Gerar resumo do mês` pede ao assistente um parágrafo em linguagem natural sobre a situação financeira do mês atual, sem precisar formular uma pergunta. Ele usa o mesmo resumo agregado e exige a mesma confirmação de consentimento das perguntas livres.
 
+### Histórico de perguntas
+
+Abaixo do assistente, o Fina guarda um histórico local das perguntas e respostas anteriores, com data e hora, para você consultar análises passadas e comparar a evolução das respostas mês a mês. Clique em uma pergunta para expandir a resposta.
+
+O histórico fica salvo apenas no seu banco de dados local — nenhum dado novo é enviado a terceiros para mantê-lo. Use `Limpar histórico` para apagar todos os registros salvos.
+
 ### Limitações
 
 As respostas da IA são apenas informativas e educacionais. Elas não substituem conferência dos dados, planejamento próprio nem orientação profissional financeira, fiscal, jurídica ou de investimento.

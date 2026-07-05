@@ -1,4 +1,5 @@
 import { invoke } from '../api';
+import { formatDate } from '../../shared/utils';
 
 type AIProvider = 'openai' | 'gemini';
 
@@ -21,9 +22,19 @@ interface AIAnswer {
   disclaimer: string;
 }
 
+interface AIConversation {
+  id: string;
+  question: string;
+  answer: string;
+  provider: AIProvider;
+  model: string;
+  created_at: string;
+}
+
 export async function render(el: HTMLElement): Promise<void> {
   let settings = await invoke<AISettings>('ai:getSettings');
   let preview = await invoke<SummaryPreview>('ai:getSummaryPreview');
+  let history = await invoke<AIConversation[]>('ai:history');
   let answer: AIAnswer | null = null;
 
   async function renderPage(): Promise<void> {
@@ -69,10 +80,26 @@ export async function render(el: HTMLElement): Promise<void> {
           <div id="ai-result" style="margin-top:18px">${answer ? answerBlock(answer) : ''}</div>
         </div>
       </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <span>Histórico de perguntas</span>
+          ${history.length > 0 ? `<button class="btn btn-secondary btn-sm" id="btn-clear-history"><i class="ti ti-trash"></i> Limpar histórico</button>` : ''}
+        </div>
+        <div class="card-hr"></div>
+        <div class="card-body">
+          ${history.length === 0 ? `
+            <div class="empty" style="padding:12px 0">
+              <div class="empty-title">Nenhuma pergunta registrada ainda</div>
+            </div>
+          ` : history.map(historyItem).join('')}
+        </div>
+      </div>
     `;
 
     el.querySelector('#btn-ask-ai')?.addEventListener('click', ask);
     el.querySelector('#btn-monthly-summary')?.addEventListener('click', generateMonthlySummary);
+    el.querySelector('#btn-clear-history')?.addEventListener('click', clearHistory);
     el.querySelectorAll<HTMLButtonElement>('.ai-quick-question').forEach(btn => {
       btn.addEventListener('click', () => {
         const textarea = el.querySelector<HTMLTextAreaElement>('#ai-question')!;
@@ -90,12 +117,20 @@ export async function render(el: HTMLElement): Promise<void> {
     btn.innerHTML = '<i class="ti ti-loader ti-spin"></i> Consultando...';
     try {
       answer = await invoke<AIAnswer>('ai:ask', { question, consentConfirmed });
+      history = await invoke<AIConversation[]>('ai:history');
       await renderPage();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Não foi possível consultar o assistente.');
       btn.disabled = false;
       btn.innerHTML = '<i class="ti ti-send"></i> Enviar pergunta';
     }
+  }
+
+  async function clearHistory(): Promise<void> {
+    if (!confirm('Apagar todo o histórico de perguntas e respostas?')) return;
+    await invoke('ai:clearHistory');
+    history = [];
+    await renderPage();
   }
 
   async function generateMonthlySummary(): Promise<void> {
@@ -129,6 +164,18 @@ function answerBlock(answer: AIAnswer): string {
       <div style="white-space:pre-wrap;line-height:1.7;color:var(--text-2)">${esc(answer.answer)}</div>
       <div style="margin-top:12px;font-size:0.78rem;color:var(--warning)">${esc(answer.disclaimer)}</div>
     </div>
+  `;
+}
+
+function historyItem(item: AIConversation): string {
+  const when = `${formatDate(item.created_at.slice(0, 10))} ${item.created_at.slice(11, 16)}`;
+  return `
+    <details style="margin-bottom:10px;padding-bottom:10px;border-bottom:0.5px solid var(--border)">
+      <summary style="cursor:pointer;color:var(--text-2)">
+        <span style="color:var(--text-3);font-size:0.76rem">${when}</span> — ${esc(item.question)}
+      </summary>
+      <div style="white-space:pre-wrap;margin-top:8px;color:var(--text-3);line-height:1.6">${esc(item.answer)}</div>
+    </details>
   `;
 }
 

@@ -26,7 +26,8 @@ O banco pode conter:
 - metas;
 - dívidas;
 - configurações;
-- logs internos de notificações e recorrências.
+- logs internos de notificações e recorrências;
+- histórico de perguntas e respostas do Assistente IA.
 
 Por padrão, o arquivo fica em:
 
@@ -120,6 +121,12 @@ Dados que não são enviados por padrão:
 - arquivos anexados pelo usuário.
 
 Se algum modo futuro precisar enviar dados detalhados, ele deve exigir consentimento separado e explicar exatamente o que será enviado.
+
+## Histórico de conversas com o Assistente IA
+
+O Fina guarda localmente, no mesmo banco SQLite, um histórico das perguntas e respostas trocadas com o Assistente IA, para consulta posterior. Esse histórico não representa um envio de dado novo a terceiros — é apenas a mesma pergunta/resposta já trocada com o provedor no momento da pergunta, salva para uso offline.
+
+O usuário pode apagar todo o histórico salvo a qualquer momento na tela `Assistente IA`.
 
 ## Categorização automática por IA (planejado)
 

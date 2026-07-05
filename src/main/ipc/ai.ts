@@ -348,6 +348,31 @@ interface AIAnswer {
   disclaimer: string;
 }
 
+interface AIConversation {
+  id: string;
+  question: string;
+  answer: string;
+  provider: AIProvider;
+  model: string;
+  created_at: string;
+}
+
+function saveConversation(question: string, answer: AIAnswer): void {
+  getDb().prepare(
+    'INSERT INTO ai_conversations (id, question, answer, provider, model) VALUES (?,?,?,?,?)'
+  ).run(randomUUID(), question, answer.answer, answer.provider, answer.model);
+}
+
+function listConversations(): AIConversation[] {
+  return getDb().prepare(
+    'SELECT id, question, answer, provider, model, created_at FROM ai_conversations ORDER BY created_at DESC LIMIT 50'
+  ).all() as AIConversation[];
+}
+
+function clearConversations(): void {
+  getDb().prepare('DELETE FROM ai_conversations').run();
+}
+
 const ANSWER_DISCLAIMER = 'Resposta informativa e educacional. Confira os dados e procure profissional qualificado quando necessário.';
 
 async function askProvider(prompt: string, consentConfirmed: boolean): Promise<AIAnswer> {
@@ -422,10 +447,19 @@ export function registerAIHandlers(): void {
   ipcMain.handle('ai:ask', async (_e, payload: AskPayload) => {
     const question = payload.question?.trim();
     if (!question) throw new Error('Digite uma pergunta para o assistente.');
-    return askProvider(buildPrompt(question, financialSummary()), payload.consentConfirmed);
+    const answer = await askProvider(buildPrompt(question, financialSummary()), payload.consentConfirmed);
+    saveConversation(question, answer);
+    return answer;
   });
 
   ipcMain.handle('ai:summary', async (_e, payload: { consentConfirmed: boolean }) => {
     return askProvider(buildSummaryPrompt(financialSummary()), payload.consentConfirmed);
+  });
+
+  ipcMain.handle('ai:history', () => listConversations());
+
+  ipcMain.handle('ai:clearHistory', () => {
+    clearConversations();
+    return true;
   });
 }
