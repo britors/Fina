@@ -128,6 +128,18 @@ export interface DetectedRecurrence {
   likelyForgotten: boolean;
 }
 
+export type AnomalyType = 'high_amount' | 'duplicate' | 'recurring_change';
+
+export interface SpendingAnomaly {
+  transactionId: string;
+  description: string;
+  amount: number;
+  date: string;
+  accountName: string;
+  type: AnomalyType;
+  reason: string;
+}
+
 export interface BillPriceIncrease {
   bill_id: string;
   description: string;

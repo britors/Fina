@@ -13,6 +13,7 @@ O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, pl
 - Botão "Gerar rascunho com IA" na tela Renegociação, com rascunho de mensagem de negociação sem enviar nome do credor nem descrição da dívida.
 - Previsão de saldo até o fim do mês no Dashboard, com os principais fatores (lançamentos e contas futuras) que influenciam a projeção.
 - Detecção automática de recorrências e assinaturas esquecidas na tela Fixas, a partir do histórico de transações, com opção de cadastrar como fixa ou descartar a sugestão.
+- Detecção de gastos fora do padrão na tela Alertas: valor incomum por categoria, possíveis duplicidades e recorrências com valor alterado, com opção de marcar como revisado.
 
 ## Destaques da versão 11.3
 
@@ -151,7 +152,7 @@ npm start
 | Revisão semanal | Checklist financeiro da semana com resumo dos últimos 7 dias |
 | Decisões | Prioridades sugeridas para recuperar margem, renegociar dívidas, formar reserva ou investir |
 | Plano mensal | Sugestão de uso da renda para dívidas, reserva, metas e investimentos |
-| Alertas | Riscos e oportunidades calculados a partir dos dados financeiros |
+| Alertas | Riscos e oportunidades calculados a partir dos dados financeiros, incluindo detecção de gastos fora do padrão (valor incomum, duplicidade, recorrência alterada) |
 | Assistente IA | Análise educacional usando ChatGPT/OpenAI ou Gemini/Google com consentimento explícito |
 | Lançamentos | Receitas, despesas, transferências, parcelas em cartão de crédito, rateio por meios de pagamento, responsável no modo família e importação CSV/OFX |
 | Meios de pagamento | Corrente, poupança, cartão de crédito, vale refeição, vale alimentação, carteira e saldos vindos de Open Finance |

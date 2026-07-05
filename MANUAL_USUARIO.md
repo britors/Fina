@@ -287,6 +287,18 @@ O Fina pode avisar quando:
 - Uma despesa fixa/assinatura aumentou de preço em relação ao valor anterior.
 - Há margem positiva para reserva, quitação de dívidas ou investimentos.
 
+### Gastos fora do padrão
+
+Além dos alertas gerais, o Fina analisa os lançamentos dos últimos 60 dias e sinaliza transações específicas que parecem fora do padrão:
+
+- `Valor incomum`: um gasto bem acima da média recente daquela categoria.
+- `Possível duplicidade`: dois lançamentos iguais (mesmo valor, descrição e meio de pagamento) em dias próximos.
+- `Recorrência alterada`: uma cobrança recorrente conhecida (ex: uma assinatura) com valor bem diferente do habitual.
+
+Cada item mostra o motivo específico do alerta, junto com data, meio de pagamento e valor. Essa sinalização é apenas informativa — em nenhum momento ela bloqueia ou impede um lançamento normal. Use `Marcar como revisado` depois de conferir um item para que ele não apareça novamente nessa lista.
+
+A análise roda inteiramente sobre os dados já salvos localmente, sem enviar nada a terceiros.
+
 ### Como usar
 
 Cada alerta mostra o motivo e uma ação sugerida. Use essa tela como uma revisão rápida antes de tomar decisões no mês.

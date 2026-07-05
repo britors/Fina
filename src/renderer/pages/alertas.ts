@@ -1,6 +1,6 @@
 import { invoke } from '../api';
-import { formatCurrency, getCurrentYearMonth, isCreditLikeAccountType } from '../../shared/utils';
-import type { Account, BillPriceIncrease, BudgetWithProgress, Debt } from '../../shared/types';
+import { formatCurrency, formatDate, getCurrentYearMonth, isCreditLikeAccountType } from '../../shared/utils';
+import type { Account, AnomalyType, BillPriceIncrease, BudgetWithProgress, Debt, SpendingAnomaly } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
 type CategoryExpense = { name: string; color: string; total: number };
@@ -21,7 +21,7 @@ export async function render(el: HTMLElement): Promise<void> {
   const prevDate = new Date(now.year, now.month - 2, 1);
   const prev = { month: prevDate.getMonth() + 1, year: prevDate.getFullYear() };
 
-  const [history, debts, accounts, budgets, currentCats, prevCats, priceIncreases] = await Promise.all([
+  const [history, debts, accounts, budgets, currentCats, prevCats, priceIncreases, anomalies] = await Promise.all([
     invoke<MonthRow[]>('transactions:getMonthlyHistory', 3),
     invoke<Debt[]>('debts:list'),
     invoke<Account[]>('accounts:list'),
@@ -29,6 +29,7 @@ export async function render(el: HTMLElement): Promise<void> {
     invoke<CategoryExpense[]>('transactions:getExpensesByCategory', now),
     invoke<CategoryExpense[]>('transactions:getExpensesByCategory', prev),
     invoke<BillPriceIncrease[]>('bills:getPriceIncreases'),
+    invoke<SpendingAnomaly[]>('anomalies:list'),
   ]);
 
   const alerts = buildAlerts(history, debts, accounts, budgets, currentCats, prevCats, priceIncreases);
@@ -45,6 +46,21 @@ export async function render(el: HTMLElement): Promise<void> {
       ${metricCard('Oportunidades', String(counts.info), 'Ações preventivas', 'ti-bulb', 'var(--accent)')}
     </div>
 
+    ${anomalies.length > 0 ? `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">Gastos fora do padrão</div>
+        <div class="card-hr"></div>
+        <div class="card-body">
+          <p style="font-size:0.8rem;color:var(--text-3);margin-bottom:12px">
+            Transações sinalizadas por valor incomum, possível duplicidade ou recorrência com valor alterado. Não bloqueiam nenhum lançamento — revise e marque como resolvido quando conferir.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            ${anomalies.map(anomalyCard).join('')}
+          </div>
+        </div>
+      </div>
+    ` : ''}
+
     ${alerts.length === 0 ? `
       <div class="empty">
         <i class="ti ti-circle-check"></i>
@@ -57,6 +73,13 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
     `}
   `;
+
+  el.querySelectorAll<HTMLElement>('[data-dismiss-anomaly]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await invoke('anomalies:dismiss', btn.dataset.dismissAnomaly);
+      render(el);
+    });
+  });
 }
 
 function buildAlerts(
@@ -189,6 +212,33 @@ function alertCard(alert: FinancialAlert): string {
           <div style="font-size:0.8rem;color:var(--text-3)"><strong style="color:var(--text-2)">Ação:</strong> ${esc(alert.action)}</div>
         </div>
       </div>
+    </div>
+  `;
+}
+
+const ANOMALY_META: Record<AnomalyType, { icon: string; label: string }> = {
+  high_amount: { icon: 'ti-trending-up', label: 'Valor incomum' },
+  duplicate: { icon: 'ti-copy', label: 'Possível duplicidade' },
+  recurring_change: { icon: 'ti-refresh-alert', label: 'Recorrência alterada' },
+};
+
+function anomalyCard(a: SpendingAnomaly): string {
+  const meta = ANOMALY_META[a.type];
+  return `
+    <div style="display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:0.5px solid var(--border)">
+      <div style="width:38px;height:38px;border-radius:9px;background:rgba(234,179,8,0.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <i class="ti ${meta.icon}" style="color:var(--warning);font-size:1.1rem"></i>
+      </div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <strong>${esc(a.description)}</strong>
+          <span class="badge" style="color:var(--warning);background:rgba(234,179,8,0.14)">${meta.label}</span>
+        </div>
+        <div style="font-size:0.82rem;color:var(--text-2)">${esc(a.reason)}</div>
+        <div style="font-size:0.76rem;color:var(--text-3);margin-top:4px">${formatDate(a.date)} · ${esc(a.accountName)}</div>
+      </div>
+      <div style="font-weight:600;color:var(--danger)">${formatCurrency(a.amount)}</div>
+      <button class="btn btn-ghost btn-sm" data-dismiss-anomaly="${a.transactionId}">Marcar como revisado</button>
     </div>
   `;
 }
