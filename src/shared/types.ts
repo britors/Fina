@@ -406,6 +406,54 @@ export interface AIGoalDraft extends AICreateDraftBase {
 
 export type AICreateDraft = AITransactionDraft | AIBillDraft | AIBudgetDraft | AIDebtDraft | AIGoalDraft;
 
+// ── Pix via Open Finance ─────────────────────────────────────────────────────
+
+export type PixPaymentStatus = 'draft' | 'pending' | 'sent' | 'confirmed' | 'failed' | 'cancelled';
+export type PixKeyType = 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
+
+export interface PixPayment {
+  id: string;
+  provider: 'pluggy' | 'belvo' | 'klavi';
+  source_account_id: string | null;
+  source_account_name?: string | null;
+  amount: number;
+  pix_key_masked: string;
+  recipient_name: string | null;
+  recipient_bank: string | null;
+  description: string | null;
+  status: PixPaymentStatus;
+  external_id: string | null;
+  transaction_id: string | null;
+  error_message: string | null;
+  metadata: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PixPaymentFilters {
+  status?: PixPaymentStatus | '';
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface PixRecipient {
+  id: string;
+  name: string;
+  pix_key: string;
+  key_type: PixKeyType;
+  institution: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PixKeyValidation {
+  valid: boolean;
+  keyType: PixKeyType | null;
+  normalizedKey: string;
+  message: string;
+}
+
 // ── Importação de extratos ────────────────────────────────────────────────────
 
 export interface ImportPreviewRow {

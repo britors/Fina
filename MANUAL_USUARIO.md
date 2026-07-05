@@ -719,6 +719,41 @@ Campos disponíveis:
 - `Meio de pagamento`: meio relacionado, opcional.
 - `Status`: pendente, pago ou vencido.
 
+## Pix
+
+A tela `Pix` registra tentativas de pagamento Pix e favorecidos salvos.
+
+### Histórico
+
+A aba `Histórico` mostra tentativas Pix registradas localmente, com:
+
+- data e hora;
+- destinatário e instituição, quando informados;
+- chave Pix minimizada;
+- conta de origem;
+- status;
+- valor.
+
+Use os filtros de status e período para encontrar tentativas específicas. Clique em `Detalhes` para ver dados de auditoria, como provedor, ID externo, lançamento vinculado e erro retornado.
+
+### Favorecidos
+
+A aba `Favorecidos` permite cadastrar destinatários frequentes com:
+
+- nome;
+- chave Pix;
+- tipo da chave;
+- instituição opcional;
+- observações.
+
+Ao cadastrar ou editar uma chave, o Fina faz validação local de formato para CPF, CNPJ, e-mail, telefone e chave aleatória. Essa validação reduz erro de digitação, mas não substitui a confirmação do destinatário pelo provedor quando o envio real estiver disponível.
+
+### Novo Pix
+
+O botão `Novo Pix` inicia um fluxo com conta de origem, favorecido ou chave manual, valor, destinatário, instituição e descrição. Antes de registrar a tentativa, o Fina mostra uma confirmação explícita com destinatário, chave minimizada e valor.
+
+Nesta versão, o fluxo registra a tentativa em modo sandbox/auditoria. O envio real via Open Finance depende do adaptador Pix do provedor.
+
 ## Despesas fixas
 
 A tela `Fixas` controla assinaturas, mensalidades e outros compromissos recorrentes.

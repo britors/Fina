@@ -5,6 +5,12 @@ Aplicativo desktop para controle de finanças pessoais, construído com **Electr
 O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
 ![alt text](fina.png)
 
+## Destaques da versão 16.0
+
+- Nova tela `Pix` com histórico e auditoria local de tentativas de pagamento.
+- Cadastro de favorecidos Pix com validação local de CPF, CNPJ, e-mail, telefone e chave aleatória.
+- Fluxo inicial de Pix com revisão explícita e registro auditável em modo sandbox, preparando o envio real via provedor Open Finance.
+
 ## Destaques da versão 15.0
 
 - Botão `Criar com IA` em Lançamentos, Contas a pagar, Orçamento, Dívidas e Metas.
@@ -184,6 +190,7 @@ npm start
 | Assistente IA | Análise educacional usando ChatGPT/OpenAI ou Gemini/Google com consentimento explícito |
 | Lançamentos | Receitas, despesas, transferências, criação individual ou em lote com IA sob confirmação, parcelas em cartão de crédito, rateio por meios de pagamento, responsável no modo família, importação CSV/OFX e sugestão automática de categoria por histórico |
 | Meios de pagamento | Corrente, poupança, cartão de crédito (com botão "Pagar fatura"), vale refeição, vale alimentação, carteira e saldos vindos de Open Finance |
+| Pix | Histórico auditável de tentativas Pix, favorecidos salvos, validação de chave e fluxo sandbox com revisão explícita |
 | Orçamento | Limites mensais por categoria com criação assistida por IA, filtro de mês, alertas e separação entre despesas essenciais e variáveis |
 | Fixas | Assinaturas e despesas recorrentes, com detecção automática de recorrências não cadastradas a partir do histórico de transações |
 | Calendário | Vencimentos e lançamentos por dia |
