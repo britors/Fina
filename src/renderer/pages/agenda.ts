@@ -2,7 +2,8 @@ import { invoke } from '../api';
 import { formatCurrency, formatDate, getDaysUntilDue } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { setTopbarActions } from '../components/topbar';
-import type { Account, Bill, BillInterval, BillStatus, BillWithCategory, Category, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
+import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
+import type { Account, AIBillDraft, Bill, BillInterval, BillStatus, BillWithCategory, Category, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 
 const INTERVAL_LABELS: Record<BillInterval, string> = {
   weekly:     'Semanal',
@@ -27,6 +28,7 @@ export async function render(el: HTMLElement): Promise<void> {
   let filterCategory = '';
 
   setTopbarActions(`
+    <button class="btn btn-secondary" id="btn-ai-create-bill"><i class="ti ti-sparkles"></i> Criar com IA</button>
     <button class="btn btn-primary" id="btn-new-bill"><i class="ti ti-plus"></i> Nova conta à pagar</button>
   `);
 
@@ -124,6 +126,14 @@ export async function render(el: HTMLElement): Promise<void> {
   }
 
   document.getElementById('btn-new-bill')?.addEventListener('click', () => openBillModal(null, renderPage));
+  document.getElementById('btn-ai-create-bill')?.addEventListener('click', () => {
+    openAICreateDraft<AIBillDraft>({
+      target: 'bill',
+      title: 'Criar conta a pagar com IA',
+      placeholder: 'Ex: aluguel de R$ 1200 todo dia 10',
+      onDraft: draft => openBillModal(null, renderPage, draft),
+    });
+  });
   await renderPage();
 }
 
@@ -174,24 +184,25 @@ function billSection(title: string, bills: BillWithCategory[], isOverdue: boolea
   `;
 }
 
-function openBillModal(b: Bill | null, onDone: () => void): void {
+function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft): void {
   const today = new Date().toISOString().split('T')[0];
-  const initialPayments = initialPaymentSplits((b as BillWithCategory | null)?.payments, b?.account_id ?? undefined, b?.amount);
+  const initialPayments = initialPaymentSplits((b as BillWithCategory | null)?.payments, b?.account_id ?? draft?.account_id ?? undefined, b?.amount ?? draft?.amount);
   const overlay = openModal({
     title: b ? 'Editar conta à pagar' : 'Nova conta à pagar',
     body: `
+      ${!b && draft?.explanation ? aiDraftNotice(draft) : ''}
       <div class="form-group">
         <label class="form-label">Descrição</label>
-        <input class="form-ctrl" id="f-desc" value="${esc(b?.description)}" placeholder="Ex: Aluguel">
+        <input class="form-ctrl" id="f-desc" value="${esc(b?.description ?? draft?.description)}" placeholder="Ex: Aluguel">
       </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Valor (R$)</label>
-          <input class="form-ctrl" id="f-amount" type="number" step="0.01" value="${b?.amount ?? ''}">
+          <input class="form-ctrl" id="f-amount" type="number" step="0.01" value="${b?.amount ?? draft?.amount ?? ''}">
         </div>
         <div class="form-group">
           <label class="form-label">Vencimento</label>
-          <input class="form-ctrl" id="f-due" type="date" value="${b?.due_date ?? today}">
+          <input class="form-ctrl" id="f-due" type="date" value="${b?.due_date ?? draft?.due_date ?? today}">
         </div>
       </div>
       <div class="form-group">
@@ -209,14 +220,14 @@ function openBillModal(b: Bill | null, onDone: () => void): void {
           <label class="form-label">Categoria</label>
           <select class="form-ctrl" id="f-category">
             <option value="">— Sem categoria —</option>
-            ${expenseCategories.map(c => `<option value="${c.id}" ${b?.category_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+            ${expenseCategories.map(c => `<option value="${c.id}" ${(b?.category_id ?? draft?.category_id)===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Status</label>
           <select class="form-ctrl" id="f-status">
             ${(['pending','paid','overdue'] as BillStatus[]).map(st =>
-              `<option value="${st}" ${b?.status===st?'selected':''}>${st==='pending'?'Pendente':st==='paid'?'Pago':'Vencido'}</option>`
+              `<option value="${st}" ${(b?.status ?? draft?.status)===st?'selected':''}>${st==='pending'?'Pendente':st==='paid'?'Pago':'Vencido'}</option>`
             ).join('')}
           </select>
         </div>

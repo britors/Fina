@@ -2,7 +2,8 @@ import { invoke } from '../api';
 import { formatCurrency, formatDate, calculateMonthlySummary } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { setTopbarActions } from '../components/topbar';
-import type { Account, Category, CategorySuggestion, PaymentSplit, PaymentSplitWithAccount, TransactionWithDetails, TransactionType } from '../../shared/types';
+import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
+import type { Account, AITransactionBatchDraft, AITransactionDraft, Category, CategorySuggestion, PaymentSplit, PaymentSplitWithAccount, TransactionStatus, TransactionWithDetails, TransactionType } from '../../shared/types';
 
 let accounts: Account[]  = [];
 let categories: Category[] = [];
@@ -48,11 +49,26 @@ export async function render(el: HTMLElement): Promise<void> {
     <button class="btn btn-secondary" id="btn-export-csv">
       <i class="ti ti-download"></i> Exportar CSV
     </button>
+    <button class="btn btn-secondary" id="btn-ai-create-tx">
+      <i class="ti ti-sparkles"></i> Criar com IA
+    </button>
+    <button class="btn btn-secondary" id="btn-ai-batch-tx">
+      <i class="ti ti-list-plus"></i> Criar lote com IA
+    </button>
     <button class="btn btn-primary" id="btn-new-tx">
       <i class="ti ti-plus"></i> Novo lançamento
     </button>
   `);
   document.getElementById('btn-new-tx')?.addEventListener('click', () => openTxModal(null, () => renderPage()));
+  document.getElementById('btn-ai-create-tx')?.addEventListener('click', () => {
+    openAICreateDraft<AITransactionDraft>({
+      target: 'transaction',
+      title: 'Criar lançamento com IA',
+      placeholder: 'Ex: R$ 50 de Uber hoje no cartão',
+      onDraft: draft => openTxModal(null, () => renderPage(), draft),
+    });
+  });
+  document.getElementById('btn-ai-batch-tx')?.addEventListener('click', () => openBatchPromptModal(() => renderPage()));
   document.getElementById('btn-scan-receipt')?.addEventListener('click', async () => {
     const btn = document.getElementById('btn-scan-receipt') as HTMLButtonElement;
     btn.disabled = true;
@@ -234,7 +250,13 @@ interface TxDraft {
   amount?: number;
   date?: string;
   type?: TransactionType;
+  status?: TransactionStatus;
+  account_id?: string;
+  category_id?: string;
+  notes?: string | null;
   toAccountId?: string;
+  explanation?: string;
+  warnings?: string[];
 }
 
 // Abre o cadastro de lançamento já como Transferência para o cartão
@@ -249,12 +271,13 @@ export async function openPayInvoiceModal(cardAccountId: string, onDone: () => v
 
 function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draft?: TxDraft): void {
   const today = new Date().toISOString().split('T')[0];
-  const initialPayments = initialPaymentSplits(tx?.payments, tx?.account_id, tx?.amount ?? draft?.amount);
+  const initialPayments = initialPaymentSplits(tx?.payments, tx?.account_id ?? draft?.account_id, tx?.amount ?? draft?.amount);
   const initialType = tx ? tx.type : (draft?.type ?? 'expense');
   const showInitialInstallments = !tx && initialType === 'expense' && initialPayments.length === 1 && isCreditCardAccount(initialPayments[0].account_id);
   const overlay = openModal({
     title: tx ? 'Editar transação' : draft?.toAccountId ? 'Pagar fatura' : 'Nova transação',
     body: `
+      ${!tx && draft?.explanation ? aiDraftNotice(draft as AITransactionDraft) : ''}
       <div class="form-group">
         <label class="form-label">Descrição</label>
         <input class="form-ctrl" id="f-desc" value="${esc(tx?.description ?? draft?.description ?? '')}" placeholder="Ex: Supermercado">
@@ -277,13 +300,13 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         <div class="form-group" id="single-account-group" style="display:${initialType === 'transfer' ? '' : 'none'}">
           <label class="form-label">Meio de pagamento origem</label>
           <select class="form-ctrl" id="f-account">
-            ${accounts.map(a => `<option value="${a.id}" ${tx?.account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+            ${accounts.map(a => `<option value="${a.id}" ${(tx?.account_id ?? draft?.account_id) === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Categoria</label>
           <select class="form-ctrl" id="f-category">
-            ${categories.map(c => `<option value="${c.id}" ${tx?.category_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+            ${categories.map(c => `<option value="${c.id}" ${(tx?.category_id ?? draft?.category_id) === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -317,8 +340,8 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         <div class="form-group">
           <label class="form-label">Status</label>
           <select class="form-ctrl" id="f-status">
-            <option value="confirmed" ${tx?.status === 'confirmed' ? 'selected' : ''}>Confirmado</option>
-            <option value="pending"   ${tx?.status === 'pending'   ? 'selected' : ''}>Pendente</option>
+            <option value="confirmed" ${(tx?.status ?? draft?.status) === 'confirmed' ? 'selected' : ''}>Confirmado</option>
+            <option value="pending"   ${(tx?.status ?? draft?.status) === 'pending'   ? 'selected' : ''}>Pendente</option>
           </select>
         </div>
       </div>
@@ -333,7 +356,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
       ` : ''}
       <div class="form-group">
         <label class="form-label">Observações (opcional)</label>
-        <textarea class="form-ctrl" id="f-notes" rows="2">${tx?.notes ?? ''}</textarea>
+        <textarea class="form-ctrl" id="f-notes" rows="2">${tx?.notes ?? draft?.notes ?? ''}</textarea>
       </div>
     `,
     onSave: async () => {
@@ -415,6 +438,163 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
     overlay.querySelector('#f-type')?.addEventListener('change', () => checkCategorySuggestion(overlay));
     if (draft?.description) checkCategorySuggestion(overlay);
   }
+}
+
+async function openBatchPromptModal(onDone: () => void): Promise<void> {
+  const settings = await invoke<{ enabled: boolean; provider: 'openai' | 'gemini' }>('ai:getSettings');
+  if (!settings.enabled) {
+    alert('Ative a IA em Configurações > IA para usar este recurso.');
+    return;
+  }
+
+  openModal({
+    title: 'Criar lote de lançamentos com IA',
+    saveLabel: 'Gerar prévia',
+    body: `
+      <div class="form-group">
+        <label class="form-label">Cole ou descreva os lançamentos</label>
+        <textarea class="form-ctrl" id="ai-batch-prompt" rows="5" placeholder="Ex: Pix mercado 82,90 ontem; Uber 31 hoje; aluguel 1200 dia 10"></textarea>
+      </div>
+      <div style="background:rgba(239,159,39,.08);border:1px solid rgba(239,159,39,.25);border-radius:8px;padding:12px;font-size:0.8rem;color:var(--text-2);line-height:1.6;margin-bottom:12px">
+        A IA vai gerar uma prévia editável. Nenhum lançamento será salvo até você revisar e confirmar os itens selecionados.
+      </div>
+      <label style="display:flex;align-items:flex-start;gap:10px;color:var(--text-2);font-size:0.84rem">
+        <input type="checkbox" id="ai-batch-consent" style="margin-top:3px;accent-color:var(--accent)">
+        <span>Confirmo o envio do texto e do resumo financeiro agregado para ${settings.provider === 'openai' ? 'OpenAI' : 'Google/Gemini'}.</span>
+      </label>
+      <div id="ai-batch-result" style="margin-top:12px"></div>
+    `,
+    onSave: async overlay => {
+      const prompt = overlay.querySelector<HTMLTextAreaElement>('#ai-batch-prompt')!.value.trim();
+      const consent = overlay.querySelector<HTMLInputElement>('#ai-batch-consent')!.checked;
+      const resultEl = overlay.querySelector<HTMLElement>('#ai-batch-result')!;
+      if (!prompt) {
+        resultEl.innerHTML = `<div style="color:var(--danger);font-size:0.82rem">Informe os lançamentos que deseja criar.</div>`;
+        return false;
+      }
+      if (!consent) {
+        resultEl.innerHTML = `<div style="color:var(--danger);font-size:0.82rem">Confirme o consentimento para continuar.</div>`;
+        return false;
+      }
+
+      const saveBtn = overlay.querySelector<HTMLButtonElement>('[data-save]')!;
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="ti ti-loader ti-spin"></i> Gerando...';
+      try {
+        const batch = await invoke<AITransactionBatchDraft>('ai:createTransactionBatchDrafts', { prompt, consentConfirmed: true });
+        overlay.remove();
+        openBatchReviewModal(batch, onDone);
+      } catch (err) {
+        resultEl.innerHTML = `<div style="color:var(--danger);font-size:0.82rem">${esc(err instanceof Error ? err.message : 'Não foi possível gerar a prévia.')}</div>`;
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = 'Gerar prévia';
+      }
+      return false;
+    },
+  });
+}
+
+function openBatchReviewModal(batch: AITransactionBatchDraft, onDone: () => void): void {
+  const overlay = openModal({
+    title: 'Revisar lançamentos gerados por IA',
+    saveLabel: 'Salvar selecionados',
+    body: `
+      <div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.2);border-radius:8px;padding:12px;margin-bottom:12px;font-size:0.82rem;color:var(--text-2);line-height:1.5">
+        <strong style="color:var(--accent)">Prévia gerada por IA.</strong> ${esc(batch.explanation)}
+        ${batch.warnings.length ? `<ul style="margin:8px 0 0 18px;color:var(--warning)">${batch.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+      </div>
+      <div style="max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:8px">
+        <table class="table" style="margin:0;min-width:860px">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Descrição</th>
+              <th>Valor</th>
+              <th>Tipo</th>
+              <th>Data</th>
+              <th>Categoria</th>
+              <th>Meio</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${batch.drafts.map((draft, index) => `
+              <tr class="ai-batch-row" data-index="${index}">
+                <td><input type="checkbox" class="ai-batch-enabled" checked></td>
+                <td><input class="form-ctrl ai-batch-desc" value="${esc(draft.description ?? '')}" style="min-width:180px"></td>
+                <td><input class="form-ctrl ai-batch-amount" type="number" step="0.01" min="0" value="${draft.amount ?? ''}" style="width:110px"></td>
+                <td>
+                  <select class="form-ctrl ai-batch-type" style="width:120px">
+                    <option value="expense" ${draft.type === 'expense' ? 'selected' : ''}>Despesa</option>
+                    <option value="income" ${draft.type === 'income' ? 'selected' : ''}>Receita</option>
+                  </select>
+                </td>
+                <td><input class="form-ctrl ai-batch-date" type="date" value="${draft.date ?? new Date().toISOString().slice(0, 10)}" style="width:140px"></td>
+                <td>
+                  <select class="form-ctrl ai-batch-category" style="min-width:150px">
+                    ${categories.filter(c => c.type === (draft.type === 'income' ? 'income' : 'expense')).map(c => `<option value="${c.id}" ${draft.category_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+                  </select>
+                  ${draft.warnings.length ? `<div style="font-size:0.72rem;color:var(--warning);margin-top:4px">${esc(draft.warnings.join(' '))}</div>` : ''}
+                </td>
+                <td>
+                  <select class="form-ctrl ai-batch-account" style="min-width:150px">
+                    ${accounts.map(a => `<option value="${a.id}" ${draft.account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+                  </select>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `,
+    onSave: async reviewOverlay => {
+      const rows = [...reviewOverlay.querySelectorAll<HTMLElement>('.ai-batch-row')]
+        .filter(row => row.querySelector<HTMLInputElement>('.ai-batch-enabled')!.checked);
+      if (rows.length === 0) {
+        alert('Selecione ao menos um lançamento para salvar.');
+        return false;
+      }
+      if (!confirm(`Salvar ${rows.length} lançamento${rows.length !== 1 ? 's' : ''} revisado${rows.length !== 1 ? 's' : ''}?`)) return false;
+
+      for (const row of rows) {
+        const description = row.querySelector<HTMLInputElement>('.ai-batch-desc')!.value.trim();
+        const amount = parseFloat(row.querySelector<HTMLInputElement>('.ai-batch-amount')!.value);
+        const type = row.querySelector<HTMLSelectElement>('.ai-batch-type')!.value as TransactionType;
+        const date = row.querySelector<HTMLInputElement>('.ai-batch-date')!.value;
+        const category_id = row.querySelector<HTMLSelectElement>('.ai-batch-category')!.value;
+        const account_id = row.querySelector<HTMLSelectElement>('.ai-batch-account')!.value;
+        if (!description || !Number.isFinite(amount) || amount <= 0 || !date || !category_id || !account_id) {
+          alert('Revise descrição, valor, data, categoria e meio de pagamento dos itens selecionados.');
+          return false;
+        }
+        await invoke('transactions:create', {
+          description,
+          amount,
+          type,
+          account_id,
+          to_account_id: null,
+          category_id,
+          date,
+          status: 'confirmed',
+          notes: null,
+          recurring: 0,
+          payments: [{ account_id, amount }],
+          owner: null,
+        });
+      }
+      onDone();
+    },
+  });
+
+  overlay.querySelectorAll<HTMLSelectElement>('.ai-batch-type').forEach(select => {
+    select.addEventListener('change', () => {
+      const row = select.closest<HTMLElement>('.ai-batch-row');
+      const categorySelect = row?.querySelector<HTMLSelectElement>('.ai-batch-category');
+      if (!categorySelect) return;
+      const previous = categorySelect.value;
+      const filtered = categories.filter(category => category.type === select.value);
+      categorySelect.innerHTML = filtered.map(c => `<option value="${c.id}" ${previous === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+    });
+  });
 }
 
 async function checkCategorySuggestion(overlay: HTMLElement): Promise<void> {
@@ -557,7 +737,7 @@ function alpha(hex: string, a: number): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 function esc(s?: string): string {
-  return (s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return (s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g, '&quot;');
 }
 
 function initialPaymentSplits(payments: PaymentSplitWithAccount[] | undefined, accountId: string | undefined, amount: number | undefined): PaymentSplit[] {

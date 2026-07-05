@@ -5,6 +5,14 @@ Aplicativo desktop para controle de finanças pessoais, construído com **Electr
 O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
 ![alt text](fina.png)
 
+## Destaques da versão 15.0
+
+- Botão `Criar com IA` em Lançamentos, Contas a pagar, Orçamento, Dívidas e Metas.
+- A IA interpreta pedidos em linguagem natural e abre o formulário existente já pré-preenchido como rascunho.
+- Em Lançamentos, `Criar lote com IA` transforma uma lista informal em vários rascunhos editáveis, com salvamento dos itens selecionados.
+- Todos os campos continuam editáveis e nada é salvo automaticamente; o usuário precisa revisar e clicar em `Salvar`.
+- O fluxo reaproveita a mesma configuração, chave e consentimento da tela Assistente IA.
+
 ## Destaques da versão 14.0
 
 - Nova tela `Open Finance` para centralizar provedores, instituições, contas e cartões conectados em uma visão única.
@@ -174,19 +182,19 @@ npm start
 | Plano mensal | Sugestão de uso da renda para dívidas, reserva, metas e investimentos |
 | Alertas | Riscos e oportunidades calculados a partir dos dados financeiros, incluindo detecção de gastos fora do padrão (valor incomum, duplicidade, recorrência alterada) e queda brusca de saldo em contas Open Finance |
 | Assistente IA | Análise educacional usando ChatGPT/OpenAI ou Gemini/Google com consentimento explícito |
-| Lançamentos | Receitas, despesas, transferências, parcelas em cartão de crédito, rateio por meios de pagamento, responsável no modo família, importação CSV/OFX e sugestão automática de categoria por histórico |
+| Lançamentos | Receitas, despesas, transferências, criação individual ou em lote com IA sob confirmação, parcelas em cartão de crédito, rateio por meios de pagamento, responsável no modo família, importação CSV/OFX e sugestão automática de categoria por histórico |
 | Meios de pagamento | Corrente, poupança, cartão de crédito (com botão "Pagar fatura"), vale refeição, vale alimentação, carteira e saldos vindos de Open Finance |
-| Orçamento | Limites mensais por categoria com filtro de mês, alertas e separação entre despesas essenciais e variáveis |
+| Orçamento | Limites mensais por categoria com criação assistida por IA, filtro de mês, alertas e separação entre despesas essenciais e variáveis |
 | Fixas | Assinaturas e despesas recorrentes, com detecção automática de recorrências não cadastradas a partir do histórico de transações |
 | Calendário | Vencimentos e lançamentos por dia |
 | Relatórios | Histórico de até 12 meses, exportação PDF e CSV |
 | Open Finance | Central de provedores, instituições, contas e cartões conectados, com status, último sync/erro, sincronização Pluggy e desconexão segura |
-| Agenda | Contas a pagar e receber com recorrências automáticas |
+| Agenda | Contas a pagar e receber com criação assistida por IA e recorrências automáticas |
 | Patrimônio | Imóveis, veículos, terrenos e outros bens |
 | Investimentos | Carteira com alocação e rendimento |
 | Simulador | Projeção de patrimônio futuro por aporte, prazo e rendimento |
-| Metas | Planejamento com prazo, progresso e sugestões automáticas de objetivos |
-| Dívidas | Empréstimos, financiamentos e simulador de quitação |
+| Metas | Planejamento com criação assistida por IA, prazo, progresso e sugestões automáticas de objetivos |
+| Dívidas | Empréstimos, financiamentos, criação assistida por IA e simulador de quitação |
 | Plano de saída | Estratégias de quitação de dívidas e economia de juros |
 | Renegociação | Priorização e propostas para renegociar dívidas |
 | Reserva | Cálculo de reserva de emergência de 3, 6 ou 12 meses |

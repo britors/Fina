@@ -1,7 +1,8 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
-import type { Debt, DebtType, DebtStatus, DebtSimulation } from '../../shared/types';
+import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
+import type { AIDebtDraft, Debt, DebtType, DebtStatus, DebtSimulation } from '../../shared/types';
 
 const TYPE_META: Record<DebtType, { label: string; icon: string }> = {
   emprestimo:      { label: 'Empréstimo pessoal',   icon: 'ti-cash'            },
@@ -27,11 +28,22 @@ export async function render(el: HTMLElement): Promise<void> {
   }
 
   setTopbarActions(`
+    <button class="btn btn-secondary" id="btn-ai-create-debt">
+      <i class="ti ti-sparkles"></i> Criar com IA
+    </button>
     <button class="btn btn-primary" id="btn-new-debt">
       <i class="ti ti-plus"></i> Nova dívida
     </button>
   `);
   document.getElementById('btn-new-debt')?.addEventListener('click', () => openModal(null));
+  document.getElementById('btn-ai-create-debt')?.addEventListener('click', () => {
+    openAICreateDraft<AIDebtDraft>({
+      target: 'debt',
+      title: 'Criar dívida com IA',
+      placeholder: 'Ex: empréstimo de R$ 5000 em 24 parcelas de R$ 310',
+      onDraft: draft => openModal(null, draft),
+    });
+  });
 
   async function renderPage(): Promise<void> {
     const active = debts.filter(d => d.status !== 'quitada');
@@ -147,7 +159,7 @@ export async function render(el: HTMLElement): Promise<void> {
     );
   }
 
-  function openModal(debt: Debt | null): void {
+  function openModal(debt: Debt | null, draft?: AIDebtDraft): void {
     const overlay = document.createElement('div');
     overlay.className = 'overlay';
     overlay.innerHTML = `
@@ -157,16 +169,17 @@ export async function render(el: HTMLElement): Promise<void> {
           <button class="btn btn-ghost btn-sm modal-close"><i class="ti ti-x"></i></button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+          ${!debt && draft?.explanation ? aiDraftNotice(draft) : ''}
           <div class="form-row">
             <div class="form-group" style="flex:2">
               <label class="form-label">Descrição *</label>
-              <input class="form-ctrl" id="f-desc" value="${esc(debt?.description ?? '')}" placeholder="Ex: Financiamento Celta">
+              <input class="form-ctrl" id="f-desc" value="${esc(debt?.description ?? draft?.description ?? '')}" placeholder="Ex: Financiamento Celta">
             </div>
             <div class="form-group" style="flex:1">
               <label class="form-label">Tipo *</label>
               <select class="form-ctrl" id="f-type">
                 ${Object.entries(TYPE_META).map(([v, m]) =>
-                  `<option value="${v}" ${debt?.type === v ? 'selected' : ''}>${m.label}</option>`
+                  `<option value="${v}" ${(debt?.type ?? draft?.type) === v ? 'selected' : ''}>${m.label}</option>`
                 ).join('')}
               </select>
             </div>
@@ -174,13 +187,13 @@ export async function render(el: HTMLElement): Promise<void> {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Credor</label>
-              <input class="form-ctrl" id="f-cred" value="${esc(debt?.creditor ?? '')}" placeholder="Ex: Banco Itaú">
+              <input class="form-ctrl" id="f-cred" value="${esc(debt?.creditor ?? draft?.creditor ?? '')}" placeholder="Ex: Banco Itaú">
             </div>
             <div class="form-group">
               <label class="form-label">Status</label>
               <select class="form-ctrl" id="f-status">
                 ${Object.entries(STATUS_META).map(([v, m]) =>
-                  `<option value="${v}" ${debt?.status === v ? 'selected' : ''}>${m.label}</option>`
+                  `<option value="${v}" ${(debt?.status ?? draft?.status) === v ? 'selected' : ''}>${m.label}</option>`
                 ).join('')}
               </select>
             </div>
@@ -188,34 +201,34 @@ export async function render(el: HTMLElement): Promise<void> {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Valor original</label>
-              <input class="form-ctrl" id="f-orig" type="number" step="0.01" min="0" value="${debt?.original_amount ?? 0}">
+              <input class="form-ctrl" id="f-orig" type="number" step="0.01" min="0" value="${debt?.original_amount ?? draft?.original_amount ?? 0}">
             </div>
             <div class="form-group">
               <label class="form-label">Saldo devedor</label>
-              <input class="form-ctrl" id="f-balance" type="number" step="0.01" min="0" value="${debt?.outstanding_balance ?? 0}">
+              <input class="form-ctrl" id="f-balance" type="number" step="0.01" min="0" value="${debt?.outstanding_balance ?? draft?.outstanding_balance ?? 0}">
             </div>
             <div class="form-group">
               <label class="form-label">Juros (% a.m.)</label>
-              <input class="form-ctrl" id="f-rate" type="number" step="0.01" min="0" value="${debt?.interest_rate ?? 0}">
+              <input class="form-ctrl" id="f-rate" type="number" step="0.01" min="0" value="${debt?.interest_rate ?? draft?.interest_rate ?? 0}">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Total de parcelas</label>
-              <input class="form-ctrl" id="f-total" type="number" min="1" value="${debt?.installments_total ?? 1}">
+              <input class="form-ctrl" id="f-total" type="number" min="1" value="${debt?.installments_total ?? draft?.installments_total ?? 1}">
             </div>
             <div class="form-group">
               <label class="form-label">Parcelas restantes</label>
-              <input class="form-ctrl" id="f-rem" type="number" min="0" value="${debt?.installments_remaining ?? 1}">
+              <input class="form-ctrl" id="f-rem" type="number" min="0" value="${debt?.installments_remaining ?? draft?.installments_remaining ?? 1}">
             </div>
             <div class="form-group">
               <label class="form-label">Valor da parcela</label>
-              <input class="form-ctrl" id="f-install" type="number" step="0.01" min="0" value="${debt?.installment_amount ?? 0}">
+              <input class="form-ctrl" id="f-install" type="number" step="0.01" min="0" value="${debt?.installment_amount ?? draft?.installment_amount ?? 0}">
             </div>
           </div>
           <div class="form-group">
             <label class="form-label">Próximo vencimento</label>
-            <input class="form-ctrl" id="f-due" type="date" value="${debt?.next_due_date ?? ''}">
+            <input class="form-ctrl" id="f-due" type="date" value="${debt?.next_due_date ?? draft?.next_due_date ?? ''}">
           </div>
         </div>
         <div class="modal-footer">
