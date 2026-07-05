@@ -14,7 +14,7 @@ O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, pl
 - Previsão de saldo até o fim do mês no Dashboard, com os principais fatores (lançamentos e contas futuras) que influenciam a projeção.
 - Detecção automática de recorrências e assinaturas esquecidas na tela Fixas, a partir do histórico de transações, com opção de cadastrar como fixa ou descartar a sugestão.
 - Detecção de gastos fora do padrão na tela Alertas: valor incomum por categoria, possíveis duplicidades e recorrências com valor alterado, com opção de marcar como revisado.
-- Opção de tirar foto com a câmera do computador ao escanear um comprovante, além de escolher um arquivo salvo. Leitura do valor total mais robusta em fotos com a coluna de valores desfocada.
+- Leitura do valor total do comprovante mais robusta no OCR, em fotos com a coluna de valores desfocada.
 
 ## Destaques da versão 11.3
 
@@ -28,7 +28,7 @@ O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, pl
 - Sincronização entre dispositivos via arquivo .fin numa pasta de nuvem própria (Dropbox, Google Drive etc.).
 - Serviço em segundo plano (Linux/Windows) para gerar recorrências e enviar alertas sem o app aberto.
 - Contas em moeda estrangeira (USD/EUR) com conversão automática de saldo.
-- Lançamento automático via OCR de comprovante/nota fiscal (foto pela câmera ou arquivo salvo), processado 100% localmente.
+- Lançamento automático via OCR de comprovante/nota fiscal, processado 100% localmente.
 - Canal de alertas por webhook, além de e-mail e notificação nativa.
 - Detecção de aumento de preço em assinaturas e recorrências com intervalos flexíveis (semanal, trimestral, anual etc.).
 - Modo envelope no orçamento, com saldo não gasto transportado para o mês seguinte.
@@ -155,7 +155,7 @@ npm start
 | Plano mensal | Sugestão de uso da renda para dívidas, reserva, metas e investimentos |
 | Alertas | Riscos e oportunidades calculados a partir dos dados financeiros, incluindo detecção de gastos fora do padrão (valor incomum, duplicidade, recorrência alterada) |
 | Assistente IA | Análise educacional usando ChatGPT/OpenAI ou Gemini/Google com consentimento explícito |
-| Lançamentos | Receitas, despesas, transferências, parcelas em cartão de crédito, rateio por meios de pagamento, responsável no modo família, importação CSV/OFX e leitura de comprovante por câmera ou arquivo (OCR local) |
+| Lançamentos | Receitas, despesas, transferências, parcelas em cartão de crédito, rateio por meios de pagamento, responsável no modo família e importação CSV/OFX |
 | Meios de pagamento | Corrente, poupança, cartão de crédito, vale refeição, vale alimentação, carteira e saldos vindos de Open Finance |
 | Orçamento | Limites mensais por categoria com filtro de mês, alertas e separação entre despesas essenciais e variáveis |
 | Fixas | Assinaturas e despesas recorrentes, com detecção automática de recorrências não cadastradas a partir do histórico de transações |

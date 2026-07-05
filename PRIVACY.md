@@ -53,9 +53,9 @@ Recomendações:
 
 ## OCR de comprovantes e notas fiscais
 
-O Fina pode ler o valor, a data e o estabelecimento de um comprovante ou nota fiscal para pré-preencher um lançamento, a partir de uma foto tirada na hora com a câmera do computador ou de um arquivo de imagem já salvo.
+O Fina pode ler o valor, a data e o estabelecimento de uma foto de comprovante ou nota fiscal para pré-preencher um lançamento.
 
-Esse reconhecimento roda inteiramente no seu computador (biblioteca Tesseract OCR local) — a imagem do comprovante, capturada pela câmera ou escolhida como arquivo, nunca é enviada para nenhum servidor nem é salva em disco depois de lida. O acesso à câmera só ocorre quando você escolhe explicitamente a opção `Tirar foto com a câmera` e pode ser negado pelo sistema operacional a qualquer momento. Na primeira vez que o recurso é usado, o Fina baixa um modelo de reconhecimento de texto em português (genérico, sem relação com seus dados) e guarda em cache para uso offline nas próximas vezes.
+Esse reconhecimento roda inteiramente no seu computador (biblioteca Tesseract OCR local) — a imagem do comprovante nunca é enviada para nenhum servidor. Na primeira vez que o recurso é usado, o Fina baixa um modelo de reconhecimento de texto em português (genérico, sem relação com seus dados) e guarda em cache para uso offline nas próximas vezes.
 
 ## Chaves de API de IA
 

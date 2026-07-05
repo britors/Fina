@@ -13,9 +13,4 @@ export function registerOCRHandlers(): void {
 
     return extractReceiptData(filePath);
   });
-
-  ipcMain.handle('ocr:scanReceiptCapture', async (_e, dataUrl: string) => {
-    const base64 = dataUrl.split(',')[1] ?? dataUrl;
-    return extractReceiptData(Buffer.from(base64, 'base64'));
-  });
 }
