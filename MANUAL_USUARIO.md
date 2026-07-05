@@ -513,8 +513,21 @@ Para `Vale Refeição` e `Vale Alimentação`, o valor principal do card mostra 
 
 As ações disponíveis são:
 
+- `Pagar fatura` (só em cartões de crédito): abre o cadastro de lançamento já como uma transferência para aquele cartão. Informe apenas o meio de pagamento de origem, o valor e a categoria — o Fina cuida do resto.
 - `Editar`: altera os dados do meio de pagamento.
 - `Excluir`: remove o meio de pagamento. Ao excluir um meio, as transações vinculadas também são removidas.
+
+### Pagar fatura do cartão de crédito
+
+Pagar uma fatura não é uma despesa nova nem uma receita: é dinheiro mudando de um meio de pagamento para o cartão, quitando (total ou parcialmente) o que já foi gasto antes. Por isso o Fina registra esse pagamento como uma transferência, não como um lançamento de despesa — assim ele não conta duas vezes o mesmo gasto nos relatórios (a compra original já apareceu como despesa/fatura quando foi feita).
+
+Ao clicar em `Pagar fatura`, o cadastro de lançamento abre com:
+
+- `Tipo` já definido como `Transferência`.
+- `Meio de pagamento destino` já definido como o próprio cartão.
+- `Descrição` preenchida com "Pagamento de fatura" (pode alterar).
+
+Você só precisa escolher o `Meio de pagamento origem` (de onde sai o dinheiro), o `Valor` e a `Categoria`. Ao salvar, o saldo do meio de origem diminui e a fatura do cartão diminui no mesmo valor.
 
 ### Novo meio de pagamento ou edição
 

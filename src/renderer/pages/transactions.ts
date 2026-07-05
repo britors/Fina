@@ -233,15 +233,27 @@ interface TxDraft {
   description?: string;
   amount?: number;
   date?: string;
+  type?: TransactionType;
+  toAccountId?: string;
+}
+
+// Abre o cadastro de lançamento já como Transferência para o cartão
+// informado — pagar uma fatura é dinheiro mudando de bolso, não uma
+// despesa nova (a compra original já virou despesa/fatura quando foi
+// feita), e transferências já ficam de fora dos totais de receita/despesa.
+export async function openPayInvoiceModal(cardAccountId: string, onDone: () => void): Promise<void> {
+  if (accounts.length === 0) accounts = await invoke<Account[]>('accounts:list');
+  if (categories.length === 0) categories = await invoke<Category[]>('categories:list');
+  openTxModal(null, onDone, { type: 'transfer', toAccountId: cardAccountId, description: 'Pagamento de fatura' });
 }
 
 function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draft?: TxDraft): void {
   const today = new Date().toISOString().split('T')[0];
   const initialPayments = initialPaymentSplits(tx?.payments, tx?.account_id, tx?.amount ?? draft?.amount);
-  const initialType = tx ? tx.type : 'expense';
+  const initialType = tx ? tx.type : (draft?.type ?? 'expense');
   const showInitialInstallments = !tx && initialType === 'expense' && initialPayments.length === 1 && isCreditCardAccount(initialPayments[0].account_id);
   const overlay = openModal({
-    title: tx ? 'Editar transação' : 'Nova transação',
+    title: tx ? 'Editar transação' : draft?.toAccountId ? 'Pagar fatura' : 'Nova transação',
     body: `
       <div class="form-group">
         <label class="form-label">Descrição</label>
@@ -255,14 +267,14 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         <div class="form-group">
           <label class="form-label">Tipo</label>
           <select class="form-ctrl" id="f-type">
-            <option value="expense"  ${tx?.type === 'expense'  ? 'selected' : ''}>Despesa</option>
-            <option value="income"   ${tx?.type === 'income'   ? 'selected' : ''}>Receita</option>
-            <option value="transfer" ${tx?.type === 'transfer' ? 'selected' : ''}>Transferência</option>
+            <option value="expense"  ${initialType === 'expense'  ? 'selected' : ''}>Despesa</option>
+            <option value="income"   ${initialType === 'income'   ? 'selected' : ''}>Receita</option>
+            <option value="transfer" ${initialType === 'transfer' ? 'selected' : ''}>Transferência</option>
           </select>
         </div>
       </div>
       <div class="form-row">
-        <div class="form-group" id="single-account-group" style="display:${tx?.type === 'transfer' ? '' : 'none'}">
+        <div class="form-group" id="single-account-group" style="display:${initialType === 'transfer' ? '' : 'none'}">
           <label class="form-label">Meio de pagamento origem</label>
           <select class="form-ctrl" id="f-account">
             ${accounts.map(a => `<option value="${a.id}" ${tx?.account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
@@ -276,7 +288,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         </div>
       </div>
       <div id="f-category-hint"></div>
-      <div class="form-group" id="payment-splits-group" style="display:${tx?.type === 'transfer' ? 'none' : ''}">
+      <div class="form-group" id="payment-splits-group" style="display:${initialType === 'transfer' ? 'none' : ''}">
         <label class="form-label">Meios de pagamento</label>
         <div id="payment-splits" style="display:flex;flex-direction:column;gap:8px">
           ${paymentRowsHtml(initialPayments)}
@@ -290,11 +302,11 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         <label class="form-label">Parcelas</label>
         <input class="form-ctrl" id="f-installments" type="number" min="1" max="60" step="1" value="1">
       </div>
-      <div class="form-group" id="f-to-account-group" style="display:${tx?.type === 'transfer' ? '' : 'none'}">
+      <div class="form-group" id="f-to-account-group" style="display:${initialType === 'transfer' ? '' : 'none'}">
         <label class="form-label">Meio de pagamento destino</label>
         <select class="form-ctrl" id="f-to-account">
           <option value="">— Selecione —</option>
-          ${accounts.map(a => `<option value="${a.id}" ${tx?.to_account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+          ${accounts.map(a => `<option value="${a.id}" ${(tx?.to_account_id ?? draft?.toAccountId) === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
         </select>
       </div>
       <div class="form-row">

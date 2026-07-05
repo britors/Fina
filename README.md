@@ -5,6 +5,10 @@ Aplicativo desktop para controle de finanças pessoais, construído com **Electr
 O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
 ![alt text](fina.png)
 
+## Destaques da versão 13.1
+
+- Botão "Pagar fatura" em cartões de crédito: abre o lançamento já como transferência para o cartão, pedindo só meio de origem, valor e categoria — evita contar a mesma despesa duas vezes nos relatórios.
+
 ## Destaques da versão 13.0
 
 - Sincronização Open Finance (Pluggy) com filtro de conta e período: depois da primeira sincronização, é possível importar apenas uma conta ou um intervalo de datas específico, em vez de sincronizar tudo de novo.
@@ -164,7 +168,7 @@ npm start
 | Alertas | Riscos e oportunidades calculados a partir dos dados financeiros, incluindo detecção de gastos fora do padrão (valor incomum, duplicidade, recorrência alterada) e queda brusca de saldo em contas Open Finance |
 | Assistente IA | Análise educacional usando ChatGPT/OpenAI ou Gemini/Google com consentimento explícito |
 | Lançamentos | Receitas, despesas, transferências, parcelas em cartão de crédito, rateio por meios de pagamento, responsável no modo família, importação CSV/OFX e sugestão automática de categoria por histórico |
-| Meios de pagamento | Corrente, poupança, cartão de crédito, vale refeição, vale alimentação, carteira e saldos vindos de Open Finance |
+| Meios de pagamento | Corrente, poupança, cartão de crédito (com botão "Pagar fatura"), vale refeição, vale alimentação, carteira e saldos vindos de Open Finance |
 | Orçamento | Limites mensais por categoria com filtro de mês, alertas e separação entre despesas essenciais e variáveis |
 | Fixas | Assinaturas e despesas recorrentes, com detecção automática de recorrências não cadastradas a partir do histórico de transações |
 | Calendário | Vencimentos e lançamentos por dia |
