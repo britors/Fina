@@ -242,6 +242,15 @@ export interface ImportPreviewRow {
   duplicate: boolean;
   suggested_category_id?: string | null;
   suggested_category_name?: string | null;
+  suggested_category_reason?: string | null;
+}
+
+export interface CategorySuggestion {
+  categoryId: string;
+  categoryName: string;
+  occurrences: number;
+  totalOccurrences: number;
+  reason: string;
 }
 
 export interface ImportPreview {

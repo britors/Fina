@@ -5,6 +5,7 @@ import { getDb } from '../database';
 import { parseOFX } from '../import/ofx-parser';
 import { parseCSV } from '../import/csv-parser';
 import { adjustBalance, balanceDelta } from './transactions';
+import { suggestCategoryFromHistory } from './categorySuggestion';
 import type { ImportPreview, ImportPreviewRow, TransactionType } from '../../shared/types';
 
 function txHash(date: string, amount: number, description: string): string {
@@ -25,12 +26,17 @@ function normalizeText(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-function suggestCategory(description: string, type: TransactionType): { id: string; name: string } | null {
+function suggestCategory(description: string, type: TransactionType): { id: string; name: string; reason: string } | null {
+  // Prioriza o histórico de categorização do próprio usuário sobre as dicas
+  // genéricas abaixo — mais preciso, e explica o motivo da sugestão.
+  const fromHistory = suggestCategoryFromHistory(description, type);
+  if (fromHistory) return { id: fromHistory.categoryId, name: fromHistory.categoryName, reason: fromHistory.reason };
+
   const db = getDb();
   const categories = db.prepare('SELECT id, name FROM categories WHERE type = ?').all(type === 'income' ? 'income' : 'expense') as { id: string; name: string }[];
   const desc = normalizeText(description);
   const direct = categories.find(c => desc.includes(normalizeText(c.name)));
-  if (direct) return direct;
+  if (direct) return { ...direct, reason: `A descrição contém o nome da categoria "${direct.name}".` };
 
   const hints: Record<string, string[]> = {
     Alimentação: ['mercado', 'supermercado', 'restaurante', 'ifood', 'padaria', 'hortifruti', 'acougue'],
@@ -45,7 +51,8 @@ function suggestCategory(description: string, type: TransactionType): { id: stri
 
   for (const category of categories) {
     const words = hints[category.name] ?? [];
-    if (words.some(word => desc.includes(word))) return category;
+    const matchedWord = words.find(word => desc.includes(word));
+    if (matchedWord) return { ...category, reason: `A descrição contém "${matchedWord}", associado à categoria "${category.name}".` };
   }
 
   return null;
@@ -66,6 +73,7 @@ export function registerImportHandlers(): void {
       const suggestion = suggestCategory(row.description, row.type);
       row.suggested_category_id = suggestion?.id ?? null;
       row.suggested_category_name = suggestion?.name ?? null;
+      row.suggested_category_reason = suggestion?.reason ?? null;
     }
 
     return {

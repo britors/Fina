@@ -15,6 +15,7 @@ O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, pl
 - Detecção automática de recorrências e assinaturas esquecidas na tela Fixas, a partir do histórico de transações, com opção de cadastrar como fixa ou descartar a sugestão.
 - Detecção de gastos fora do padrão na tela Alertas: valor incomum por categoria, possíveis duplicidades e recorrências com valor alterado, com opção de marcar como revisado.
 - Leitura do valor total do comprovante mais robusta no OCR, em fotos com a coluna de valores desfocada.
+- Sugestão automática de categoria por histórico de categorização, com justificativa visível, no lançamento manual, na leitura de comprovante e na importação de extratos — sem depender de IA.
 
 ## Destaques da versão 11.3
 
@@ -155,7 +156,7 @@ npm start
 | Plano mensal | Sugestão de uso da renda para dívidas, reserva, metas e investimentos |
 | Alertas | Riscos e oportunidades calculados a partir dos dados financeiros, incluindo detecção de gastos fora do padrão (valor incomum, duplicidade, recorrência alterada) |
 | Assistente IA | Análise educacional usando ChatGPT/OpenAI ou Gemini/Google com consentimento explícito |
-| Lançamentos | Receitas, despesas, transferências, parcelas em cartão de crédito, rateio por meios de pagamento, responsável no modo família e importação CSV/OFX |
+| Lançamentos | Receitas, despesas, transferências, parcelas em cartão de crédito, rateio por meios de pagamento, responsável no modo família, importação CSV/OFX e sugestão automática de categoria por histórico |
 | Meios de pagamento | Corrente, poupança, cartão de crédito, vale refeição, vale alimentação, carteira e saldos vindos de Open Finance |
 | Orçamento | Limites mensais por categoria com filtro de mês, alertas e separação entre despesas essenciais e variáveis |
 | Fixas | Assinaturas e despesas recorrentes, com detecção automática de recorrências não cadastradas a partir do histórico de transações |

@@ -449,6 +449,10 @@ Quando o lançamento for uma despesa paga em um único meio de pagamento do tipo
 
 Ao usar `Escanear comprovante`, os valores extraídos são um palpite inicial — a leitura depende da nitidez da foto. Confira sempre os dados antes de salvar.
 
+### Sugestão de categoria
+
+Ao digitar a descrição de um lançamento novo (manual ou vindo de `Escanear comprovante`), o Fina verifica se você já categorizou algo com essa mesma descrição antes e, se encontrar, mostra uma sugestão abaixo do campo `Categoria` — por exemplo, "Você categorizou 'Uber' como Transporte 8 de 10 vezes". Clique em `Usar` para aplicar a categoria sugerida, ou ignore a sugestão e escolha outra categoria manualmente. Essa sugestão é baseada apenas no seu próprio histórico de lançamentos, salvo localmente — não usa nem exige IA.
+
 ### Importar extrato
 
 Ao clicar em `Importar extrato`:
@@ -459,6 +463,8 @@ Ao clicar em `Importar extrato`:
 4. Clique em `Pré-visualizar`.
 5. Confira as transações encontradas.
 6. Clique em `Importar`.
+
+Na prévia, transações com uma categoria reconhecida mostram um selo com o nome dela — passe o mouse sobre o selo para ver o motivo da sugestão (seu histórico de categorização ou, na falta dele, palavras comuns na descrição). Desmarque `Usar categoria sugerida quando houver correspondência` para aplicar a categoria padrão em todas as transações, ignorando as sugestões.
 
 Duplicatas identificadas são indicadas na prévia e ignoradas na importação.
 

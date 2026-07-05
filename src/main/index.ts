@@ -25,6 +25,7 @@ import { registerIRPFHandlers } from './ipc/irpf';
 import { registerAIHandlers } from './ipc/ai';
 import { registerRecurrenceDetectionHandlers } from './ipc/recurrenceDetection';
 import { registerAnomalyDetectionHandlers } from './ipc/anomalyDetection';
+import { registerCategorySuggestionHandlers } from './ipc/categorySuggestion';
 import { registerOpenFinanceHandlers } from './ipc/openFinance';
 import { registerOCRHandlers } from './ipc/ocr';
 import { initUpdater } from './updater';
@@ -130,6 +131,7 @@ function registerHandlers(): void {
   registerBillHandlers();
   registerRecurrenceDetectionHandlers();
   registerAnomalyDetectionHandlers();
+  registerCategorySuggestionHandlers();
   registerSettingsHandlers();
   registerAssetHandlers();
   registerInvestmentHandlers();

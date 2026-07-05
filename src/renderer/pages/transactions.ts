@@ -2,7 +2,7 @@ import { invoke } from '../api';
 import { formatCurrency, formatDate, calculateMonthlySummary } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { setTopbarActions } from '../components/topbar';
-import type { Account, Category, PaymentSplit, PaymentSplitWithAccount, TransactionWithDetails, TransactionType } from '../../shared/types';
+import type { Account, Category, CategorySuggestion, PaymentSplit, PaymentSplitWithAccount, TransactionWithDetails, TransactionType } from '../../shared/types';
 
 let accounts: Account[]  = [];
 let categories: Category[] = [];
@@ -275,6 +275,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
           </select>
         </div>
       </div>
+      <div id="f-category-hint"></div>
       <div class="form-group" id="payment-splits-group" style="display:${tx?.type === 'transfer' ? 'none' : ''}">
         <label class="form-label">Meios de pagamento</label>
         <div id="payment-splits" style="display:flex;flex-direction:column;gap:8px">
@@ -392,6 +393,39 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
   syncFirstPaymentAmount(overlay);
   updatePaymentSummary(overlay);
   updateInstallmentsVisibility(overlay, !!tx);
+
+  if (!tx) {
+    let suggestionTimer: ReturnType<typeof setTimeout> | null = null;
+    overlay.querySelector('#f-desc')?.addEventListener('input', () => {
+      if (suggestionTimer) clearTimeout(suggestionTimer);
+      suggestionTimer = setTimeout(() => checkCategorySuggestion(overlay), 400);
+    });
+    overlay.querySelector('#f-type')?.addEventListener('change', () => checkCategorySuggestion(overlay));
+    if (draft?.description) checkCategorySuggestion(overlay);
+  }
+}
+
+async function checkCategorySuggestion(overlay: HTMLElement): Promise<void> {
+  const description = overlay.querySelector<HTMLInputElement>('#f-desc')!.value.trim();
+  const type = overlay.querySelector<HTMLSelectElement>('#f-type')!.value as TransactionType;
+  const hintEl = overlay.querySelector<HTMLElement>('#f-category-hint')!;
+
+  if (!description || type === 'transfer') { hintEl.innerHTML = ''; return; }
+
+  const suggestion = await invoke<CategorySuggestion | null>('categories:suggestFromHistory', { description, type });
+  if (!suggestion) { hintEl.innerHTML = ''; return; }
+
+  hintEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-2);margin:6px 0 0">
+      <i class="ti ti-bulb" style="color:var(--accent)"></i>
+      <span>${esc(suggestion.reason)}</span>
+      <button type="button" class="btn btn-ghost btn-sm" id="btn-apply-category-suggestion">Usar</button>
+    </div>
+  `;
+  hintEl.querySelector('#btn-apply-category-suggestion')?.addEventListener('click', () => {
+    overlay.querySelector<HTMLSelectElement>('#f-category')!.value = suggestion.categoryId;
+    hintEl.innerHTML = '';
+  });
 }
 
 function openImportModal(): void {
@@ -470,11 +504,11 @@ function openImportModal(): void {
         <table class="table" style="margin:0">
           <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Tipo</th></tr></thead>
           <tbody>
-            ${(preview.rows as { date: string; description: string; amount: number; type: string; duplicate: boolean; suggested_category_name?: string | null }[]).slice(0, 50).map(r => `
+            ${(preview.rows as { date: string; description: string; amount: number; type: string; duplicate: boolean; suggested_category_name?: string | null; suggested_category_reason?: string | null }[]).slice(0, 50).map(r => `
               <tr style="${r.duplicate ? 'opacity:0.4' : ''}">
                 <td>${r.date}</td>
                 <td>${esc(r.description)}</td>
-                <td>${r.suggested_category_name ? `<span class="badge badge-ok">${esc(r.suggested_category_name)}</span>` : '<span style="color:var(--text-3)">Padrão</span>'}</td>
+                <td>${r.suggested_category_name ? `<span class="badge badge-ok" title="${esc(r.suggested_category_reason ?? '')}">${esc(r.suggested_category_name)}</span>` : '<span style="color:var(--text-3)">Padrão</span>'}</td>
                 <td style="color:${r.type === 'income' ? 'var(--accent)' : 'var(--danger)'}">
                   ${r.type === 'income' ? '+' : '-'}R$ ${r.amount.toFixed(2).replace('.', ',')}
                 </td>
