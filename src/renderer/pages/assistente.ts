@@ -75,7 +75,9 @@ export async function render(el: HTMLElement): Promise<void> {
           </label>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             <button class="btn btn-primary" id="btn-ask-ai"><i class="ti ti-send"></i> Enviar pergunta</button>
-            <button class="btn btn-secondary" id="btn-monthly-summary"><i class="ti ti-file-text"></i> Gerar resumo do mês</button>
+            <button class="btn btn-secondary btn-summary" data-period="day"><i class="ti ti-file-text"></i> Resumo do dia</button>
+            <button class="btn btn-secondary btn-summary" data-period="week"><i class="ti ti-file-text"></i> Resumo da semana</button>
+            <button class="btn btn-secondary btn-summary" data-period="month"><i class="ti ti-file-text"></i> Resumo do mês</button>
           </div>
           <div id="ai-result" style="margin-top:18px">${answer ? answerBlock(answer) : ''}</div>
         </div>
@@ -98,7 +100,9 @@ export async function render(el: HTMLElement): Promise<void> {
     `;
 
     el.querySelector('#btn-ask-ai')?.addEventListener('click', ask);
-    el.querySelector('#btn-monthly-summary')?.addEventListener('click', generateMonthlySummary);
+    el.querySelectorAll<HTMLButtonElement>('.btn-summary').forEach(btn => {
+      btn.addEventListener('click', () => generateSummary(btn.dataset.period as 'day' | 'week' | 'month', btn));
+    });
     el.querySelector('#btn-clear-history')?.addEventListener('click', clearHistory);
     el.querySelectorAll<HTMLButtonElement>('.ai-quick-question').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -133,8 +137,13 @@ export async function render(el: HTMLElement): Promise<void> {
     await renderPage();
   }
 
-  async function generateMonthlySummary(): Promise<void> {
-    const btn = el.querySelector<HTMLButtonElement>('#btn-monthly-summary')!;
+  const SUMMARY_LABELS: Record<'day' | 'week' | 'month', string> = {
+    day: 'Resumo do dia',
+    week: 'Resumo da semana',
+    month: 'Resumo do mês',
+  };
+
+  async function generateSummary(period: 'day' | 'week' | 'month', btn: HTMLButtonElement): Promise<void> {
     const consentConfirmed = el.querySelector<HTMLInputElement>('#ai-send-consent')!.checked;
     if (!consentConfirmed) {
       alert('Confirme o consentimento de envio antes de gerar o resumo.');
@@ -143,12 +152,14 @@ export async function render(el: HTMLElement): Promise<void> {
     btn.disabled = true;
     btn.innerHTML = '<i class="ti ti-loader ti-spin"></i> Gerando...';
     try {
-      answer = await invoke<AIAnswer>('ai:summary', { consentConfirmed });
+      answer = period === 'month'
+        ? await invoke<AIAnswer>('ai:summary', { consentConfirmed })
+        : await invoke<AIAnswer>('ai:periodSummary', { period, consentConfirmed });
       await renderPage();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível gerar o resumo do mês.');
+      alert(err instanceof Error ? err.message : 'Não foi possível gerar o resumo.');
       btn.disabled = false;
-      btn.innerHTML = '<i class="ti ti-file-text"></i> Gerar resumo do mês';
+      btn.innerHTML = `<i class="ti ti-file-text"></i> ${SUMMARY_LABELS[period]}`;
     }
   }
 

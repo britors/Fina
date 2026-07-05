@@ -318,7 +318,7 @@ Antes de enviar uma pergunta, o Fina mostra quais dados podem ser enviados.
 
 Enviado somente com consentimento:
 
-- renda e despesas agregadas;
+- renda e despesas agregadas do período consultado (dia, semana ou mês);
 - despesas por categoria;
 - saldos totais por tipo de meio de pagamento;
 - dívidas por tipo e status;
@@ -341,9 +341,9 @@ Mesmo com a IA ativada, cada pergunta exige confirmação de envio do resumo fin
 
 Se você não marcar a confirmação, a pergunta não é enviada.
 
-### Resumo do mês
+### Resumo do dia, da semana e do mês
 
-O botão `Gerar resumo do mês` pede ao assistente um parágrafo em linguagem natural sobre a situação financeira do mês atual, sem precisar formular uma pergunta. Ele usa o mesmo resumo agregado e exige a mesma confirmação de consentimento das perguntas livres.
+Os botões `Resumo do dia`, `Resumo da semana` e `Resumo do mês` pedem ao assistente um parágrafo em linguagem natural sobre a movimentação financeira do período escolhido, sem precisar formular uma pergunta. `Resumo do dia` cobre hoje, `Resumo da semana` os últimos 7 dias e `Resumo do mês` o mês atual. Todos usam dados agregados e exigem a mesma confirmação de consentimento das perguntas livres.
 
 ### Histórico de perguntas
 

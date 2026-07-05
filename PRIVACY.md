@@ -97,7 +97,7 @@ Quando o usuário confirma uma pergunta, o Fina envia apenas um resumo financeir
 
 Dados que podem ser enviados:
 
-- renda e despesas mensais agregadas;
+- renda e despesas agregadas do período consultado (dia, semana ou mês);
 - despesas por categoria;
 - saldos totais por tipo de meio de pagamento;
 - total de dívidas por tipo e status;

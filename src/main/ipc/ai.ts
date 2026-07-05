@@ -326,6 +326,57 @@ function buildRenegotiationPrompt(debt: RenegotiationDebtInfo, summary: object):
   ].join('\n');
 }
 
+type SummaryPeriod = 'day' | 'week';
+
+function periodSummary(period: SummaryPeriod): object {
+  const db = getDb();
+  const now = new Date();
+  const days = period === 'day' ? 1 : 7;
+  const from = new Date(now);
+  from.setDate(from.getDate() - (days - 1));
+  const dateFrom = from.toISOString().slice(0, 10);
+  const dateTo = now.toISOString().slice(0, 10);
+
+  const totals = db.prepare(`
+    SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) as income,
+           COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) as expense
+    FROM transactions
+    WHERE status='confirmed' AND date >= ? AND date <= ?
+  `).get(dateFrom, dateTo) as { income: number; expense: number };
+
+  const topExpenseCategories = db.prepare(`
+    SELECT c.name as category, COALESCE(SUM(t.amount),0) as total
+    FROM categories c
+    JOIN transactions t ON t.category_id = c.id
+    WHERE c.type='expense' AND t.type='expense' AND t.status='confirmed'
+      AND t.date >= ? AND t.date <= ?
+    GROUP BY c.id
+    ORDER BY total DESC
+    LIMIT 5
+  `).all(dateFrom, dateTo);
+
+  return {
+    period,
+    date_from: dateFrom,
+    date_to: dateTo,
+    income: totals.income,
+    expense: totals.expense,
+    balance: totals.income - totals.expense,
+    top_expense_categories: topExpenseCategories,
+  };
+}
+
+function buildPeriodSummaryPrompt(period: SummaryPeriod, data: object): string {
+  const label = period === 'day' ? 'de hoje' : 'dos últimos 7 dias';
+  return [
+    `Gere um resumo em linguagem natural sobre a movimentação financeira ${label}, com base apenas nos dados agregados abaixo.`,
+    'Escreva um único parágrafo curto, simples, objetivo e acionável, destacando o que entrou, o que saiu, o saldo do período e a categoria de maior gasto (se houver).',
+    '',
+    'Dados agregados do período:',
+    JSON.stringify(data, null, 2),
+  ].join('\n');
+}
+
 function buildDecisionPrompt(decision: { title: string; body: string; impact: string }, summary: object): string {
   return [
     'O usuário recebeu a seguinte decisão sugerida pelo Fina:',
@@ -501,6 +552,11 @@ export function registerAIHandlers(): void {
 
   ipcMain.handle('ai:summary', async (_e, payload: { consentConfirmed: boolean }) => {
     return askProvider(buildSummaryPrompt(financialSummary()), payload.consentConfirmed);
+  });
+
+  ipcMain.handle('ai:periodSummary', async (_e, payload: { period: SummaryPeriod; consentConfirmed: boolean }) => {
+    const period: SummaryPeriod = payload.period === 'day' ? 'day' : 'week';
+    return askProvider(buildPeriodSummaryPrompt(period, periodSummary(period)), payload.consentConfirmed);
   });
 
   ipcMain.handle('ai:explainDecision', async (_e, payload: { title: string; body: string; impact: string; consentConfirmed: boolean }) => {

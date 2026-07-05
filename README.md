@@ -7,7 +7,7 @@ O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, pl
 ## Destaques da versão 11.4
 
 - Perguntas rápidas sugeridas no Assistente IA, contextuais ao score, reserva e categoria de maior gasto do mês.
-- Botão "Gerar resumo do mês" no Assistente IA, com parágrafo em linguagem natural sobre a situação financeira, sob demanda.
+- Botões "Resumo do dia", "Resumo da semana" e "Resumo do mês" no Assistente IA, com parágrafo em linguagem natural sobre a movimentação financeira do período, sob demanda.
 - Histórico local de perguntas e respostas do Assistente IA, para consulta e comparação mês a mês, sem envio de dado novo a terceiros.
 - Botão "Detalhar com IA" em cada decisão sugerida, com passo a passo prático gerado sob consentimento explícito por ação.
 - Botão "Gerar rascunho com IA" na tela Renegociação, com rascunho de mensagem de negociação sem enviar nome do credor nem descrição da dívida.
