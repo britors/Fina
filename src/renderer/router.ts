@@ -12,6 +12,7 @@ import { render as renderBudget       } from './pages/budget';
 import { render as renderReports      } from './pages/reports';
 import { render as renderSettings     } from './pages/settings';
 import { render as renderAgenda       } from './pages/agenda';
+import { render as renderPix          } from './pages/pix';
 import { render as renderFixas        } from './pages/fixas';
 import { render as renderCalendario   } from './pages/calendario';
 import { render as renderPatrimonio   } from './pages/patrimonio';
@@ -65,6 +66,7 @@ const ROUTES: Record<string, Route> = {
   reports:      { title: 'Relatórios',    subtitle: 'Últimos 6 meses',                           render: renderReports      },
   settings:     { title: 'Configurações', subtitle: 'Personalize o Fina de acordo com suas preferências', render: renderSettings },
   agenda:       { title: 'Contas à pagar',        subtitle: 'Contas a pagar e receber',                   render: renderAgenda       },
+  pix:          { title: 'Pix',                    subtitle: 'Histórico e auditoria de pagamentos',         render: renderPix          },
   fixas:        { title: 'Despesas fixas', subtitle: 'Assinaturas e compromissos recorrentes',             render: renderFixas        },
   calendario:   { title: 'Calendário', subtitle: 'Vencimentos e lançamentos por dia',                      render: renderCalendario   },
   patrimonio:   { title: 'Patrimônio',    subtitle: 'Imóveis, veículos e outros bens',             render: renderPatrimonio   },
