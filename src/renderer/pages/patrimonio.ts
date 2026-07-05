@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import type { Asset, AssetType } from '../../shared/types';
 
 const TYPE_META: Record<AssetType, { label: string; icon: string; color: string }> = {
@@ -132,7 +133,8 @@ export async function render(el: HTMLElement): Promise<void> {
     el.querySelectorAll<HTMLElement>('.btn-del-asset').forEach(btn =>
       btn.addEventListener('click', async () => {
         const a = assets.find(x => x.id === btn.dataset.id);
-        if (!a || !confirm(`Excluir "${a.name}"?`)) return;
+        if (!a) return;
+        if (!await showConfirm(`Excluir "${a.name}"?`, { danger: true, okLabel: 'Excluir' })) return;
         await invoke('assets:delete', a.id);
         await load();
         await renderPage();
@@ -200,7 +202,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
     overlay.querySelector('#btn-save-asset')?.addEventListener('click', async () => {
       const name = (overlay.querySelector<HTMLInputElement>('#f-name')!).value.trim();
-      if (!name) { alert('Informe o nome do bem.'); return; }
+      if (!name) { showAlert('Informe o nome do bem.'); return; }
 
       const payload = {
         name,

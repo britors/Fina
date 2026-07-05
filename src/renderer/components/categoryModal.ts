@@ -1,5 +1,6 @@
 import { invoke } from '../api';
 import { openModal } from './modal';
+import { showAlert } from './alertDialog';
 import type { Category, CategoryKind, CategoryType } from '../../shared/types';
 
 const ICONS = [
@@ -75,7 +76,7 @@ export function openCategoryModal(cat: Category | null, onDone: () => void, defa
       const name = (document.getElementById('f-cat-name') as HTMLInputElement).value.trim();
       const type = (document.getElementById('f-cat-type') as HTMLSelectElement).value as CategoryType;
       const kind = type === 'income' ? 'income' : (document.getElementById('f-cat-kind') as HTMLSelectElement).value as CategoryKind;
-      if (!name) { alert('Informe o nome.'); return false; }
+      if (!name) { showAlert('Informe o nome.'); return false; }
       const p = cat
         ? invoke('categories:update', { id: cat.id, name, icon: selIcon, color: selColor, type, kind })
         : invoke('categories:create', { name, icon: selIcon, color: selColor, type, kind });

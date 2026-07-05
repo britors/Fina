@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate, calculateMonthlySummary } from '../../shared/utils';
 import { openModal } from '../components/modal';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { Account, AITransactionBatchDraft, AITransactionDraft, Category, CategorySuggestion, PaymentSplit, PaymentSplitWithAccount, TransactionStatus, TransactionWithDetails, TransactionType } from '../../shared/types';
@@ -85,7 +86,7 @@ export async function render(el: HTMLElement): Promise<void> {
         });
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível ler o comprovante.');
+      showAlert(err instanceof Error ? err.message : 'Não foi possível ler o comprovante.');
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<i class="ti ti-scan"></i> Escanear comprovante';
@@ -237,7 +238,7 @@ export async function render(el: HTMLElement): Promise<void> {
     });
     el.querySelectorAll<HTMLElement>('[data-del]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (!confirm('Excluir esta transação?')) return;
+        if (!await showConfirm('Excluir esta transação?', { danger: true, okLabel: 'Excluir' })) return;
         await invoke('transactions:delete', btn.dataset.del);
         renderPage();
       });
@@ -375,21 +376,21 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
       const installments = parseInt((document.getElementById('f-installments') as HTMLInputElement | null)?.value ?? '1', 10) || 1;
 
       if (!desc || isNaN(amount) || !date || !account || !category) {
-        alert('Preencha todos os campos obrigatórios.');
+        showAlert('Preencha todos os campos obrigatórios.');
         return false;
       }
       if (type === 'transfer' && (!toAccount || toAccount === account)) {
-        alert('Selecione um meio de pagamento de destino diferente do meio de origem.');
+        showAlert('Selecione um meio de pagamento de destino diferente do meio de origem.');
         return false;
       }
       if (installments > 1 && (tx || type !== 'expense')) {
-        alert('Parcelas estão disponíveis apenas para novos lançamentos de despesa.');
+        showAlert('Parcelas estão disponíveis apenas para novos lançamentos de despesa.');
         return false;
       }
       const payments = type === 'transfer' ? [] : collectPayments(overlay, amount);
       if (type !== 'transfer' && !payments) return false;
       if (installments > 1 && (!payments || payments.length !== 1 || !isCreditCardAccount(payments[0].account_id))) {
-        alert('Parcelas estão disponíveis apenas para um único meio de pagamento do tipo cartão de crédito.');
+        showAlert('Parcelas estão disponíveis apenas para um único meio de pagamento do tipo cartão de crédito.');
         return false;
       }
 
@@ -445,7 +446,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
 async function openBatchPromptModal(onDone: () => void): Promise<void> {
   const settings = await invoke<{ enabled: boolean; provider: 'openai' | 'gemini' }>('ai:getSettings');
   if (!settings.enabled) {
-    alert('Ative a IA em Configurações > IA para usar este recurso.');
+    await showAlert('Ative a IA em Configurações > IA para usar este recurso.');
     return;
   }
 
@@ -552,10 +553,10 @@ function openBatchReviewModal(batch: AITransactionBatchDraft, onDone: () => void
       const rows = [...reviewOverlay.querySelectorAll<HTMLElement>('.ai-batch-row')]
         .filter(row => row.querySelector<HTMLInputElement>('.ai-batch-enabled')!.checked);
       if (rows.length === 0) {
-        alert('Selecione ao menos um lançamento para salvar.');
+        showAlert('Selecione ao menos um lançamento para salvar.');
         return false;
       }
-      if (!confirm(`Salvar ${rows.length} lançamento${rows.length !== 1 ? 's' : ''} revisado${rows.length !== 1 ? 's' : ''}?`)) return false;
+      if (!await showConfirm(`Salvar ${rows.length} lançamento${rows.length !== 1 ? 's' : ''} revisado${rows.length !== 1 ? 's' : ''}?`, { okLabel: 'Salvar' })) return false;
 
       for (const row of rows) {
         const description = row.querySelector<HTMLInputElement>('.ai-batch-desc')!.value.trim();
@@ -565,7 +566,7 @@ function openBatchReviewModal(batch: AITransactionBatchDraft, onDone: () => void
         const category_id = row.querySelector<HTMLSelectElement>('.ai-batch-category')!.value;
         const account_id = row.querySelector<HTMLSelectElement>('.ai-batch-account')!.value;
         if (!description || !Number.isFinite(amount) || amount <= 0 || !date || !category_id || !account_id) {
-          alert('Revise descrição, valor, data, categoria e meio de pagamento dos itens selecionados.');
+          showAlert('Revise descrição, valor, data, categoria e meio de pagamento dos itens selecionados.');
           return false;
         }
         await invoke('transactions:create', {
@@ -679,10 +680,10 @@ function openImportModal(): void {
   overlay.querySelector('#btn-imp-preview')?.addEventListener('click', async () => {
     const fileInput = overlay.querySelector<HTMLInputElement>('#imp-file')!;
     const file = fileInput.files?.[0];
-    if (!file) { alert('Selecione um arquivo.'); return; }
+    if (!file) { showAlert('Selecione um arquivo.'); return; }
 
     const filePath = (file as File & { path?: string }).path ?? '';
-    if (!filePath) { alert('Não foi possível ler o caminho do arquivo.'); return; }
+    if (!filePath) { showAlert('Não foi possível ler o caminho do arquivo.'); return; }
 
     const preview = await invoke<{ rows: unknown[]; format: string; total: number; duplicates: number }>('import:preview', filePath);
     previewedRows = preview.rows;
@@ -719,7 +720,7 @@ function openImportModal(): void {
     const accountId  = (overlay.querySelector<HTMLSelectElement>('#imp-account')!).value;
     const categoryId = (overlay.querySelector<HTMLSelectElement>('#imp-category')!).value;
     const useSuggestions = overlay.querySelector<HTMLInputElement>('#imp-use-suggestions')!.checked;
-    if (!accountId || !categoryId) { alert('Selecione o meio de pagamento e a categoria de destino.'); return; }
+    if (!accountId || !categoryId) { showAlert('Selecione o meio de pagamento e a categoria de destino.'); return; }
 
     const result = await invoke<{ imported: number; skipped: number }>('import:confirm', {
       rows: previewedRows,
@@ -729,7 +730,7 @@ function openImportModal(): void {
     });
 
     overlay.remove();
-    alert(`Importação concluída: ${result.imported} transações importadas, ${result.skipped} ignoradas.`);
+    showAlert(`Importação concluída: ${result.imported} transações importadas, ${result.skipped} ignoradas.`);
     await invoke('transactions:list', {});
   });
 }
@@ -813,18 +814,18 @@ function collectPayments(overlay: HTMLElement, total: number): PaymentSplit[] | 
   let sum = 0;
   for (const payment of payments) {
     if (!payment.account_id || !Number.isFinite(payment.amount) || payment.amount <= 0) {
-      alert('Preencha todos os meios de pagamento com valores válidos.');
+      showAlert('Preencha todos os meios de pagamento com valores válidos.');
       return null;
     }
     if (seen.has(payment.account_id)) {
-      alert('Não repita o mesmo meio de pagamento no lançamento.');
+      showAlert('Não repita o mesmo meio de pagamento no lançamento.');
       return null;
     }
     seen.add(payment.account_id);
     sum += payment.amount;
   }
   if (Math.abs(sum - total) > 0.005) {
-    alert('A soma dos meios de pagamento deve ser igual ao valor total.');
+    showAlert('A soma dos meios de pagamento deve ser igual ao valor total.');
     return null;
   }
   return payments;

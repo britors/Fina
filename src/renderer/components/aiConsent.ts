@@ -1,5 +1,6 @@
 import { invoke } from '../api';
 import { openModal } from './modal';
+import { showAlert } from './alertDialog';
 
 type AIProvider = 'openai' | 'gemini';
 
@@ -28,7 +29,7 @@ export interface AIActionOptions {
 export async function runAIAction(opts: AIActionOptions): Promise<void> {
   const settings = await invoke<AISettingsLite>('ai:getSettings');
   if (!settings.enabled) {
-    alert('Ative a IA em Configurações > IA para usar este recurso.');
+    await showAlert('Ative a IA em Configurações > IA para usar este recurso.');
     return;
   }
 

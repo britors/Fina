@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate, getDaysUntilDue } from '../../shared/utils';
 import { openModal } from '../components/modal';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { Account, AIBillDraft, Bill, BillInterval, BillStatus, BillWithCategory, Category, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
@@ -111,7 +112,7 @@ export async function render(el: HTMLElement): Promise<void> {
     });
     el.querySelectorAll<HTMLElement>('[data-del-bill]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (!confirm('Remover esta conta à pagar ')) return;
+        if (!await showConfirm('Remover esta conta à pagar?', { danger: true, okLabel: 'Remover' })) return;
         await invoke('bills:delete', btn.dataset.delBill);
         renderPage();
       });
@@ -239,7 +240,7 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
       const due    = (document.getElementById('f-due')     as HTMLInputElement).value;
       const cat    = (document.getElementById('f-category') as HTMLSelectElement).value;
       const status = (document.getElementById('f-status')  as HTMLSelectElement).value as BillStatus;
-      if (!desc || isNaN(amount) || !due) { alert('Preencha todos os campos.'); return false; }
+      if (!desc || isNaN(amount) || !due) { showAlert('Preencha todos os campos.'); return false; }
       const payments = collectPayments('bill', amount, true);
       if (!payments) return false;
       const payload = { description: desc, amount, due_date: due, status, account_id: payments[0]?.account_id ?? null, category_id: cat || null, recurring: 0 as const, payments };
@@ -258,11 +259,11 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
   updatePaymentSummary(overlay, 'bill');
 }
 
-function openPayBillModal(b: BillWithCategory, onDone: () => void): void {
+async function openPayBillModal(b: BillWithCategory, onDone: () => void): Promise<void> {
   // Se a conta já tem categoria definida, ela é reaproveitada automaticamente
   // no lançamento — só pedimos para escolher quando não há uma.
   if (!b.category_id && expenseCategories.length === 0) {
-    alert('Cadastre uma categoria de despesa antes de marcar contas como pagas.');
+    await showAlert('Cadastre uma categoria de despesa antes de marcar contas como pagas.');
     return;
   }
 
@@ -314,7 +315,7 @@ function openPayBillModal(b: BillWithCategory, onDone: () => void): void {
       try {
         await invoke('bills:markAsPaid', { id: b.id, category_id, date, payments });
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Não foi possível marcar como paga.');
+        showAlert(err instanceof Error ? err.message : 'Não foi possível marcar como paga.');
         return false;
       }
       onDone();
@@ -355,11 +356,11 @@ function openDuplicateBillModal(b: Bill, onDone: () => void): void {
     onSave: async () => {
       const times    = parseInt((document.getElementById('f-dup-times') as HTMLInputElement).value, 10);
       const interval = (document.getElementById('f-dup-interval') as HTMLSelectElement).value as BillInterval;
-      if (!Number.isInteger(times) || times < 1) { alert('Informe um número de repetições válido.'); return false; }
+      if (!Number.isInteger(times) || times < 1) { showAlert('Informe um número de repetições válido.'); return false; }
       try {
         await invoke('bills:duplicate', { id: b.id, times, interval });
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Não foi possível duplicar a conta.');
+        showAlert(err instanceof Error ? err.message : 'Não foi possível duplicar a conta.');
         return false;
       }
       onDone();
@@ -428,18 +429,18 @@ function collectPayments(prefix: string, total: number, allowEmpty: boolean): Pa
   let sum = 0;
   for (const payment of payments) {
     if (!payment.account_id || !Number.isFinite(payment.amount) || payment.amount <= 0) {
-      alert('Preencha todos os meios de pagamento com valores válidos.');
+      showAlert('Preencha todos os meios de pagamento com valores válidos.');
       return null;
     }
     if (seen.has(payment.account_id)) {
-      alert('Não repita o mesmo meio de pagamento.');
+      showAlert('Não repita o mesmo meio de pagamento.');
       return null;
     }
     seen.add(payment.account_id);
     sum += payment.amount;
   }
   if (Math.abs(sum - total) > 0.005) {
-    alert('A soma dos meios de pagamento deve ser igual ao valor total.');
+    showAlert('A soma dos meios de pagamento deve ser igual ao valor total.');
     return null;
   }
   return payments;

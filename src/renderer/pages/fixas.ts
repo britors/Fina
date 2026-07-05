@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate } from '../../shared/utils';
 import { openModal } from '../components/modal';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import type { Account, BillInterval, BillPriceIncrease, BillWithCategory, Category, DetectedRecurrence } from '../../shared/types';
 
@@ -126,7 +127,7 @@ export async function render(el: HTMLElement): Promise<void> {
     });
     el.querySelectorAll<HTMLElement>('[data-del-fixed]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (!confirm('Remover esta despesa fixa?')) return;
+        if (!await showConfirm('Remover esta despesa fixa?', { danger: true, okLabel: 'Remover' })) return;
         await invoke('bills:delete', btn.dataset.delFixed);
         renderPage();
       });
@@ -202,7 +203,7 @@ function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => vo
       const interval = (document.getElementById('f-interval') as HTMLSelectElement).value as BillInterval;
 
       if (!description || !Number.isFinite(amount) || amount <= 0 || !due) {
-        alert('Preencha descrição, valor e vencimento.');
+        showAlert('Preencha descrição, valor e vencimento.');
         return false;
       }
 

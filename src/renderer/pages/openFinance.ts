@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import type { AccountType, OpenFinanceOverview, OpenFinanceProviderOverview } from '../../shared/types';
 
 const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
@@ -83,7 +84,7 @@ export async function render(el: HTMLElement): Promise<void> {
     el.querySelectorAll<HTMLElement>('[data-disable-provider]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const provider = btn.dataset.disableProvider!;
-        if (!confirm('Desconectar este provedor? Credenciais e identificador serão removidos. Contas e lançamentos já importados serão mantidos como dados locais.')) return;
+        if (!await showConfirm('Desconectar este provedor? Credenciais e identificador serão removidos. Contas e lançamentos já importados serão mantidos como dados locais.', { danger: true, okLabel: 'Desconectar' })) return;
         overview = await invoke<OpenFinanceOverview>('openFinance:disableProvider', provider);
         renderPage();
       });
@@ -96,7 +97,7 @@ export async function render(el: HTMLElement): Promise<void> {
         provider,
         accountId,
       });
-      alert([
+      showAlert([
         'Sincronização concluída.',
         `Contas criadas: ${result.accountsCreated}`,
         `Contas atualizadas: ${result.accountsUpdated}`,
@@ -106,7 +107,7 @@ export async function render(el: HTMLElement): Promise<void> {
       overview = await invoke<OpenFinanceOverview>('openFinance:getOverview');
       renderPage();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível sincronizar.');
+      showAlert(err instanceof Error ? err.message : 'Não foi possível sincronizar.');
     }
   }
 

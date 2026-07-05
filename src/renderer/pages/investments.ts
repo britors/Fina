@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, getDaysUntilDue } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import { createDonut } from '../components/charts';
 import type { Investment, InvestmentSummary, InvestmentType } from '../../shared/types';
 
@@ -153,7 +154,8 @@ export async function render(el: HTMLElement): Promise<void> {
     el.querySelectorAll<HTMLElement>('.btn-del-inv').forEach(btn =>
       btn.addEventListener('click', async () => {
         const inv = investments.find(i => i.id === btn.dataset.id);
-        if (!inv || !confirm(`Excluir "${inv.name}"?`)) return;
+        if (!inv) return;
+        if (!await showConfirm(`Excluir "${inv.name}"?`, { danger: true, okLabel: 'Excluir' })) return;
         await invoke('investments:delete', inv.id);
         await load();
         await renderPage();
@@ -231,7 +233,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
     overlay.querySelector('#btn-save-inv')?.addEventListener('click', async () => {
       const name = (overlay.querySelector<HTMLInputElement>('#f-name')!).value.trim();
-      if (!name) { alert('Informe o nome do investimento.'); return; }
+      if (!name) { showAlert('Informe o nome do investimento.'); return; }
 
       const payload = {
         name,
