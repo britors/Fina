@@ -1,5 +1,6 @@
 import { invoke } from '../api';
 import { formatDate } from '../../shared/utils';
+import { showAlert, showConfirm } from '../components/alertDialog';
 
 type AIProvider = 'openai' | 'gemini';
 
@@ -124,14 +125,14 @@ export async function render(el: HTMLElement): Promise<void> {
       history = await invoke<AIConversation[]>('ai:history');
       await renderPage();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível consultar o assistente.');
+      showAlert(err instanceof Error ? err.message : 'Não foi possível consultar o assistente.');
       btn.disabled = false;
       btn.innerHTML = '<i class="ti ti-send"></i> Enviar pergunta';
     }
   }
 
   async function clearHistory(): Promise<void> {
-    if (!confirm('Apagar todo o histórico de perguntas e respostas?')) return;
+    if (!await showConfirm('Apagar todo o histórico de perguntas e respostas?', { danger: true, okLabel: 'Apagar' })) return;
     await invoke('ai:clearHistory');
     history = [];
     await renderPage();
@@ -146,7 +147,7 @@ export async function render(el: HTMLElement): Promise<void> {
   async function generateSummary(period: 'day' | 'week' | 'month', btn: HTMLButtonElement): Promise<void> {
     const consentConfirmed = el.querySelector<HTMLInputElement>('#ai-send-consent')!.checked;
     if (!consentConfirmed) {
-      alert('Confirme o consentimento de envio antes de gerar o resumo.');
+      showAlert('Confirme o consentimento de envio antes de gerar o resumo.');
       return;
     }
     btn.disabled = true;
@@ -157,7 +158,7 @@ export async function render(el: HTMLElement): Promise<void> {
         : await invoke<AIAnswer>('ai:periodSummary', { period, consentConfirmed });
       await renderPage();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível gerar o resumo.');
+      showAlert(err instanceof Error ? err.message : 'Não foi possível gerar o resumo.');
       btn.disabled = false;
       btn.innerHTML = `<i class="ti ti-file-text"></i> ${SUMMARY_LABELS[period]}`;
     }

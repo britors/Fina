@@ -30,7 +30,7 @@ import { render as renderOpenFinance  } from './pages/openFinance';
 import { render as renderIRPF         } from './pages/irpf';
 import { render as renderManual       } from './pages/manual';
 import { setActiveRoute               } from './components/sidebar';
-import { setTopbar                    } from './components/topbar';
+import { setTopbar, setTopbarActions  } from './components/topbar';
 
 interface Route {
   title: string | (() => string);
@@ -98,6 +98,7 @@ export function initRouter(content: HTMLElement): void {
 
     content.innerHTML = '';
     content.className = 'page-enter';
+    setTopbarActions('');
     try {
       await route.render(content);
     } catch (err) {

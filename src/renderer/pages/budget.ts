@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, calculateBudgetPercentage } from '../../shared/utils';
 import { openModal } from '../components/modal';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import { openCategoryModal } from '../components/categoryModal';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
@@ -125,7 +126,7 @@ export async function render(el: HTMLElement): Promise<void> {
     });
     el.querySelectorAll<HTMLElement>('[data-del-budget]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (!confirm('Remover este orçamento?')) return;
+        if (!await showConfirm('Remover este orçamento?', { danger: true, okLabel: 'Remover' })) return;
         await invoke('budgets:delete', btn.dataset.delBudget);
         renderPage();
       });
@@ -231,7 +232,7 @@ async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void,
       const y     = parseInt((overlay.querySelector('#f-year')  as HTMLInputElement).value);
       const limit = parseFloat((overlay.querySelector('#f-limit') as HTMLInputElement).value);
       const carryOver = (overlay.querySelector('#f-carry-over') as HTMLInputElement).checked;
-      if (!cat || isNaN(m) || isNaN(y) || isNaN(limit)) { alert('Preencha todos os campos.'); return false; }
+      if (!cat || isNaN(m) || isNaN(y) || isNaN(limit)) { showAlert('Preencha todos os campos.'); return false; }
       const payload = { category_id: cat, month: m, year: y, limit_amount: limit, carry_over: (carryOver ? 1 : 0) as 0 | 1 };
       if (b) { await invoke('budgets:update', { id: b.id, ...payload }); }
       else   { await invoke('budgets:create', payload); }

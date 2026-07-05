@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { Account, AIGoalDraft, Debt, Goal, GoalType } from '../../shared/types';
 
@@ -180,7 +181,8 @@ export async function render(el: HTMLElement): Promise<void> {
     el.querySelectorAll<HTMLElement>('.btn-del-goal').forEach(btn =>
       btn.addEventListener('click', async () => {
         const g = goals.find(x => x.id === btn.dataset.id);
-        if (!g || !confirm(`Excluir a meta "${g.name}"?`)) return;
+        if (!g) return;
+        if (!await showConfirm(`Excluir a meta "${g.name}"?`, { danger: true, okLabel: 'Excluir' })) return;
         await invoke('goals:delete', g.id);
         await load();
         await renderPage();
@@ -258,7 +260,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
     overlay.querySelector('#btn-save-goal')?.addEventListener('click', async () => {
       const name = (overlay.querySelector<HTMLInputElement>('#f-name')!).value.trim();
-      if (!name) { alert('Informe o nome da meta.'); return; }
+      if (!name) { showAlert('Informe o nome da meta.'); return; }
       const payload = {
         name,
         type: (overlay.querySelector<HTMLSelectElement>('#f-type')!).value,

@@ -2,6 +2,7 @@ import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { openModal } from '../components/modal';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import type { PixKeyValidation, PixPayment, PixPaymentStatus, PixRecipient } from '../../shared/types';
 import type { Account } from '../../shared/types';
 
@@ -153,7 +154,8 @@ export async function render(el: HTMLElement): Promise<void> {
     el.querySelectorAll<HTMLElement>('[data-del-recipient]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const recipient = recipients.find(item => item.id === btn.dataset.delRecipient);
-        if (!recipient || !confirm(`Excluir favorecido "${recipient.name}"?`)) return;
+        if (!recipient) return;
+        if (!await showConfirm(`Excluir favorecido "${recipient.name}"?`, { danger: true, okLabel: 'Excluir' })) return;
         await invoke('pix:deleteRecipient', recipient.id);
         renderPage();
       });
@@ -170,7 +172,7 @@ async function openPixPaymentModal(onDone: () => void): Promise<void> {
   ]);
   const openFinanceAccounts = accounts.filter(account => account.openfinance_provider);
   if (openFinanceAccounts.length === 0) {
-    alert('Conecte uma conta via Open Finance antes de iniciar um Pix.');
+    await showAlert('Conecte uma conta via Open Finance antes de iniciar um Pix.');
     return;
   }
 
@@ -232,20 +234,20 @@ async function openPixPaymentModal(onDone: () => void): Promise<void> {
       const description = modal.querySelector<HTMLInputElement>('#pix-description')!.value.trim();
       const validation = await invoke<PixKeyValidation>('pix:validateKey', pix_key);
       if (!validation.valid) {
-        alert(validation.message);
+        showAlert(validation.message);
         return false;
       }
       if (!Number.isFinite(amount) || amount <= 0) {
-        alert('Informe um valor Pix válido.');
+        showAlert('Informe um valor Pix válido.');
         return false;
       }
-      if (!confirm([
+      if (!await showConfirm([
         'Confirmar registro desta tentativa Pix em modo sandbox?',
         '',
         `Destinatário: ${recipient_name || 'não informado'}`,
         `Chave: ${maskDisplayKey(validation.normalizedKey)}`,
         `Valor: ${formatCurrency(amount)}`,
-      ].join('\n'))) return false;
+      ].join('\n'), { okLabel: 'Confirmar' })) return false;
 
       try {
         await invoke<PixPayment>('pix:simulatePayment', {
@@ -259,7 +261,7 @@ async function openPixPaymentModal(onDone: () => void): Promise<void> {
         });
         onDone();
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Não foi possível registrar a tentativa Pix.');
+        showAlert(err instanceof Error ? err.message : 'Não foi possível registrar a tentativa Pix.');
         return false;
       }
     },
@@ -412,7 +414,7 @@ function openRecipientModal(recipient: PixRecipient | null, onDone: () => void):
         await invoke('pix:saveRecipient', { id: recipient?.id, name, pix_key, institution, notes });
         onDone();
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Não foi possível salvar o favorecido.');
+        showAlert(err instanceof Error ? err.message : 'Não foi possível salvar o favorecido.');
         return false;
       }
     },

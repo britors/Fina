@@ -1,5 +1,6 @@
 import { invoke } from '../api';
 import { openModal } from './modal';
+import { showAlert } from './alertDialog';
 import type { AICreateDraft, AICreateDraftTarget } from '../../shared/types';
 
 type AIProvider = 'openai' | 'gemini';
@@ -19,7 +20,7 @@ interface Options<T extends AICreateDraft> {
 export async function openAICreateDraft<T extends AICreateDraft>(opts: Options<T>): Promise<void> {
   const settings = await invoke<AISettingsLite>('ai:getSettings');
   if (!settings.enabled) {
-    alert('Ative a IA em Configurações > IA para usar este recurso.');
+    await showAlert('Ative a IA em Configurações > IA para usar este recurso.');
     return;
   }
 

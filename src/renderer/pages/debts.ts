@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { AIDebtDraft, Debt, DebtType, DebtStatus, DebtSimulation } from '../../shared/types';
 
@@ -139,7 +140,8 @@ export async function render(el: HTMLElement): Promise<void> {
     el.querySelectorAll<HTMLElement>('.btn-del-debt').forEach(btn =>
       btn.addEventListener('click', async () => {
         const d = debts.find(x => x.id === btn.dataset.id);
-        if (!d || !confirm(`Excluir "${d.description}"?`)) return;
+        if (!d) return;
+        if (!await showConfirm(`Excluir "${d.description}"?`, { danger: true, okLabel: 'Excluir' })) return;
         await invoke('debts:delete', d.id);
         await load();
         await renderPage();
@@ -148,7 +150,7 @@ export async function render(el: HTMLElement): Promise<void> {
     el.querySelectorAll<HTMLElement>('.btn-bill').forEach(btn =>
       btn.addEventListener('click', async () => {
         await invoke('debts:createBill', btn.dataset.id!);
-        alert('Parcela adicionada em Contas à pagar.');
+        showAlert('Parcela adicionada em Contas à pagar.');
       })
     );
     el.querySelectorAll<HTMLElement>('.btn-sim').forEach(btn =>
@@ -248,7 +250,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
     overlay.querySelector('#btn-save-debt')?.addEventListener('click', async () => {
       const description = (overlay.querySelector<HTMLInputElement>('#f-desc')!).value.trim();
-      if (!description) { alert('Informe a descrição.'); return; }
+      if (!description) { showAlert('Informe a descrição.'); return; }
       const payload = {
         description,
         type:                    (overlay.querySelector<HTMLSelectElement>('#f-type')!).value,

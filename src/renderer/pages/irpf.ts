@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
+import { showAlert } from '../components/alertDialog';
 import type { IRPFReport, IRPFImportPreview } from '../../shared/types';
 
 export async function render(el: HTMLElement): Promise<void> {
@@ -264,9 +265,9 @@ async function openImportModal(): Promise<void> {
   overlay.querySelector('#btn-imp-preview-irpf')?.addEventListener('click', async () => {
     const fileInput = overlay.querySelector<HTMLInputElement>('#imp-file')!;
     const file = fileInput.files?.[0];
-    if (!file) { alert('Selecione um arquivo CSV.'); return; }
+    if (!file) { showAlert('Selecione um arquivo CSV.'); return; }
     const filePath = (file as File & { path?: string }).path ?? '';
-    if (!filePath) { alert('Não foi possível ler o caminho do arquivo.'); return; }
+    if (!filePath) { showAlert('Não foi possível ler o caminho do arquivo.'); return; }
 
     previewData = await invoke<IRPFImportPreview>('irpf:previewImport', filePath);
     const pvEl = overlay.querySelector('#imp-preview')!;
@@ -287,12 +288,12 @@ async function openImportModal(): Promise<void> {
     if (!previewData) return;
     const accountId = (overlay.querySelector<HTMLSelectElement>('#imp-account')!).value;
     const importYear = parseInt((overlay.querySelector<HTMLInputElement>('#imp-year')!).value);
-    if (!accountId) { alert('Selecione o meio de pagamento de destino.'); return; }
-    if (!importYear) { alert('Informe o ano.'); return; }
+    if (!accountId) { showAlert('Selecione o meio de pagamento de destino.'); return; }
+    if (!importYear) { showAlert('Informe o ano.'); return; }
 
     const result = await invoke<{ imported: number }>('irpf:confirmImport', { preview: previewData, year: importYear, accountId });
     overlay.remove();
-    alert(`Importação concluída: ${result.imported} registros criados no Fina.`);
+    showAlert(`Importação concluída: ${result.imported} registros criados no Fina.`);
   });
 }
 

@@ -1,5 +1,6 @@
 import { invoke, send, on } from '../api';
 import { setTopbarActions } from '../components/topbar';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import { applyAccent, applyTheme } from '../theme';
 import { openCategoryModal } from '../components/categoryModal';
 import type { Account, BalanceAlertSettings, Category, UpdateStatus } from '../../shared/types';
@@ -108,7 +109,7 @@ function renderProfile(el: HTMLElement, s: Settings): void {
   el.querySelector('#save-profile')?.addEventListener('click', async () => {
     const newName  = (document.getElementById('s-name')  as HTMLInputElement).value.trim();
     const newEmail = (document.getElementById('s-email') as HTMLInputElement).value.trim();
-    if (!newName) { alert('Informe o nome.'); return; }
+    if (!newName) { showAlert('Informe o nome.'); return; }
     await invoke('settings:setMany', { user_name: newName, user_email: newEmail });
     s.user_name  = newName;
     s.user_email = newEmail;
@@ -308,7 +309,7 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
     const smtp_to = el.querySelector<HTMLInputElement>('#smtp-to')!.value.trim();
 
     if (smtp_enabled === 'true' && (!smtp_host || !smtp_port || !smtp_from || !smtp_to)) {
-      alert('Informe servidor, porta, remetente e destinatário para ativar o envio por e-mail.');
+      showAlert('Informe servidor, porta, remetente e destinatário para ativar o envio por e-mail.');
       return;
     }
 
@@ -323,7 +324,7 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
       smtp_to,
     });
     Object.assign(s, { smtp_enabled, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass, smtp_from, smtp_to });
-    alert('Configurações SMTP salvas.');
+    showAlert('Configurações SMTP salvas.');
     renderNotifications(el, s);
   });
 
@@ -336,14 +337,14 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
         const parsed = new URL(webhook_url);
         if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error();
       } catch {
-        alert('Informe uma URL http(s) válida para ativar o webhook.');
+        showAlert('Informe uma URL http(s) válida para ativar o webhook.');
         return;
       }
     }
 
     await invoke('settings:setMany', { webhook_enabled, webhook_url });
     Object.assign(s, { webhook_enabled, webhook_url });
-    alert('Configurações de webhook salvas.');
+    showAlert('Configurações de webhook salvas.');
     renderNotifications(el, s);
   });
 }
@@ -392,7 +393,7 @@ function renderFamily(el: HTMLElement, s: Settings): void {
     await invoke('settings:setMany', { family_mode, family_members });
     s.family_mode = family_mode;
     s.family_members = family_members;
-    alert('Configurações de família/casal salvas.');
+    showAlert('Configurações de família/casal salvas.');
     renderFamily(el, s);
   });
 }
@@ -509,18 +510,18 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
 
   el.querySelector('#btn-export')?.addEventListener('click', async () => {
     const savedPath = await invoke<string | null>('backup:export');
-    if (savedPath) alert(`Backup salvo em:\n${savedPath}`);
+    if (savedPath) showAlert(`Backup salvo em:\n${savedPath}`);
   });
 
   el.querySelector('#btn-import-backup')?.addEventListener('click', async () => {
-    if (!confirm('Importar um backup substituirá TODOS os dados atuais do app. Esta ação não pode ser desfeita. Deseja continuar?')) return;
+    if (!await showConfirm('Importar um backup substituirá TODOS os dados atuais do app. Esta ação não pode ser desfeita. Deseja continuar?', { danger: true, okLabel: 'Importar' })) return;
     try {
       const result = await invoke<{ imported: boolean }>('backup:import');
       if (result.imported) {
-        alert('Backup importado com sucesso. O aplicativo será reiniciado.');
+        showAlert('Backup importado com sucesso. O aplicativo será reiniciado.');
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível importar o backup.');
+      showAlert(err instanceof Error ? err.message : 'Não foi possível importar o backup.');
     }
   });
 
@@ -529,7 +530,7 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
     invoke('settings:set', { key: 'autobackup_trigger', value });
     s.autobackup_trigger = value;
     if (value !== 'off' && !s.autobackup_folder) {
-      alert('Escolha também uma pasta de destino para o auto-backup funcionar.');
+      showAlert('Escolha também uma pasta de destino para o auto-backup funcionar.');
     }
   });
 
@@ -544,7 +545,7 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
   el.querySelector<HTMLInputElement>('#sync-enabled')?.addEventListener('change', async (e) => {
     const checked = (e.target as HTMLInputElement).checked;
     if (checked && !s.sync_folder) {
-      alert('Escolha uma pasta sincronizada antes de ativar.');
+      showAlert('Escolha uma pasta sincronizada antes de ativar.');
       (e.target as HTMLInputElement).checked = false;
       return;
     }
@@ -562,24 +563,24 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
   });
 
   el.querySelector('#btn-sync-push')?.addEventListener('click', async () => {
-    if (!s.sync_folder) { alert('Escolha uma pasta sincronizada antes.'); return; }
+    if (!s.sync_folder) { showAlert('Escolha uma pasta sincronizada antes.'); return; }
     try {
       await invoke('sync:push', s.sync_folder);
-      alert('Dados enviados para a pasta sincronizada.');
+      showAlert('Dados enviados para a pasta sincronizada.');
       renderData(el, s, dbPath);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível enviar a sincronização.');
+      showAlert(err instanceof Error ? err.message : 'Não foi possível enviar a sincronização.');
     }
   });
 
   el.querySelector('#btn-sync-pull')?.addEventListener('click', async () => {
-    if (!s.sync_folder) { alert('Escolha uma pasta sincronizada antes.'); return; }
-    if (!confirm('Receber a versão sincronizada substituirá TODOS os dados atuais deste dispositivo. Deseja continuar?')) return;
+    if (!s.sync_folder) { showAlert('Escolha uma pasta sincronizada antes.'); return; }
+    if (!await showConfirm('Receber a versão sincronizada substituirá TODOS os dados atuais deste dispositivo. Deseja continuar?', { danger: true, okLabel: 'Receber' })) return;
     try {
       await invoke('sync:pull', s.sync_folder);
-      alert('Sincronização recebida. O aplicativo será reiniciado.');
+      showAlert('Sincronização recebida. O aplicativo será reiniciado.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível receber a sincronização.');
+      showAlert(err instanceof Error ? err.message : 'Não foi possível receber a sincronização.');
     }
   });
 
@@ -591,7 +592,7 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
       await invoke(wantEnabled ? 'backgroundService:enable' : 'backgroundService:disable');
     } catch (err) {
       input.checked = !wantEnabled;
-      alert(err instanceof Error ? err.message : 'Não foi possível alterar o serviço em segundo plano.');
+      showAlert(err instanceof Error ? err.message : 'Não foi possível alterar o serviço em segundo plano.');
     } finally {
       input.disabled = false;
     }
@@ -662,15 +663,15 @@ async function renderSecurity(el: HTMLElement): Promise<void> {
     const pass = (el.querySelector('#sec-new-pass') as HTMLInputElement).value;
     const confirm_ = (el.querySelector('#sec-new-pass-confirm') as HTMLInputElement).value;
     const ack = (el.querySelector('#sec-ack') as HTMLInputElement).checked;
-    if (!ack) { alert('Confirme que você entende o risco de perda de dados antes de continuar.'); return; }
-    if (pass.length < 4) { alert('Use uma senha de pelo menos 4 caracteres.'); return; }
-    if (pass !== confirm_) { alert('As senhas não conferem.'); return; }
+    if (!ack) { showAlert('Confirme que você entende o risco de perda de dados antes de continuar.'); return; }
+    if (pass.length < 4) { showAlert('Use uma senha de pelo menos 4 caracteres.'); return; }
+    if (pass !== confirm_) { showAlert('As senhas não conferem.'); return; }
     try {
       await invoke('security:enable', pass);
-      alert('Criptografia ativada.');
+      showAlert('Criptografia ativada.');
       renderSecurity(el);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível ativar a criptografia.');
+      showAlert(err instanceof Error ? err.message : 'Não foi possível ativar a criptografia.');
     }
   });
 
@@ -678,26 +679,26 @@ async function renderSecurity(el: HTMLElement): Promise<void> {
     const oldPassword = (el.querySelector('#sec-current-pass') as HTMLInputElement).value;
     const pass = (el.querySelector('#sec-change-pass') as HTMLInputElement).value;
     const confirm_ = (el.querySelector('#sec-change-pass-confirm') as HTMLInputElement).value;
-    if (pass.length < 4) { alert('Use uma senha de pelo menos 4 caracteres.'); return; }
-    if (pass !== confirm_) { alert('As senhas não conferem.'); return; }
+    if (pass.length < 4) { showAlert('Use uma senha de pelo menos 4 caracteres.'); return; }
+    if (pass !== confirm_) { showAlert('As senhas não conferem.'); return; }
     try {
       await invoke('security:changePassword', { oldPassword, newPassword: pass });
-      alert('Senha alterada.');
+      showAlert('Senha alterada.');
       renderSecurity(el);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível trocar a senha.');
+      showAlert(err instanceof Error ? err.message : 'Não foi possível trocar a senha.');
     }
   });
 
   el.querySelector('#btn-disable-encryption')?.addEventListener('click', async () => {
     const currentPass = (el.querySelector('#sec-disable-pass') as HTMLInputElement).value;
-    if (!confirm('Desativar a criptografia deixa o banco de dados em texto plano. Deseja continuar?')) return;
+    if (!await showConfirm('Desativar a criptografia deixa o banco de dados em texto plano. Deseja continuar?', { danger: true, okLabel: 'Desativar' })) return;
     try {
       await invoke('security:disable', currentPass);
-      alert('Criptografia desativada.');
+      showAlert('Criptografia desativada.');
       renderSecurity(el);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Não foi possível desativar a criptografia.');
+      showAlert(err instanceof Error ? err.message : 'Não foi possível desativar a criptografia.');
     }
   });
 }
@@ -917,12 +918,12 @@ async function renderCategories(el: HTMLElement): Promise<void> {
 
   el.querySelectorAll<HTMLElement>('[data-del-cat]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Remover esta categoria? Transações vinculadas podem ser afetadas.')) return;
+      if (!await showConfirm('Remover esta categoria? Transações vinculadas podem ser afetadas.', { danger: true, okLabel: 'Remover' })) return;
       try {
         await invoke('categories:delete', btn.dataset.delCat);
         renderCategories(el);
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Não foi possível remover a categoria.');
+        showAlert(err instanceof Error ? err.message : 'Não foi possível remover a categoria.');
       }
     });
   });
@@ -1047,7 +1048,7 @@ async function renderAI(el: HTMLElement): Promise<void> {
     const apiKey = el.querySelector<HTMLInputElement>('#ai-key')!.value.trim();
     ai = await invoke<AISettings>('ai:saveSettings', { provider, model, enabled, consent });
     if (apiKey) ai = await invoke<AISettings>('ai:setApiKey', { provider, apiKey });
-    alert('Configurações de IA salvas.');
+    showAlert('Configurações de IA salvas.');
     renderAI(el);
   });
 
@@ -1062,7 +1063,7 @@ async function renderAI(el: HTMLElement): Promise<void> {
   });
 
   el.querySelector('#ai-clear-key')?.addEventListener('click', async () => {
-    if (!confirm('Remover a chave de API salva para o provedor atual?')) return;
+    if (!await showConfirm('Remover a chave de API salva para o provedor atual?', { danger: true, okLabel: 'Remover' })) return;
     ai = await invoke<AISettings>('ai:clearApiKey', ai.provider);
     renderAI(el);
   });
@@ -1139,7 +1140,7 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
     const thresholdPct = parseFloat(el.querySelector<HTMLInputElement>('#of-balance-alert-threshold')!.value) || 20;
     const days = parseInt(el.querySelector<HTMLInputElement>('#of-balance-alert-days')!.value, 10) || 7;
     balanceAlert = await invoke<BalanceAlertSettings>('openFinance:saveBalanceAlertSettings', { enabled, thresholdPct, days });
-    alert('Configuração de alerta de saldo salva.');
+    showAlert('Configuração de alerta de saldo salva.');
   });
 
   OPEN_FINANCE_PROVIDERS.forEach(provider => {
@@ -1161,15 +1162,15 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
           apiKey,
           connectionId,
         });
-        alert(`Credenciais da ${provider.name} salvas.`);
+        showAlert(`Credenciais da ${provider.name} salvas.`);
         renderOpenFinance(el);
       } catch (err) {
-        alert(err instanceof Error ? err.message : `Não foi possível salvar as credenciais da ${provider.name}.`);
+        showAlert(err instanceof Error ? err.message : `Não foi possível salvar as credenciais da ${provider.name}.`);
       }
     });
 
     el.querySelector(`#of-clear-${provider.id}`)?.addEventListener('click', async () => {
-      if (!confirm(`Remover as credenciais salvas da ${provider.name}?`)) return;
+      if (!await showConfirm(`Remover as credenciais salvas da ${provider.name}?`, { danger: true, okLabel: 'Remover' })) return;
       openFinance = await invoke<OpenFinanceSettings>('openFinance:clearProviderSecrets', provider.id);
       renderOpenFinance(el);
     });
@@ -1177,9 +1178,9 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
     el.querySelector(`#of-test-${provider.id}`)?.addEventListener('click', async () => {
       try {
         await invoke('openFinance:testProvider', provider.id);
-        alert(`${provider.name} respondeu corretamente.`);
+        showAlert(`${provider.name} respondeu corretamente.`);
       } catch (err) {
-        alert(err instanceof Error ? err.message : `Não foi possível testar ${provider.name}.`);
+        showAlert(err instanceof Error ? err.message : `Não foi possível testar ${provider.name}.`);
       }
     });
 
@@ -1191,7 +1192,7 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
         const result = await invoke<{ accountsCreated: number; accountsUpdated: number; transactionsImported: number; transactionsSkipped: number }>('openFinance:syncProvider', {
           provider: provider.id, accountId, dateFrom, dateTo,
         });
-        alert([
+        showAlert([
           `${provider.name} sincronizado.`,
           `Contas criadas: ${result.accountsCreated}`,
           `Contas atualizadas: ${result.accountsUpdated}`,
@@ -1200,7 +1201,7 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
         ].join('\n'));
         renderOpenFinance(el);
       } catch (err) {
-        alert(err instanceof Error ? err.message : `Não foi possível sincronizar ${provider.name}.`);
+        showAlert(err instanceof Error ? err.message : `Não foi possível sincronizar ${provider.name}.`);
       }
     });
   });

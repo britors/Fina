@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, accountTypeLabel, isCreditLikeAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
+import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { openPayInvoiceModal } from './transactions';
 import type { Account, AccountCurrency, AccountType } from '../../shared/types';
@@ -61,7 +62,7 @@ export async function render(el: HTMLElement): Promise<void> {
     });
     el.querySelectorAll<HTMLElement>('[data-del-acc]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (!confirm('Excluir este meio de pagamento? Todas as transações vinculadas serão removidas.')) return;
+        if (!await showConfirm('Excluir este meio de pagamento? Todas as transações vinculadas serão removidas.', { danger: true, okLabel: 'Excluir' })) return;
         await invoke('accounts:delete', btn.dataset.delAcc);
         renderPage();
       });
@@ -75,7 +76,7 @@ export async function render(el: HTMLElement): Promise<void> {
   document.getElementById('btn-refresh-rates')?.addEventListener('click', async () => {
     await invoke('accounts:refreshExchangeRates');
     await renderPage();
-    alert('Cotações atualizadas.');
+    showAlert('Cotações atualizadas.');
   });
   await renderPage();
 }
@@ -193,8 +194,8 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
       const original   = parseFloat((document.getElementById('f-original-balance') as HTMLInputElement).value);
       const limit      = parseFloat((document.getElementById('f-limit') as HTMLInputElement).value);
 
-      if (!name) { alert('Informe o nome do meio de pagamento.'); return false; }
-      if (curr !== 'BRL' && isNaN(original)) { alert('Informe o saldo na moeda da conta.'); return false; }
+      if (!name) { showAlert('Informe o nome do meio de pagamento.'); return false; }
+      if (curr !== 'BRL' && isNaN(original)) { showAlert('Informe o saldo na moeda da conta.'); return false; }
 
       const payload = {
         name, type, bank_name: bank || null,
@@ -208,7 +209,7 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
         if (acc) { await invoke('accounts:update', { id: acc.id, ...payload }); }
         else     { await invoke('accounts:create', payload); }
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Não foi possível salvar o meio de pagamento.');
+        showAlert(err instanceof Error ? err.message : 'Não foi possível salvar o meio de pagamento.');
         return false;
       }
       onDone();
