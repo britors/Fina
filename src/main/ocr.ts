@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import { app } from 'electron';
 import { createWorker } from 'tesseract.js';
+import type { Bbox, Page, Worker } from 'tesseract.js';
 
 export interface ReceiptData {
   rawText: string;
@@ -19,18 +20,73 @@ function cacheDir(): string {
 
 const MONEY_REGEX = /(\d{1,3}(?:\.\d{3})*,\d{2})/g;
 
+// Palavras que costumam aparecer perto do valor final de um cupom fiscal
+// brasileiro — "valor a pagar" nem sempre contém "total", e é o valor
+// líquido de fato cobrado (após desconto/acréscimo).
+const TOTAL_KEYWORDS = /total|desconto|acr[eé]scimo|pagar/i;
+
 function toNumber(brMoney: string): number {
   return parseFloat(brMoney.replace(/\./g, '').replace(',', '.'));
 }
 
-// Procura o valor total do comprovante: prioriza uma linha contendo "total"
-// com um valor monetário nela; sem isso, assume que o total é o maior valor
-// monetário do texto (heurística razoável para cupons fiscais simples).
-function parseAmount(text: string): number | null {
+function flattenLines(page: Page): { text: string; bbox: Bbox }[] {
+  const lines: { text: string; bbox: Bbox }[] = [];
+  for (const block of page.blocks ?? []) {
+    for (const paragraph of block.paragraphs) {
+      for (const line of paragraph.lines) {
+        lines.push({ text: line.text, bbox: line.bbox });
+      }
+    }
+  }
+  return lines;
+}
+
+// Lê a largura/altura da imagem já processada pelo Tesseract a partir do
+// cabeçalho do PNG que ele devolve (data.imageColor) — evita depender de
+// uma biblioteca externa de imagem só para saber os limites antes de
+// recortar uma região específica.
+function pngDimensions(dataUri: string): { width: number; height: number } | null {
+  const base64 = dataUri.split(',')[1];
+  if (!base64) return null;
+  const buf = Buffer.from(base64, 'base64');
+  if (buf.length < 24) return null;
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+// Procura o valor total do comprovante. Fotos de cupons fiscais costumam ter
+// a coluna de valores (à direita) mais apagada/desfocada que o restante, e o
+// reconhecimento de página inteira às vezes perde só aqueles dígitos,
+// deixando "VALOR TOTAL R$" e afins sem nenhum número na mesma linha. Nesse
+// caso, refazer o OCR só na faixa vertical dessas linhas (até a borda da
+// imagem) costuma recuperar os valores que se perderam na primeira passada.
+async function parseAmount(worker: Worker, imagePath: string, page: Page): Promise<number | null> {
+  const text = page.text;
+
   for (const line of text.split('\n')) {
     if (/total/i.test(line)) {
       const matches = [...line.matchAll(MONEY_REGEX)];
       if (matches.length > 0) return toNumber(matches[matches.length - 1][1]);
+    }
+  }
+
+  const totalLines = flattenLines(page).filter(l => TOTAL_KEYWORDS.test(l.text));
+  const dims = page.imageColor ? pngDimensions(page.imageColor) : null;
+
+  if (totalLines.length > 0 && dims) {
+    const left = Math.max(0, Math.min(...totalLines.map(l => l.bbox.x1)) - 10);
+    const top = Math.max(0, Math.min(...totalLines.map(l => l.bbox.y0)) - 10);
+    const bottom = Math.min(dims.height, Math.max(...totalLines.map(l => l.bbox.y1)) + 40);
+    const width = dims.width - left;
+    const height = bottom - top;
+
+    if (width > 0 && height > 0) {
+      try {
+        const { data: focused } = await worker.recognize(imagePath, { rectangle: { left, top, width, height } });
+        const focusedMatches = [...focused.text.matchAll(MONEY_REGEX)].map(m => toNumber(m[1]));
+        if (focusedMatches.length > 0) return focusedMatches[focusedMatches.length - 1];
+      } catch {
+        // Recorte inválido para essa imagem — segue para o fallback abaixo.
+      }
     }
   }
 
@@ -61,11 +117,11 @@ function parseMerchant(text: string): string | null {
 export async function extractReceiptData(imagePath: string): Promise<ReceiptData> {
   const worker = await createWorker('por', 1, { cachePath: cacheDir() });
   try {
-    const { data } = await worker.recognize(imagePath);
+    const { data } = await worker.recognize(imagePath, {}, { blocks: true, imageColor: true });
     const rawText = data.text;
     return {
       rawText,
-      amount: parseAmount(rawText),
+      amount: await parseAmount(worker, imagePath, data),
       date: parseDate(rawText),
       merchant: parseMerchant(rawText),
     };
