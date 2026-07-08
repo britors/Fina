@@ -77,3 +77,32 @@ export function accountTypeLabel(type: string): string {
 export function isCreditLikeAccountType(type: string): boolean {
   return type === 'credit_card' || type === 'meal_voucher' || type === 'food_voucher';
 }
+
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+// Soma `months` a `date` (YYYY-MM-DD), travando o dia resultante em
+// `targetDay`, clampado ao tamanho do mês de destino.
+export function addMonthsClamped(date: string, months: number, targetDay: number): string {
+  const [year, month] = date.split('-').map(Number);
+  const target = new Date(year, month - 1 + months, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  const day = Math.min(targetDay, lastDay);
+  return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(day)}`;
+}
+
+// Data de fechamento (YYYY-MM-DD) do ciclo de fatura ao qual `date`
+// pertence: compras até o dia de fechamento caem na fatura que fecha nesse
+// mesmo mês; depois dele, caem na fatura do mês seguinte.
+export function invoicePeriodClosingDate(closingDay: number, date: string): string {
+  const day = Number(date.split('-')[2]);
+  return day <= closingDay ? addMonthsClamped(date, 0, closingDay) : addMonthsClamped(date, 1, closingDay);
+}
+
+// Vencimento correspondente a uma data de fechamento de fatura: mesmo mês
+// do fechamento se o dia de vencimento vier depois do dia de fechamento
+// nesse mês, senão mês seguinte — replica o ciclo real fatura/vencimento.
+export function invoiceDueDate(closingDate: string, closingDay: number, dueDay: number): string {
+  return dueDay > closingDay ? addMonthsClamped(closingDate, 0, dueDay) : addMonthsClamped(closingDate, 1, dueDay);
+}

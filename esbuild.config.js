@@ -45,7 +45,7 @@ function copyAssets() {
 async function buildTests() {
   await esbuild.build({
     ...shared,
-    entryPoints: ['tests/accounts.test.ts', 'tests/transactions.test.ts'],
+    entryPoints: ['tests/accounts.test.ts', 'tests/transactions.test.ts', 'tests/invoices.test.ts'],
     outdir: 'out/tests',
     platform: 'node',
     format: 'cjs',

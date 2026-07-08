@@ -1,39 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from './database';
+import { invoicePeriodClosingDate, invoiceDueDate } from '../shared/utils';
 import type { CreditCardInvoice } from '../shared/types';
-
-function pad(n: number): string {
-  return String(n).padStart(2, '0');
-}
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
-}
-
-// Soma `months` a `date` (YYYY-MM-DD), travando o dia resultante em
-// `targetDay`, clampado ao tamanho do mês de destino — mesmo padrão de
-// `addMonthsIso`/`addInterval` já usados em transactions.ts/bills.ts.
-function addMonthsClamped(date: string, months: number, targetDay: number): string {
-  const [year, month] = date.split('-').map(Number);
-  const target = new Date(year, month - 1 + months, 1);
-  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
-  const day = Math.min(targetDay, lastDay);
-  return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(day)}`;
-}
-
-// Data de fechamento (YYYY-MM-DD) do ciclo ao qual `date` pertence: compras
-// até o dia de fechamento caem na fatura que fecha nesse mesmo mês; depois
-// dele, caem na fatura do mês seguinte.
-export function invoicePeriodClosingDate(closingDay: number, date: string): string {
-  const day = Number(date.split('-')[2]);
-  return day <= closingDay ? addMonthsClamped(date, 0, closingDay) : addMonthsClamped(date, 1, closingDay);
-}
-
-// Vencimento correspondente a uma data de fechamento: mesmo mês do
-// fechamento se o dia de vencimento vier depois do dia de fechamento nesse
-// mês, senão mês seguinte — replica o ciclo real fatura/vencimento.
-export function invoiceDueDate(closingDate: string, closingDay: number, dueDay: number): string {
-  return dueDay > closingDay ? addMonthsClamped(closingDate, 0, dueDay) : addMonthsClamped(closingDate, 1, dueDay);
 }
 
 function creditCardCycleFields(accountId: string): { closing_day: number; due_day: number } | null {
