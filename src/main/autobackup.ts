@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { getDb } from './database';
-import { performBackup, backupFileName } from './ipc/backup';
+import { performBackup, backupFileName, cleanupOldBackups } from './ipc/backup';
 
 type AutoBackupEvent = 'on_open' | 'on_close' | 'scheduled';
 
@@ -26,6 +26,7 @@ function isScheduleDue(trigger: string, lastIso: string | null): boolean {
 function doBackup(folder: string): void {
   const filePath = path.join(folder, backupFileName());
   performBackup(filePath);
+  cleanupOldBackups(folder);
   setSetting('autobackup_last', new Date().toISOString());
   console.log(`[AutoBackup] Backup automático salvo em: ${filePath}`);
 }

@@ -1,5 +1,6 @@
 import { ipcMain, dialog, app } from 'electron';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import Database from 'better-sqlite3-multiple-ciphers';
 import { getDb, closeDatabase, openDatabase, runMigrations, dbPath } from '../database';
 
@@ -57,6 +58,32 @@ export function backupFileName(): string {
   const d = new Date();
   const pad = (n: number): string => String(n).padStart(2, '0');
   return `backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}.fin`;
+}
+
+const BACKUP_FILE_RE = /^backup-(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})\.fin$/;
+
+function backupFileDate(name: string): Date | null {
+  const m = BACKUP_FILE_RE.exec(name);
+  if (!m) return null;
+  const [, y, mo, d, h, mi, s] = m;
+  return new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s));
+}
+
+// Apaga backups automáticos com mais de `maxAgeDays`, mantendo sempre pelo
+// menos 1 arquivo na pasta (o mais recente nunca é removido, mesmo se
+// estiver vencido).
+export function cleanupOldBackups(folder: string, maxAgeDays = 15): void {
+  const backups = fs.readdirSync(folder)
+    .map(name => ({ name, date: backupFileDate(name) }))
+    .filter((entry): entry is { name: string; date: Date } => entry.date !== null)
+    .sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  if (backups.length <= 1) return;
+
+  const cutoff = Date.now() - maxAgeDays * 86_400_000;
+  for (const { name, date } of backups.slice(1)) {
+    if (date.getTime() < cutoff) fs.unlinkSync(path.join(folder, name));
+  }
 }
 
 // Substitui o banco atual pelo arquivo informado e reinicia o app. Usado

@@ -249,13 +249,19 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
       onDone();
     },
   });
+  overlay.dataset.syncFirstPaymentAmount = b ? 'false' : 'true';
   bindPaymentRows(overlay, 'bill');
-  overlay.querySelector('#f-amount')?.addEventListener('input', () => updatePaymentSummary(overlay, 'bill'));
+  overlay.querySelector('#f-amount')?.addEventListener('input', () => {
+    syncFirstPaymentAmount(overlay, 'bill');
+    updatePaymentSummary(overlay, 'bill');
+  });
   overlay.querySelector('#btn-add-bill-payment')?.addEventListener('click', () => {
+    overlay.dataset.syncFirstPaymentAmount = 'false';
     overlay.querySelector<HTMLElement>('#bill-payments')!.insertAdjacentHTML('beforeend', paymentRowHtml('', remainingAmount(overlay, 'bill'), 'bill'));
     bindPaymentRows(overlay, 'bill');
     updatePaymentSummary(overlay, 'bill');
   });
+  syncFirstPaymentAmount(overlay, 'bill');
   updatePaymentSummary(overlay, 'bill');
 }
 
@@ -403,8 +409,15 @@ function paymentRowHtml(accountId: string, amount: number, prefix = 'bill'): str
 
 function bindPaymentRows(overlay: HTMLElement, prefix: string): void {
   overlay.querySelectorAll<HTMLElement>(`.${prefix}-payment-row`).forEach(row => {
+    if (row.dataset.bound === 'true') return;
+    row.dataset.bound = 'true';
     row.querySelectorAll('input, select').forEach(ctrl => {
-      ctrl.addEventListener('input', () => updatePaymentSummary(overlay, prefix));
+      ctrl.addEventListener('input', () => {
+        if ((ctrl as HTMLElement).classList.contains(`${prefix}-payment-amount`)) {
+          overlay.dataset.syncFirstPaymentAmount = 'false';
+        }
+        updatePaymentSummary(overlay, prefix);
+      });
       ctrl.addEventListener('change', () => updatePaymentSummary(overlay, prefix));
     });
     row.querySelector<HTMLElement>(`.${prefix}-payment-remove`)?.addEventListener('click', () => {
@@ -413,6 +426,16 @@ function bindPaymentRows(overlay: HTMLElement, prefix: string): void {
       updatePaymentSummary(overlay, prefix);
     });
   });
+}
+
+function syncFirstPaymentAmount(overlay: HTMLElement, prefix: string): void {
+  if (overlay.dataset.syncFirstPaymentAmount !== 'true') return;
+  const rows = [...overlay.querySelectorAll<HTMLElement>(`.${prefix}-payment-row`)];
+  if (rows.length !== 1) return;
+  const totalInput = overlay.querySelector<HTMLInputElement>('#f-amount');
+  const firstPaymentInput = rows[0].querySelector<HTMLInputElement>(`.${prefix}-payment-amount`);
+  if (!totalInput || !firstPaymentInput) return;
+  firstPaymentInput.value = totalInput.value;
 }
 
 function collectPayments(prefix: string, total: number, allowEmpty: boolean): PaymentSplit[] | null {
