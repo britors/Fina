@@ -37,8 +37,8 @@ export function registerAccountHandlers(): void {
     const { balance, original_balance } = await resolveBalance(currency, data.original_balance, data.balance);
     const id = randomUUID();
     getDb().prepare(
-      'INSERT INTO accounts (id, name, type, bank_name, balance, credit_limit, color, currency, original_balance) VALUES (?,?,?,?,?,?,?,?,?)'
-    ).run(id, data.name, data.type, data.bank_name ?? null, balance, data.credit_limit ?? null, data.color ?? null, currency, original_balance);
+      'INSERT INTO accounts (id, name, type, bank_name, balance, credit_limit, color, currency, original_balance, closing_day, due_day) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
+    ).run(id, data.name, data.type, data.bank_name ?? null, balance, data.credit_limit ?? null, data.color ?? null, currency, original_balance, data.closing_day ?? null, data.due_day ?? null);
     return getDb().prepare('SELECT * FROM accounts WHERE id = ?').get(id);
   });
 
@@ -46,8 +46,8 @@ export function registerAccountHandlers(): void {
     const currency = data.currency ?? 'BRL';
     const { balance, original_balance } = await resolveBalance(currency, data.original_balance, data.balance);
     getDb().prepare(
-      `UPDATE accounts SET name=?, type=?, bank_name=?, balance=?, credit_limit=?, color=?, currency=?, original_balance=?, updated_at=datetime('now') WHERE id=?`
-    ).run(data.name, data.type, data.bank_name ?? null, balance, data.credit_limit ?? null, data.color ?? null, currency, original_balance, id);
+      `UPDATE accounts SET name=?, type=?, bank_name=?, balance=?, credit_limit=?, color=?, currency=?, original_balance=?, closing_day=?, due_day=?, updated_at=datetime('now') WHERE id=?`
+    ).run(data.name, data.type, data.bank_name ?? null, balance, data.credit_limit ?? null, data.color ?? null, currency, original_balance, data.closing_day ?? null, data.due_day ?? null, id);
     return getDb().prepare('SELECT * FROM accounts WHERE id = ?').get(id);
   });
 

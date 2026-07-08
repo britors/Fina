@@ -4,7 +4,7 @@ import { openModal } from '../components/modal';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
-import type { Account, AIBillDraft, Bill, BillInterval, BillStatus, BillWithCategory, Category, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
+import type { Account, AIBillDraft, Bill, BillInterval, BillStatus, BillWithCategory, Category, CreditCardInvoiceWithAccount, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 
 const INTERVAL_LABELS: Record<BillInterval, string> = {
   weekly:     'Semanal',
@@ -39,6 +39,7 @@ export async function render(el: HTMLElement): Promise<void> {
       dateTo: filterTo || undefined,
       category_id: filterCategory || undefined,
     });
+    const upcomingInvoices = await invoke<CreditCardInvoiceWithAccount[]>('invoices:listUpcoming');
     const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
     const overdue  = bills.filter(b => b.status === 'overdue');
     const upcoming = bills.filter(b => b.status === 'pending');
@@ -75,6 +76,7 @@ export async function render(el: HTMLElement): Promise<void> {
         </div>
       </div>
 
+      ${invoiceSection(upcomingInvoices)}
       ${billSection('Vencidas', overdue, true)}
       ${billSection('A pagar', upcoming, false)}
       ${billSection('Pagas', paid, false)}
@@ -136,6 +138,43 @@ export async function render(el: HTMLElement): Promise<void> {
     });
   });
   await renderPage();
+}
+
+// Fatura não-paga mais próxima de cada cartão com fatura ativada — só
+// leitura, sem coluna de ações (fechar/pagar acontece no card do cartão em
+// Meios de Pagamento, não aqui).
+function invoiceSection(invoices: CreditCardInvoiceWithAccount[]): string {
+  if (invoices.length === 0) return '';
+  return `
+    <div style="margin-bottom:20px">
+      <h3 style="font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:10px">Próximas faturas</h3>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>CARTÃO</th>
+              <th>STATUS</th>
+              <th>VENCIMENTO</th>
+              <th style="text-align:right">VALOR</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${invoices.map(inv => {
+              const days = getDaysUntilDue(inv.due_date);
+              const badgeCls = inv.status === 'closed' ? (days <= 3 ? 'badge-overdue' : 'badge-pending') : 'badge-ok';
+              const statusLabel = inv.status === 'closed' ? 'Fechada' : 'Aberta';
+              return `<tr>
+                <td><div class="desc-main">${esc(inv.account_name)}</div></td>
+                <td><span class="badge ${badgeCls}">${statusLabel}</span></td>
+                <td style="color:var(--text-2)">${formatDate(inv.due_date)}</td>
+                <td style="text-align:right;font-weight:500">${formatCurrency(inv.amount)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 function billSection(title: string, bills: BillWithCategory[], isOverdue: boolean): string {

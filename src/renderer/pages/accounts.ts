@@ -1,10 +1,10 @@
 import { invoke } from '../api';
-import { formatCurrency, accountTypeLabel, isCreditLikeAccountType } from '../../shared/utils';
+import { formatCurrency, formatDate, accountTypeLabel, isCreditLikeAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { openPayInvoiceModal } from './transactions';
-import type { Account, AccountCurrency, AccountType } from '../../shared/types';
+import type { Account, AccountCurrency, AccountType, CreditCardInvoice, CreditCardInvoiceCardState, CreditCardInvoiceStatus } from '../../shared/types';
 
 const CURRENCY_LABELS: Record<AccountCurrency, string> = { BRL: 'Real (R$)', USD: 'Dólar (US$)', EUR: 'Euro (€)' };
 const CURRENCY_SYMBOLS: Record<AccountCurrency, string> = { BRL: 'R$', USD: 'US$', EUR: '€' };
@@ -17,6 +17,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
   async function renderPage(): Promise<void> {
     const accounts = await invoke<Account[]>('accounts:list');
+    const cardStates = await invoke<Record<string, CreditCardInvoiceCardState>>('invoices:getCardStates');
     const inAcc    = accounts.filter(a => !isCreditLikeAccountType(a.type)).reduce((s, a) => s + a.balance, 0);
     const debt     = accounts.filter(a => isCreditLikeAccountType(a.type)).reduce((s, a) => s + a.balance, 0);
     const total    = inAcc - debt;
@@ -48,7 +49,7 @@ export async function render(el: HTMLElement): Promise<void> {
             <div class="empty-title">Nenhum meio de pagamento cadastrado</div>
             <p>Clique em "Novo meio" para começar.</p></div>`
         : `<div class="grid-2">
-            ${accounts.map(a => accountCard(a)).join('')}
+            ${accounts.map(a => accountCard(a, cardStates[a.id])).join('')}
           </div>`
       }
     `;
@@ -68,7 +69,23 @@ export async function render(el: HTMLElement): Promise<void> {
       });
     });
     el.querySelectorAll<HTMLElement>('[data-pay-invoice]').forEach(btn => {
-      btn.addEventListener('click', () => openPayInvoiceModal(btn.dataset.payInvoice!, renderPage));
+      btn.addEventListener('click', () => {
+        const state = cardStates[btn.dataset.payInvoice!];
+        openPayInvoiceModal(btn.dataset.payInvoice!, renderPage, state?.closed ?? undefined);
+      });
+    });
+    el.querySelectorAll<HTMLElement>('[data-close-invoice]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await invoke('invoices:close', btn.dataset.closeInvoice);
+        renderPage();
+      });
+    });
+    el.querySelectorAll<HTMLElement>('[data-list-invoices]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.listInvoices!;
+        const acc = accounts.find(a => a.id === id);
+        if (acc) openInvoiceListModal(acc, renderPage);
+      });
     });
   }
 
@@ -81,7 +98,7 @@ export async function render(el: HTMLElement): Promise<void> {
   await renderPage();
 }
 
-function accountCard(a: Account): string {
+function accountCard(a: Account, cardState?: CreditCardInvoiceCardState): string {
   const typeColors: Record<string, string> = {
     checking: '#8B5CF6', savings: '#1D9E75', credit_card: '#7F77DD', meal_voucher: '#D85A30', food_voucher: '#10B981', wallet: '#EF9F27',
   };
@@ -97,6 +114,16 @@ function accountCard(a: Account): string {
   const balanceValue = isVoucher ? formatCurrency(availableToSpend) : isCredit ? formatDebt(a.balance) : formatCurrency(a.balance);
   const isNegative = isVoucher ? availableToSpend < 0 : isCredit ? a.balance > 0 : a.balance < 0;
 
+  // Sem fatura ativada (closing_day/due_day não configurados) mantém o
+  // atalho antigo, simples, de "Pagar fatura" — só cartões com o ciclo
+  // configurado ganham o botão dinâmico Fechar/Pagar fatura e a lista.
+  const invoiceButton = !isCreditCard ? '' : !cardState
+    ? `<button class="btn btn-secondary btn-sm" data-pay-invoice="${a.id}">Pagar fatura</button>`
+    : cardState.closed
+      ? `<button class="btn btn-secondary btn-sm" data-pay-invoice="${a.id}">Pagar fatura</button>`
+      : `<button class="btn btn-secondary btn-sm" data-close-invoice="${cardState.open.id}">Fechar fatura</button>`;
+  const listInvoicesButton = isCreditCard ? `<button class="btn btn-ghost btn-sm" data-list-invoices="${a.id}">Ver faturas</button>` : '';
+
   return `
     <div class="account-card">
       <div class="account-card-head">
@@ -106,8 +133,9 @@ function accountCard(a: Account): string {
             ${accountTypeLabel(a.type)}
           </div>
         </div>
-        <div style="display:flex;gap:6px">
-          ${isCreditCard ? `<button class="btn btn-secondary btn-sm" data-pay-invoice="${a.id}">Pagar fatura</button>` : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+          ${invoiceButton}
+          ${listInvoicesButton}
           <button class="btn btn-ghost btn-sm" data-edit-acc="${a.id}">Editar</button>
           <button class="btn btn-danger btn-sm" data-del-acc="${a.id}">✕</button>
         </div>
@@ -119,6 +147,12 @@ function accountCard(a: Account): string {
       </div>
       ${a.currency !== 'BRL' && a.original_balance != null ? `
         <div style="font-size:12px;color:var(--text-3);margin-top:2px">${CURRENCY_SYMBOLS[a.currency]} ${a.original_balance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      ` : ''}
+      ${cardState ? `
+        <div style="font-size:12px;color:var(--text-3);margin-top:6px">
+          Fatura ${cardState.closed ? 'fechada' : 'aberta'}: <strong style="color:var(--text-2)">${formatCurrency((cardState.closed ?? cardState.open).amount)}</strong>
+          · ${cardState.closed ? 'vencimento' : 'fecha em'} ${formatDate(cardState.closed ? cardState.closed.due_date : cardState.open.closing_date)}
+        </div>
       ` : ''}
       ${a.credit_limit ? `
         <div class="prog-track" style="margin-top:10px">
@@ -184,6 +218,19 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
           <input class="form-ctrl" id="f-limit" type="number" step="0.01" value="${acc?.credit_limit ?? ''}">
         </div>
       </div>
+      <div class="form-row" id="f-cycle-group" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Dia de fechamento da fatura</label>
+          <input class="form-ctrl" id="f-closing-day" type="number" min="1" max="31" step="1" value="${acc?.closing_day ?? ''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Dia de vencimento da fatura</label>
+          <input class="form-ctrl" id="f-due-day" type="number" min="1" max="31" step="1" value="${acc?.due_day ?? ''}">
+        </div>
+      </div>
+      <div class="form-hint" id="f-cycle-hint" style="display:none;font-size:11px;color:var(--text-3);margin-top:-8px">
+        Preenchendo os dois campos, o Fina passa a criar e anexar as faturas automaticamente a cada lançamento no cartão. Lançamentos anteriores a essa configuração não entram em nenhuma fatura.
+      </div>
     `,
     onSave: async () => {
       const name       = (document.getElementById('f-name')     as HTMLInputElement).value.trim();
@@ -193,9 +240,19 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
       const balance    = parseFloat((document.getElementById('f-balance') as HTMLInputElement).value);
       const original   = parseFloat((document.getElementById('f-original-balance') as HTMLInputElement).value);
       const limit      = parseFloat((document.getElementById('f-limit') as HTMLInputElement).value);
+      const closingDay = parseInt((document.getElementById('f-closing-day') as HTMLInputElement).value, 10);
+      const dueDay     = parseInt((document.getElementById('f-due-day') as HTMLInputElement).value, 10);
 
       if (!name) { showAlert('Informe o nome do meio de pagamento.'); return false; }
       if (curr !== 'BRL' && isNaN(original)) { showAlert('Informe o saldo na moeda da conta.'); return false; }
+      if (type === 'credit_card') {
+        const hasClosing = !isNaN(closingDay);
+        const hasDue = !isNaN(dueDay);
+        if (hasClosing !== hasDue) { showAlert('Preencha os dois dias (fechamento e vencimento) ou deixe ambos em branco.'); return false; }
+        if (hasClosing && (closingDay < 1 || closingDay > 31 || dueDay < 1 || dueDay > 31)) {
+          showAlert('Os dias de fechamento e vencimento devem estar entre 1 e 31.'); return false;
+        }
+      }
 
       const payload = {
         name, type, bank_name: bank || null,
@@ -203,6 +260,8 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
         balance: isNaN(balance) ? 0 : balance,
         original_balance: curr === 'BRL' ? null : original,
         credit_limit: isNaN(limit) ? null : limit,
+        closing_day: type === 'credit_card' && !isNaN(closingDay) ? closingDay : null,
+        due_day: type === 'credit_card' && !isNaN(dueDay) ? dueDay : null,
         color: acc?.color ?? null,
       };
       try {
@@ -225,8 +284,16 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
       overlay.querySelector('#f-balance-foreign-label')!.textContent = `Saldo original (${CURRENCY_SYMBOLS[curr]})`;
     }
   }
+  function toggleCreditCardFields(): void {
+    const type = (overlay.querySelector('#f-type') as HTMLSelectElement).value as AccountType;
+    const isCreditCard = type === 'credit_card';
+    (overlay.querySelector('#f-cycle-group') as HTMLElement).style.display = isCreditCard ? '' : 'none';
+    (overlay.querySelector('#f-cycle-hint') as HTMLElement).style.display = isCreditCard ? '' : 'none';
+  }
   overlay.querySelector('#f-currency')?.addEventListener('change', toggleCurrencyFields);
+  overlay.querySelector('#f-type')?.addEventListener('change', toggleCreditCardFields);
   toggleCurrencyFields();
+  toggleCreditCardFields();
 }
 
 function esc(s?: string | null): string {
@@ -236,4 +303,133 @@ function esc(s?: string | null): string {
 function formatDebt(amount: number): string {
   if (Math.abs(amount) < 0.005) return formatCurrency(0);
   return amount > 0 ? `-${formatCurrency(amount)}` : formatCurrency(Math.abs(amount));
+}
+
+const INVOICE_STATUS_LABELS: Record<CreditCardInvoiceStatus, string> = { open: 'Aberta', closed: 'Fechada', paid: 'Paga' };
+
+async function openInvoiceListModal(account: Account, onDone: () => void): Promise<void> {
+  const overlay = openModal({
+    title: `Faturas — ${esc(account.name)}`,
+    saveLabel: 'Fechar',
+    body: `<div id="invoice-list-body">Carregando...</div>`,
+    onSave: () => onDone(),
+  });
+
+  async function refresh(): Promise<void> {
+    const invoices = await invoke<CreditCardInvoice[]>('invoices:listForAccount', account.id);
+    const unpaidTotal = invoices.filter(inv => inv.status !== 'paid').reduce((s, inv) => s + inv.amount, 0);
+    const mismatch = Math.abs(unpaidTotal - account.balance) > 0.005;
+
+    const body = overlay.querySelector<HTMLElement>('#invoice-list-body');
+    if (!body) return;
+    body.innerHTML = `
+      ${mismatch ? `
+        <div style="background:rgba(230,160,40,0.12);border:1px solid #e6a028;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--text-2)">
+          <strong>Atenção:</strong> a soma das faturas em aberto/fechadas (${formatCurrency(unpaidTotal)}) não bate com a fatura atual do cartão (${formatCurrency(account.balance)}).
+          Isso é esperado se houver lançamentos anteriores à ativação do rastreamento de faturas, ou se algum valor foi editado manualmente aqui.
+        </div>
+      ` : ''}
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <button class="btn btn-secondary btn-sm" id="btn-new-invoice"><i class="ti ti-plus"></i> Nova fatura</button>
+      </div>
+      ${invoices.length === 0
+        ? `<div style="color:var(--text-3);font-size:13px">Nenhuma fatura registrada ainda.</div>`
+        : `<div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr><th>FECHAMENTO</th><th>VENCIMENTO</th><th style="text-align:right">VALOR</th><th>STATUS</th><th></th></tr>
+              </thead>
+              <tbody>
+                ${invoices.map(inv => `
+                  <tr>
+                    <td>${formatDate(inv.closing_date)}</td>
+                    <td>${formatDate(inv.due_date)}</td>
+                    <td style="text-align:right;font-weight:500">${formatCurrency(inv.amount)}</td>
+                    <td><span class="badge">${INVOICE_STATUS_LABELS[inv.status]}</span></td>
+                    <td>
+                      <div style="display:flex;gap:6px">
+                        <button class="btn btn-ghost btn-sm" data-edit-invoice="${inv.id}">Editar</button>
+                        <button class="btn btn-danger btn-sm" data-del-invoice="${inv.id}">✕</button>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>`
+      }
+    `;
+
+    body.querySelectorAll<HTMLElement>('[data-edit-invoice]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const inv = invoices.find(i => i.id === btn.dataset.editInvoice);
+        if (inv) openInvoiceFormModal(account, inv, async () => { await refresh(); onDone(); });
+      });
+    });
+    body.querySelectorAll<HTMLElement>('[data-del-invoice]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!await showConfirm('Excluir esta fatura?', { danger: true, okLabel: 'Excluir' })) return;
+        try {
+          await invoke('invoices:delete', btn.dataset.delInvoice);
+          await refresh();
+          onDone();
+        } catch (err) {
+          showAlert(err instanceof Error ? err.message : 'Não foi possível excluir a fatura.');
+        }
+      });
+    });
+    body.querySelector('#btn-new-invoice')?.addEventListener('click', () => {
+      openInvoiceFormModal(account, null, async () => { await refresh(); onDone(); });
+    });
+  }
+
+  await refresh();
+}
+
+function openInvoiceFormModal(account: Account, invoice: CreditCardInvoice | null, onSaved: () => void): void {
+  const today = new Date().toISOString().split('T')[0];
+  openModal({
+    title: invoice ? 'Editar fatura' : 'Nova fatura',
+    body: `
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Fechamento</label>
+          <input class="form-ctrl" id="f-inv-closing" type="date" value="${invoice?.closing_date ?? today}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Vencimento</label>
+          <input class="form-ctrl" id="f-inv-due" type="date" value="${invoice?.due_date ?? today}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Valor (R$)</label>
+          <input class="form-ctrl" id="f-inv-amount" type="number" step="0.01" min="0" value="${invoice?.amount ?? 0}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-ctrl" id="f-inv-status">
+            ${(['open', 'closed', 'paid'] as CreditCardInvoiceStatus[]).map(st =>
+              `<option value="${st}" ${(invoice?.status ?? 'open') === st ? 'selected' : ''}>${INVOICE_STATUS_LABELS[st]}</option>`
+            ).join('')}
+          </select>
+        </div>
+      </div>
+    `,
+    onSave: async () => {
+      const closing = (document.getElementById('f-inv-closing') as HTMLInputElement).value;
+      const due     = (document.getElementById('f-inv-due')     as HTMLInputElement).value;
+      const amount  = parseFloat((document.getElementById('f-inv-amount') as HTMLInputElement).value);
+      const status  = (document.getElementById('f-inv-status')  as HTMLSelectElement).value as CreditCardInvoiceStatus;
+      if (!closing || !due || isNaN(amount)) { showAlert('Preencha todos os campos.'); return false; }
+      try {
+        if (invoice) { await invoke('invoices:update', { id: invoice.id, amount, closing_date: closing, due_date: due, status }); }
+        else         { await invoke('invoices:create', { account_id: account.id, amount, closing_date: closing, due_date: due, status }); }
+      } catch (err) {
+        showAlert(err instanceof Error ? err.message : 'Não foi possível salvar a fatura.');
+        return false;
+      }
+      onSaved();
+    },
+  });
 }

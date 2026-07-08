@@ -5,6 +5,7 @@ export type CategoryType = 'income' | 'expense';
 export type CategoryKind = 'essential' | 'variable' | 'income';
 export type BillStatus = 'pending' | 'paid' | 'overdue';
 export type BillInterval = 'weekly' | 'biweekly' | 'monthly' | 'bimonthly' | 'quarterly' | 'semiannual' | 'annual';
+export type CreditCardInvoiceStatus = 'open' | 'closed' | 'paid';
 
 export type AccountCurrency = 'BRL' | 'USD' | 'EUR';
 
@@ -18,6 +19,8 @@ export interface Account {
   color: string | null;
   currency: AccountCurrency;
   original_balance: number | null;
+  closing_day: number | null;
+  due_day: number | null;
   openfinance_provider?: string | null;
   openfinance_id?: string | null;
   created_at: string;
@@ -60,6 +63,7 @@ export interface PaymentSplit {
 
 export interface PaymentSplitWithAccount extends PaymentSplit {
   account_name: string;
+  invoice_id?: string | null;
 }
 
 export interface TransactionWithDetails extends Transaction {
@@ -109,6 +113,26 @@ export interface BillWithCategory extends Bill {
   category_icon: string | null;
   category_color: string | null;
   payments?: PaymentSplitWithAccount[];
+}
+
+export interface CreditCardInvoice {
+  id: string;
+  account_id: string;
+  amount: number;
+  closing_date: string;
+  due_date: string;
+  status: CreditCardInvoiceStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreditCardInvoiceCardState {
+  open: CreditCardInvoice;
+  closed: CreditCardInvoice | null;
+}
+
+export interface CreditCardInvoiceWithAccount extends CreditCardInvoice {
+  account_name: string;
 }
 
 export interface BillPriceHistory {

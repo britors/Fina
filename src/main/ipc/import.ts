@@ -5,6 +5,7 @@ import { getDb } from '../database';
 import { parseOFX } from '../import/ofx-parser';
 import { parseCSV } from '../import/csv-parser';
 import { adjustBalance, balanceDelta } from './transactions';
+import { attachToInvoice } from '../invoices';
 import { suggestCategoryFromHistory } from './categorySuggestion';
 import type { ImportPreview, ImportPreviewRow, TransactionType } from '../../shared/types';
 
@@ -102,6 +103,7 @@ export function registerImportHandlers(): void {
       INSERT INTO transaction_payments (id, transaction_id, account_id, amount)
       VALUES (?,?,?,?)
     `);
+    const linkInvoice = db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?');
 
     const doImport = db.transaction((rows: ImportPreviewRow[]) => {
       for (const row of rows) {
@@ -114,10 +116,13 @@ export function registerImportHandlers(): void {
         insert.run(id, payload.accountId, categoryId,
                    row.description, row.amount, row.type as TransactionType,
                    row.date, notes);
+        const signedDelta = adjustBalance(payload.accountId, balanceDelta(row.type as TransactionType, row.amount));
         if (row.type !== 'transfer') {
-          insertPayment.run(randomUUID(), id, payload.accountId, row.amount);
+          const paymentId = randomUUID();
+          insertPayment.run(paymentId, id, payload.accountId, row.amount);
+          const invoiceId = attachToInvoice(payload.accountId, row.date, signedDelta);
+          if (invoiceId) linkInvoice.run(invoiceId, paymentId);
         }
-        adjustBalance(payload.accountId, balanceDelta(row.type as TransactionType, row.amount));
         imported++;
       }
     });

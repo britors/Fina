@@ -4,7 +4,7 @@ import { openModal } from '../components/modal';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
-import type { Account, AITransactionBatchDraft, AITransactionDraft, Category, CategorySuggestion, PaymentSplit, PaymentSplitWithAccount, TransactionStatus, TransactionWithDetails, TransactionType } from '../../shared/types';
+import type { Account, AITransactionBatchDraft, AITransactionDraft, Category, CategorySuggestion, CreditCardInvoice, PaymentSplit, PaymentSplitWithAccount, TransactionStatus, TransactionWithDetails, TransactionType } from '../../shared/types';
 
 let accounts: Account[]  = [];
 let categories: Category[] = [];
@@ -266,10 +266,21 @@ interface TxDraft {
 // informado — pagar uma fatura é dinheiro mudando de bolso, não uma
 // despesa nova (a compra original já virou despesa/fatura quando foi
 // feita), e transferências já ficam de fora dos totais de receita/despesa.
-export async function openPayInvoiceModal(cardAccountId: string, onDone: () => void): Promise<void> {
+// Quando `invoice` é informado (fatura fechada aguardando pagamento), o
+// valor já vem pré-preenchido e, ao salvar com sucesso, a fatura é marcada
+// como paga.
+export async function openPayInvoiceModal(cardAccountId: string, onDone: () => void, invoice?: CreditCardInvoice): Promise<void> {
   if (accounts.length === 0) accounts = await invoke<Account[]>('accounts:list');
   if (categories.length === 0) categories = await invoke<Category[]>('categories:list');
-  openTxModal(null, onDone, { type: 'transfer', toAccountId: cardAccountId, description: 'Pagamento de fatura' });
+  const handleDone = invoice
+    ? async () => { await invoke('invoices:markPaid', invoice.id); onDone(); }
+    : onDone;
+  openTxModal(null, handleDone, {
+    type: 'transfer',
+    toAccountId: cardAccountId,
+    description: 'Pagamento de fatura',
+    amount: invoice?.amount,
+  });
 }
 
 function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draft?: TxDraft): void {

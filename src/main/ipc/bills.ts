@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import { adjustBalance } from './transactions';
+import { attachToInvoice } from '../invoices';
 import type { Bill, BillInterval, BillPriceIncrease, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 
 type BillInput = Omit<Bill, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[] };
@@ -247,7 +248,10 @@ export function registerBillHandlers(): void {
 
     db.transaction(() => {
       if (bill.recurring) {
-        for (const payment of payments) adjustBalance(payment.account_id, -payment.amount);
+        for (const payment of payments) {
+          const signedDelta = adjustBalance(payment.account_id, -payment.amount);
+          attachToInvoice(payment.account_id, paidAt, signedDelta);
+        }
         db.prepare(`UPDATE bills SET status='paid', updated_at=datetime('now') WHERE id=?`).run(id);
         replaceBillPayments(id, payments);
         return;
@@ -258,9 +262,13 @@ export function registerBillHandlers(): void {
         'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,0)'
       ).run(txId, payments[0].account_id, finalCategoryId, bill.description, bill.amount, 'expense', paidAt, 'confirmed', null);
       const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount) VALUES (?,?,?,?)');
+      const invoiceLinkStmt = db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?');
       for (const payment of payments) {
-        txPaymentStmt.run(randomUUID(), txId, payment.account_id, payment.amount);
-        adjustBalance(payment.account_id, -payment.amount);
+        const paymentId = randomUUID();
+        txPaymentStmt.run(paymentId, txId, payment.account_id, payment.amount);
+        const signedDelta = adjustBalance(payment.account_id, -payment.amount);
+        const invoiceId = attachToInvoice(payment.account_id, paidAt, signedDelta);
+        if (invoiceId) invoiceLinkStmt.run(invoiceId, paymentId);
       }
       db.prepare('DELETE FROM bills WHERE id = ?').run(id);
     })();

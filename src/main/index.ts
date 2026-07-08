@@ -9,6 +9,7 @@ import { registerTransactionHandlers } from './ipc/transactions';
 import { registerCategoryHandlers } from './ipc/categories';
 import { registerBudgetHandlers } from './ipc/budgets';
 import { registerBillHandlers } from './ipc/bills';
+import { registerInvoiceHandlers } from './ipc/invoices';
 import { registerSettingsHandlers } from './ipc/settings';
 import { registerAssetHandlers } from './ipc/assets';
 import { registerInvestmentHandlers } from './ipc/investments';
@@ -130,6 +131,7 @@ function registerHandlers(): void {
   registerCategoryHandlers();
   registerBudgetHandlers();
   registerBillHandlers();
+  registerInvoiceHandlers();
   registerRecurrenceDetectionHandlers();
   registerAnomalyDetectionHandlers();
   registerCategorySuggestionHandlers();

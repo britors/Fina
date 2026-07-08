@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import type { PaymentSplit, PaymentSplitWithAccount, Transaction, TransactionFilters, TransactionType } from '../../shared/types';
 import { isCreditLikeAccountType } from '../../shared/utils';
+import { attachToInvoice, adjustInvoiceAmount } from '../invoices';
 
 const JOIN = `
   SELECT t.*, a.name as account_name,
@@ -23,27 +24,50 @@ export function balanceDelta(type: TransactionType, amount: number): number {
 // Para crédito/vales, "balance" representa a fatura (dívida), não caixa:
 // uma despesa deve aumentar o valor devido, e não diminuí-lo como numa conta
 // corrente. Por isso o delta é invertido para esses meios de pagamento.
-export function adjustBalance(accountId: string, delta: number): void {
+// Retorna o delta já invertido (signedDelta), para que quem chamou possa
+// aplicar o mesmo valor exato à fatura correspondente (attachToInvoice),
+// sem duplicar/dessincronizar a lógica de sinal.
+export function adjustBalance(accountId: string, delta: number): number {
   const db = getDb();
   const account = db.prepare('SELECT type FROM accounts WHERE id = ?').get(accountId) as { type: string } | undefined;
   const signedDelta = account && isCreditLikeAccountType(account.type) ? -delta : delta;
   db.prepare(`UPDATE accounts SET balance = balance + ?, updated_at = datetime('now') WHERE id = ?`)
     .run(signedDelta, accountId);
+  return signedDelta;
 }
 
 // Transferências movem dinheiro entre duas contas: debita a origem e credita o
-// destino, em vez de simplesmente desaparecer como uma despesa comum.
+// destino, em vez de simplesmente desaparecer como uma despesa comum — não
+// afetam fatura (liquidação, não gasto novo).
 function applyBalanceEffect(
-  tx: { id?: string; account_id: string; to_account_id?: string | null; type: TransactionType; amount: number; payments?: PaymentSplit[] },
+  tx: {
+    id?: string;
+    account_id: string;
+    to_account_id?: string | null;
+    type: TransactionType;
+    amount: number;
+    date: string;
+    payments?: (PaymentSplit & { invoice_id?: string | null })[];
+  },
   sign: 1 | -1,
 ): void {
   if (tx.type === 'transfer' && tx.to_account_id) {
     adjustBalance(tx.account_id, -tx.amount * sign);
     adjustBalance(tx.to_account_id, tx.amount * sign);
-  } else {
-    const payments = tx.payments?.length ? tx.payments : tx.id ? getTransactionPayments(tx.id) : [{ account_id: tx.account_id, amount: tx.amount }];
-    for (const payment of payments) {
-      adjustBalance(payment.account_id, balanceDelta(tx.type, payment.amount) * sign);
+    return;
+  }
+
+  const payments = tx.payments?.length ? tx.payments : tx.id ? getTransactionPayments(tx.id) : [{ account_id: tx.account_id, amount: tx.amount }];
+  for (const payment of payments) {
+    const signedDelta = adjustBalance(payment.account_id, balanceDelta(tx.type, payment.amount) * sign);
+    if (sign === 1) {
+      const invoiceId = attachToInvoice(payment.account_id, tx.date, signedDelta);
+      if (invoiceId && tx.id) {
+        getDb().prepare('UPDATE transaction_payments SET invoice_id = ? WHERE transaction_id = ? AND account_id = ?')
+          .run(invoiceId, tx.id, payment.account_id);
+      }
+    } else if (payment.invoice_id) {
+      adjustInvoiceAmount(payment.invoice_id, signedDelta);
     }
   }
 }
@@ -122,7 +146,7 @@ function assertCanInstall(data: InstallmentTransactionInput, payments: PaymentSp
 
 function getTransactionPayments(transactionId: string): PaymentSplitWithAccount[] {
   return getDb().prepare(`
-    SELECT p.account_id, p.amount, a.name as account_name
+    SELECT p.account_id, p.amount, p.invoice_id, a.name as account_name
     FROM transaction_payments p
     JOIN accounts a ON a.id = p.account_id
     WHERE p.transaction_id = ?
@@ -263,6 +287,7 @@ export function registerTransactionHandlers(): void {
             to_account_id: data.to_account_id,
             type: data.type!,
             amount: data.amount!,
+            date: data.date!,
             payments,
           }, 1);
         }
