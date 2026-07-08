@@ -8,162 +8,53 @@
 
     body {
       font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
-      background: #0C1A14;
+      background: #0C1A14 url('assets/splash-fino.jpg') center / cover no-repeat;
       color: #fff;
       width: 700px;
       height: 400px;
-      display: flex;
-      align-items: center;
       overflow: hidden;
       border-radius: 14px;
       -webkit-app-region: drag;
       user-select: none;
       position: relative;
+      animation: zoomIn 6s ease-out both;
     }
 
-    /* Subtle grid lines — same as banner */
-    .grid {
+    /* Gradient scrim so the wordmark stays legible over the art */
+    .scrim {
       position: absolute;
       inset: 0;
+      background: linear-gradient(180deg, rgba(12,26,20,0.05) 0%, rgba(12,26,20,0) 30%, rgba(12,26,20,0.55) 72%, rgba(12,26,20,0.92) 100%);
       pointer-events: none;
     }
-    .grid line { stroke: #1D9E75; stroke-width: 0.3; opacity: 0.15; }
 
-    /* Left glow */
-    .glow {
+    /* Brand block, bottom-left over the scrim */
+    .brand-block {
       position: absolute;
-      left: -40px; top: 50%;
-      transform: translateY(-50%);
-      width: 200px; height: 200px;
-      background: radial-gradient(circle, rgba(29,158,117,0.12) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    /* Left side */
-    .left {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      padding: 0 44px;
-      flex: 0 0 auto;
+      left: 40px;
+      bottom: 30px;
       z-index: 1;
     }
 
-    /* Icon (bar chart in circle — from fina_logo.svg) */
-    .icon-wrap {
-      margin-bottom: 22px;
-      animation: pop 0.45s cubic-bezier(0.34,1.56,0.64,1) both;
-    }
-    .icon-wrap svg { width: 88px; height: 88px; display: block; }
-    .icon-wrap img { height: 108px; width: auto; display: block; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.35)); }
-
     .brand {
-      font-size: 58px;
+      font-size: 42px;
       font-weight: 300;
-      letter-spacing: -1.5px;
+      letter-spacing: -1px;
       color: #fff;
       line-height: 1;
-      animation: fadeUp 0.4s 0.1s ease both;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.4);
+      animation: fadeUp 0.5s 0.15s ease both;
     }
 
     .tagline {
       font-size: 11px;
       font-weight: 400;
       letter-spacing: 3px;
-      color: #4B9E80;
-      margin-top: 8px;
-      animation: fadeUp 0.4s 0.15s ease both;
+      color: #7FE0BC;
+      margin-top: 6px;
+      text-shadow: 0 1px 6px rgba(0,0,0,0.4);
+      animation: fadeUp 0.5s 0.25s ease both;
     }
-
-    .divider {
-      width: 200px;
-      height: 0.5px;
-      background: rgba(29,158,117,0.3);
-      margin: 14px 0;
-      animation: fadeUp 0.4s 0.2s ease both;
-    }
-
-    .copy {
-      font-size: 15px;
-      font-weight: 300;
-      color: #E5E7EB;
-      line-height: 1.6;
-      animation: fadeUp 0.4s 0.25s ease both;
-    }
-
-    .pills {
-      display: flex;
-      gap: 8px;
-      margin-top: 20px;
-      animation: fadeUp 0.4s 0.3s ease both;
-    }
-    .pill {
-      padding: 5px 12px;
-      border-radius: 12px;
-      font-size: 11px;
-      background: #0F2E22;
-      border: 0.5px solid #1D9E75;
-      color: #1D9E75;
-    }
-
-    /* Right side: mini mockup */
-    .right {
-      flex: 1;
-      padding: 20px 28px 20px 12px;
-      z-index: 1;
-      animation: fadeIn 0.5s 0.35s ease both;
-    }
-
-    .mockup {
-      background: #111820;
-      border-radius: 10px;
-      border: 0.5px solid rgba(29,158,117,0.3);
-      padding: 16px;
-      width: 100%;
-    }
-
-    .mock-topbar {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 10px;
-      padding-bottom: 8px;
-      border-bottom: 0.5px solid #2A2D3A;
-    }
-    .dot { width: 8px; height: 8px; border-radius: 50%; }
-    .dot-r { background: #E05A30; opacity: 0.7; }
-    .dot-y { background: #EF9F27; opacity: 0.7; }
-    .dot-g { background: #1D9E75; opacity: 0.7; }
-    .mock-label { font-size: 9px; color: #4B5563; margin-left: 4px; }
-
-    .mock-cards { display: flex; gap: 6px; margin-bottom: 10px; }
-    .mock-card {
-      flex: 1;
-      background: #1A2535;
-      border-radius: 4px;
-      padding: 7px 8px;
-    }
-    .mock-card-label { font-size: 8px; color: #4B9E80; margin-bottom: 3px; }
-    .mock-card-val { font-size: 13px; font-weight: 500; color: #fff; }
-    .mock-card-sub { font-size: 7px; margin-top: 2px; }
-    .green { color: #1D9E75; }
-    .red { color: #E05A30; }
-
-    .mock-bars {
-      background: #1A2535;
-      border-radius: 4px;
-      padding: 7px 8px;
-      margin-bottom: 8px;
-    }
-    .mock-bars-label { font-size: 8px; font-weight: 500; color: #E5E7EB; margin-bottom: 6px; }
-    .bars { display: flex; align-items: flex-end; gap: 4px; height: 50px; }
-    .bar-pair { display: flex; align-items: flex-end; gap: 2px; flex: 1; }
-    .bar { border-radius: 2px 2px 0 0; width: 12px; }
-
-    .mock-txs { background: #1A2535; border-radius: 4px; padding: 7px 8px; }
-    .mock-txs-label { font-size: 8px; font-weight: 500; color: #E5E7EB; margin-bottom: 5px; border-bottom: 0.5px solid #2A2D3A; padding-bottom: 4px; }
-    .tx-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; font-size: 8px; color: #E5E7EB; border-bottom: 0.5px solid rgba(42,45,58,0.5); }
-    .tx-row:last-child { border-bottom: none; }
 
     /* Progress bar at very bottom */
     .progress-wrap {
@@ -179,17 +70,13 @@
       width: 0%;
     }
 
-    @keyframes pop {
-      from { opacity: 0; transform: scale(0.7); }
-      to   { opacity: 1; transform: scale(1); }
-    }
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(8px); }
       to   { opacity: 1; transform: translateY(0); }
     }
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to   { opacity: 1; }
+    @keyframes zoomIn {
+      from { background-size: 108% auto; }
+      to   { background-size: 100% auto; }
     }
     @keyframes load {
       0%   { width: 0%; }
@@ -199,90 +86,11 @@
   </style>
 </head>
 <body>
-  <svg class="grid" viewBox="0 0 700 400" preserveAspectRatio="none">
-    <line x1="0" y1="133" x2="700" y2="133"/>
-    <line x1="0" y1="266" x2="700" y2="266"/>
-    <line x1="175" y1="0" x2="175" y2="400"/>
-    <line x1="350" y1="0" x2="350" y2="400"/>
-    <line x1="525" y1="0" x2="525" y2="400"/>
-  </svg>
-  <div class="glow"></div>
+  <div class="scrim"></div>
 
-  <!-- Left: branding -->
-  <div class="left">
-    <div class="icon-wrap">
-      <img src="assets/mascot.png" alt="Mascote Fina">
-    </div>
-
+  <div class="brand-block">
     <div class="brand">fina</div>
     <div class="tagline">FINANÇAS PESSOAIS</div>
-    <div class="divider"></div>
-    <div class="copy">Controle simples.<br>Vida financeira clara.</div>
-
-    <div class="pills">
-      <span class="pill">Fluxo de caixa</span>
-      <span class="pill">Orçamento</span>
-      <span class="pill">Relatórios</span>
-    </div>
-  </div>
-
-  <!-- Right: mini mockup -->
-  <div class="right">
-    <div class="mockup">
-      <div class="mock-topbar">
-        <div class="dot dot-r"></div>
-        <div class="dot dot-y"></div>
-        <div class="dot dot-g"></div>
-        <span class="mock-label">Dashboard • maio 2026</span>
-      </div>
-
-      <div class="mock-cards">
-        <div class="mock-card">
-          <div class="mock-card-label">Saldo total</div>
-          <div class="mock-card-val">R$12.840</div>
-          <div class="mock-card-sub green">↑ +R$420</div>
-        </div>
-        <div class="mock-card">
-          <div class="mock-card-label">Receitas</div>
-          <div class="mock-card-val">R$8.200</div>
-          <div class="mock-card-sub green">↑ +12%</div>
-        </div>
-        <div class="mock-card">
-          <div class="mock-card-label">Despesas</div>
-          <div class="mock-card-val">R$5.340</div>
-          <div class="mock-card-sub red">↑ +8%</div>
-        </div>
-      </div>
-
-      <div class="mock-bars">
-        <div class="mock-bars-label">Receitas × Despesas</div>
-        <div class="bars">
-          <div class="bar-pair">
-            <div class="bar" style="height:36px;background:#1D9E75;opacity:0.7"></div>
-            <div class="bar" style="height:26px;background:#E05A30;opacity:0.7"></div>
-          </div>
-          <div class="bar-pair">
-            <div class="bar" style="height:40px;background:#1D9E75;opacity:0.75"></div>
-            <div class="bar" style="height:22px;background:#E05A30;opacity:0.7"></div>
-          </div>
-          <div class="bar-pair">
-            <div class="bar" style="height:44px;background:#1D9E75;opacity:0.8"></div>
-            <div class="bar" style="height:30px;background:#E05A30;opacity:0.75"></div>
-          </div>
-          <div class="bar-pair">
-            <div class="bar" style="height:50px;background:#1D9E75"></div>
-            <div class="bar" style="height:34px;background:#E05A30"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="mock-txs">
-        <div class="mock-txs-label">Últimas transações</div>
-        <div class="tx-row"><span>Salário</span><span class="green">+R$ 8.200</span></div>
-        <div class="tx-row"><span>iFood</span><span class="red">-R$ 64,50</span></div>
-        <div class="tx-row"><span>Aluguel</span><span class="red">-R$ 1.400</span></div>
-      </div>
-    </div>
   </div>
 
   <div class="progress-wrap">
