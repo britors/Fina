@@ -275,7 +275,7 @@ export interface ConsolidatedBalance {
   byInstitution: ConsolidatedBalanceGroup[];
 }
 
-export type OpenFinanceConnectionStatus = 'active' | 'pending' | 'incomplete' | 'disabled' | 'unsupported';
+export type OpenFinanceConnectionStatus = 'active' | 'pending' | 'incomplete' | 'disabled' | 'unsupported' | 'awaiting_import';
 
 export interface OpenFinanceLinkedAccount {
   id: string;
@@ -299,6 +299,7 @@ export interface OpenFinanceProviderOverview {
   name: string;
   enabled: boolean;
   supportedSync: boolean;
+  supportsConnect: boolean;
   hasCredentials: boolean;
   hasConnectionId: boolean;
   status: OpenFinanceConnectionStatus;

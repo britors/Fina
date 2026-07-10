@@ -19,6 +19,7 @@ const STATUS_BADGES: Record<OpenFinanceProviderOverview['status'], string> = {
   incomplete: 'badge-warn',
   disabled: 'badge-pending',
   unsupported: 'badge-warn',
+  awaiting_import: 'badge-warn',
 };
 
 export async function render(el: HTMLElement): Promise<void> {
@@ -140,7 +141,7 @@ function providerCard(provider: OpenFinanceProviderOverview): string {
           </div>
           <div>
             <div class="stat-label">Sincronização</div>
-            <div style="font-weight:600;color:${provider.supportedSync ? 'var(--accent)' : 'var(--warning)'}">${provider.supportedSync ? 'Disponível' : 'Não disponível'}</div>
+            <div style="font-weight:600;color:${provider.supportedSync ? 'var(--accent)' : provider.supportsConnect ? 'var(--warning)' : 'var(--text-3)'}">${provider.supportedSync ? 'Automática' : provider.supportsConnect ? 'Manual (importação)' : 'Não disponível'}</div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">
@@ -202,9 +203,13 @@ function emptyProviderState(provider: OpenFinanceProviderOverview): string {
     ? 'Ative e configure este provedor em Configurações > Open Finance.'
     : provider.status === 'unsupported'
       ? 'Credenciais salvas, mas a sincronização automática deste provedor ainda não está implementada.'
-      : provider.status === 'incomplete'
-        ? 'Complete credenciais e identificador de conexão antes de sincronizar.'
-        : 'Nenhuma conta sincronizada ainda.';
+      : provider.status === 'awaiting_import'
+        ? 'Relatório solicitado à Klavi. Baixe o JSON no console da Klavi (ou copie o payload recebido no seu webhook) e importe em Configurações > Open Finance.'
+        : provider.status === 'incomplete'
+          ? 'Complete credenciais e identificador de conexão antes de sincronizar.'
+          : provider.supportsConnect
+            ? 'Nenhuma conta conectada ainda. Conclua a conexão em Configurações > Open Finance.'
+            : 'Nenhuma conta sincronizada ainda.';
 
   return `
     <div class="empty" style="padding:24px">

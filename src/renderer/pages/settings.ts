@@ -947,6 +947,10 @@ type OpenFinanceProviderSettings = {
   hasApiKey: boolean;
   sandbox: boolean;
   connectionId: string;
+  taxId: string;
+  institutionCode: string;
+  institutionName: string;
+  requestId: string;
 };
 
 type OpenFinanceSettings = {
@@ -957,8 +961,13 @@ type OpenFinanceSettings = {
 const OPEN_FINANCE_PROVIDERS: { id: OpenFinanceProvider; name: string; description: string; auth: 'client' | 'apikey' }[] = [
   { id: 'pluggy', name: 'Pluggy', description: 'API Open Finance para contas, saldos, transações, investimentos e pagamentos.', auth: 'client' },
   { id: 'belvo',  name: 'Belvo',  description: 'Dados bancários, enriquecimento, recorrências, verificação de conta/renda e Pix.', auth: 'client' },
-  { id: 'klavi',  name: 'Klavi',  description: 'Open Finance para crédito, risco, inteligência de mercado e pagamentos.', auth: 'apikey' },
+  { id: 'klavi',  name: 'Klavi',  description: 'Open Finance para crédito, risco, inteligência de mercado e pagamentos. Autentica com Access Key + Secret Key.', auth: 'client' },
 ];
+
+// Instituições retornadas pelo fluxo "Buscar instituições" da Klavi — estado
+// volátil só de UI (não persiste em disco), fora de renderOpenFinance para
+// sobreviver aos re-renders recursivos que a tela já faz após cada ação.
+let klaviInstitutions: { code: string; name: string }[] = [];
 
 async function renderAI(el: HTMLElement): Promise<void> {
   let ai = await invoke<AISettings>('ai:getSettings');
@@ -1097,6 +1106,7 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
       provider,
       openFinance.providers[provider.id],
       allAccounts.filter(a => a.openfinance_provider === provider.id),
+      provider.id === 'klavi' ? klaviInstitutions : [],
     )).join('')}
 
     <div class="card" style="margin-top:16px">
@@ -1205,13 +1215,100 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
       }
     });
   });
+
+  el.querySelector('#of-klavi-start')?.addEventListener('click', async () => {
+    const taxId = el.querySelector<HTMLInputElement>('#of-klavi-taxid')!.value.trim();
+    if (!taxId) { showAlert('Informe o CPF ou CNPJ do titular.'); return; }
+    try {
+      const result = await invoke<{ institutions: { code: string; name: string }[] }>('openFinance:klaviStartConnection', { taxId });
+      klaviInstitutions = result.institutions;
+      openFinance = await invoke<OpenFinanceSettings>('openFinance:getSettings');
+      renderOpenFinance(el);
+    } catch (err) {
+      showAlert(err instanceof Error ? err.message : 'Não foi possível buscar as instituições da Klavi.');
+    }
+  });
+
+  el.querySelector('#of-klavi-connect')?.addEventListener('click', async () => {
+    const institutionCode = el.querySelector<HTMLSelectElement>('#of-klavi-institution')?.value;
+    if (!institutionCode) return;
+    try {
+      const result = await invoke<{ consentRedirectUrl: string }>('openFinance:klaviCreateConsent', { institutionCode });
+      send('shell:openExternal', result.consentRedirectUrl);
+      klaviInstitutions = [];
+      openFinance = await invoke<OpenFinanceSettings>('openFinance:getSettings');
+      showAlert('Autorize o acesso na aba aberta no navegador. Depois volte aqui e clique em "Solicitar relatório".');
+      renderOpenFinance(el);
+    } catch (err) {
+      showAlert(err instanceof Error ? err.message : 'Não foi possível criar o consentimento na Klavi.');
+    }
+  });
+
+  el.querySelector('#of-klavi-request-report')?.addEventListener('click', async () => {
+    try {
+      const result = await invoke<{ requestId: string }>('openFinance:klaviRequestReport');
+      openFinance = await invoke<OpenFinanceSettings>('openFinance:getSettings');
+      showAlert(`Relatório solicitado à Klavi (id ${result.requestId}). Assim que ele for entregue (webhook ou console.klavi.ai), cole o JSON no campo abaixo e clique em "Importar relatório".`);
+      renderOpenFinance(el);
+    } catch (err) {
+      showAlert(err instanceof Error ? err.message : 'Não foi possível solicitar o relatório à Klavi.');
+    }
+  });
+
+  el.querySelector('#of-klavi-import')?.addEventListener('click', async () => {
+    const raw = el.querySelector<HTMLTextAreaElement>('#of-klavi-report')!.value.trim();
+    if (!raw) { showAlert('Cole o JSON do relatório antes de importar.'); return; }
+    try {
+      const result = await invoke<{ accountsCreated: number; accountsUpdated: number; transactionsImported: number; transactionsSkipped: number }>('openFinance:klaviImportReport', { report: raw });
+      showAlert([
+        'Relatório da Klavi importado.',
+        `Contas criadas: ${result.accountsCreated}`,
+        `Contas atualizadas: ${result.accountsUpdated}`,
+        `Lançamentos importados: ${result.transactionsImported}`,
+        `Duplicados ignorados: ${result.transactionsSkipped}`,
+      ].join('\n'));
+      renderOpenFinance(el);
+    } catch (err) {
+      showAlert(err instanceof Error ? err.message : 'Não foi possível importar o relatório da Klavi.');
+    }
+  });
+
+  el.querySelector('#of-belvo-start')?.addEventListener('click', async () => {
+    try {
+      const result = await invoke<{ portalUrl: string }>('openFinance:belvoStartConnection');
+      send('shell:openExternal', result.portalUrl);
+      showAlert('Autorize o acesso no My Belvo Portal aberto no navegador. Depois volte aqui e clique em "Verificar conexão".');
+    } catch (err) {
+      showAlert(err instanceof Error ? err.message : 'Não foi possível iniciar a conexão na Belvo.');
+    }
+  });
+
+  el.querySelector('#of-belvo-check')?.addEventListener('click', async () => {
+    try {
+      const result = await invoke<{ status: string; institutionName: string }>('openFinance:belvoCheckConnection');
+      if (result.status === 'valid') {
+        showAlert(`Conexão confirmada${result.institutionName ? ` com ${result.institutionName}` : ''}. Já pode sincronizar.`);
+        openFinance = await invoke<OpenFinanceSettings>('openFinance:getSettings');
+        renderOpenFinance(el);
+      } else if (result.status === 'not_found') {
+        showAlert('Nenhuma conexão encontrada ainda. Conclua a autorização no My Belvo Portal e tente de novo.');
+      } else {
+        showAlert(`Conexão com status "${result.status}". Conclua a autorização no My Belvo Portal e tente de novo.`);
+      }
+    } catch (err) {
+      showAlert(err instanceof Error ? err.message : 'Não foi possível verificar a conexão na Belvo.');
+    }
+  });
 }
 
 function providerCard(
   provider: { id: OpenFinanceProvider; name: string; description: string; auth: 'client' | 'apikey' },
   settings: OpenFinanceProviderSettings,
   linkedAccounts: Account[],
+  institutions: { code: string; name: string }[],
 ): string {
+  const clientLabel = provider.id === 'klavi' ? 'Access Key' : provider.id === 'belvo' ? 'Secret ID' : 'Client ID';
+  const clientSecretLabel = provider.id === 'klavi' ? 'Secret Key' : provider.id === 'belvo' ? 'Secret Password' : 'Client Secret';
   return `
     <div class="card" style="margin-top:16px">
       <div class="card-header">
@@ -1250,12 +1347,12 @@ function providerCard(
         ${provider.auth === 'client' ? `
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">Client ID ${settings.hasClientId ? '(salvo)' : ''}</label>
-              <input class="form-ctrl" id="of-${provider.id}-client-id" type="password" placeholder="${settings.hasClientId ? 'Novo client ID' : 'Client ID'}">
+              <label class="form-label">${clientLabel} ${settings.hasClientId ? '(salvo)' : ''}</label>
+              <input class="form-ctrl" id="of-${provider.id}-client-id" type="password" placeholder="${settings.hasClientId ? `Novo ${clientLabel.toLowerCase()}` : clientLabel}">
             </div>
             <div class="form-group">
-              <label class="form-label">Client Secret ${settings.hasClientSecret ? '(salvo)' : ''}</label>
-              <input class="form-ctrl" id="of-${provider.id}-client-secret" type="password" placeholder="${settings.hasClientSecret ? 'Novo client secret' : 'Client Secret'}">
+              <label class="form-label">${clientSecretLabel} ${settings.hasClientSecret ? '(salvo)' : ''}</label>
+              <input class="form-ctrl" id="of-${provider.id}-client-secret" type="password" placeholder="${settings.hasClientSecret ? `Novo ${clientSecretLabel.toLowerCase()}` : clientSecretLabel}">
             </div>
           </div>
         ` : `
@@ -1264,16 +1361,13 @@ function providerCard(
             <input class="form-ctrl" id="of-${provider.id}-api-key" type="password" placeholder="${settings.hasApiKey ? 'Nova API key' : 'API key'}">
           </div>
         `}
-        <div class="form-group">
-          <label class="form-label">${provider.id === 'pluggy' ? 'Item ID' : 'Identificador da conexão'} ${settings.connectionId ? '(salvo)' : ''}</label>
-          <input class="form-ctrl" id="of-${provider.id}-connection-id" value="${esc(settings.connectionId)}" placeholder="${provider.id === 'pluggy' ? 'Item ID retornado pelo Pluggy Connect' : 'Link/connection ID do provedor'}">
-        </div>
-        ${provider.id !== 'pluggy' ? `
-          <div style="font-size:0.78rem;color:var(--warning);line-height:1.5;margin:-4px 0 12px">
-            Credenciais preparadas. Sincronização automática será ligada quando o adaptador deste provedor for finalizado.
+        ${provider.id === 'pluggy' ? `
+          <div class="form-group">
+            <label class="form-label">Item ID ${settings.connectionId ? '(salvo)' : ''}</label>
+            <input class="form-ctrl" id="of-${provider.id}-connection-id" value="${esc(settings.connectionId)}" placeholder="Item ID retornado pelo Pluggy Connect">
           </div>
         ` : ''}
-        ${provider.id === 'pluggy' && linkedAccounts.length > 0 ? `
+        ${(provider.id === 'pluggy' || provider.id === 'belvo') && linkedAccounts.length > 0 ? `
           <div class="form-row" style="margin-bottom:12px">
             <div class="form-group">
               <label class="form-label">Conta a sincronizar</label>
@@ -1297,10 +1391,83 @@ function providerCard(
         ` : ''}
         <div style="display:flex;justify-content:flex-end;gap:8px">
           <button class="btn btn-ghost btn-sm" id="of-test-${provider.id}">Testar</button>
-          <button class="btn btn-secondary btn-sm" id="of-sync-${provider.id}">Sincronizar</button>
+          ${provider.id === 'pluggy' || provider.id === 'belvo' ? `<button class="btn btn-secondary btn-sm" id="of-sync-${provider.id}">Sincronizar</button>` : ''}
           <button class="btn btn-ghost btn-sm" id="of-clear-${provider.id}">Remover credenciais</button>
           <button class="btn btn-primary btn-sm" id="of-save-${provider.id}">Salvar ${provider.name}</button>
         </div>
+      </div>
+      ${provider.id === 'klavi' ? klaviConnectSection(settings, institutions) : ''}
+      ${provider.id === 'belvo' ? belvoConnectSection(settings) : ''}
+    </div>
+  `;
+}
+
+function belvoConnectSection(settings: OpenFinanceProviderSettings): string {
+  return `
+    <div class="card-hr"></div>
+    <div class="card-body">
+      <div class="settings-row-label" style="margin-bottom:10px">Conectar uma instituição</div>
+      <div style="font-size:0.78rem;color:var(--text-2);line-height:1.5;margin-bottom:12px">
+        A Belvo usa o My Belvo Portal para o consentimento Open Finance. Inicie a conexão, autorize no banco pela aba aberta e depois verifique o status aqui.
+      </div>
+      ${settings.connectionId ? `
+        <div style="background:var(--bg);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:0.8rem;color:var(--text-2);line-height:1.6;margin-bottom:12px">
+          Link: ${esc(settings.connectionId)}${settings.institutionName ? ` · ${esc(settings.institutionName)}` : ''}
+        </div>
+      ` : ''}
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn btn-secondary btn-sm" id="of-belvo-start">Iniciar conexão</button>
+        <button class="btn btn-secondary btn-sm" id="of-belvo-check">Verificar conexão</button>
+      </div>
+    </div>
+  `;
+}
+
+function klaviConnectSection(settings: OpenFinanceProviderSettings, institutions: { code: string; name: string }[]): string {
+  return `
+    <div class="card-hr"></div>
+    <div class="card-body">
+      <div class="settings-row-label" style="margin-bottom:10px">Conectar uma instituição</div>
+      <div style="font-size:0.78rem;color:var(--text-2);line-height:1.5;margin-bottom:12px">
+        A Klavi entrega os dados de forma assíncrona (webhook ou download no console). Conecte o banco pelo fluxo abaixo, depois solicite o relatório e importe o JSON recebido.
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">CPF/CNPJ do titular ${settings.taxId ? '(salvo)' : ''}</label>
+          <input class="form-ctrl" id="of-klavi-taxid" value="${esc(settings.taxId)}" placeholder="Somente números">
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        <button class="btn btn-secondary btn-sm" id="of-klavi-start">Buscar instituições</button>
+      </div>
+      ${institutions.length > 0 ? `
+        <div class="form-row">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Instituição</label>
+            <select class="form-ctrl" id="of-klavi-institution">
+              ${institutions.map(i => `<option value="${esc(i.code)}">${esc(i.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button class="btn btn-primary btn-sm" id="of-klavi-connect">Conectar e autorizar no banco</button>
+        </div>
+      ` : ''}
+      ${settings.connectionId ? `
+        <div style="background:var(--bg);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:0.8rem;color:var(--text-2);line-height:1.6;margin-bottom:12px">
+          Consentimento: ${esc(settings.connectionId)}${settings.institutionName ? ` · ${esc(settings.institutionName)}` : ''}
+          ${settings.requestId ? `<br>Relatório solicitado (id ${esc(settings.requestId)})` : ''}
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+          <button class="btn btn-secondary btn-sm" id="of-klavi-request-report">Solicitar relatório</button>
+        </div>
+      ` : ''}
+      <div class="form-group">
+        <label class="form-label">Importar relatório recebido (JSON)</label>
+        <textarea class="form-ctrl" id="of-klavi-report" rows="4" placeholder="Cole aqui o JSON do relatório entregue pelo webhook ou baixado em console.klavi.ai"></textarea>
+      </div>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn btn-primary btn-sm" id="of-klavi-import">Importar relatório</button>
       </div>
     </div>
   `;

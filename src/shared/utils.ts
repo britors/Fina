@@ -1,4 +1,4 @@
-import type { Account, Transaction, MonthlySummary } from './types';
+import type { Account, Transaction, MonthlySummary, AccountType, TransactionType } from './types';
 
 export function formatCurrency(amount: number, locale = 'pt-BR', currency = 'BRL'): string {
   const normalized = Object.is(amount, -0) || Math.abs(amount) < 0.005 ? 0 : amount;
@@ -105,4 +105,214 @@ export function invoicePeriodClosingDate(closingDay: number, date: string): stri
 // nesse mês, senão mês seguinte — replica o ciclo real fatura/vencimento.
 export function invoiceDueDate(closingDate: string, closingDay: number, dueDay: number): string {
   return dueDay > closingDay ? addMonthsClamped(closingDate, 0, dueDay) : addMonthsClamped(closingDate, 1, dueDay);
+}
+
+// --- Open Finance: normalização de dados remotos (Pluggy, Klavi, ...) ---
+
+export interface OpenFinanceRemoteAccount {
+  id: string;
+  name: string;
+  type: AccountType;
+  bankName: string | null;
+  balance: number;
+  creditLimit: number | null;
+}
+
+export interface OpenFinanceRemoteTransaction {
+  id: string;
+  accountId: string;
+  description: string;
+  amount: number;
+  type: TransactionType;
+  date: string;
+}
+
+export function mapOpenFinanceAccountType(type: string, subtype = ''): AccountType {
+  const normalized = stripAccentsLower(`${type} ${subtype}`);
+  if (normalized.includes('credit') || normalized.includes('cartao')) return 'credit_card';
+  if (normalized.includes('saving') || normalized.includes('poupanca')) return 'savings';
+  if (normalized.includes('wallet') || normalized.includes('carteira')) return 'wallet';
+  return 'checking';
+}
+
+export function stripAccentsLower(value: string): string {
+  return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+// Lê um campo por múltiplos nomes candidatos (exato, depois case-insensitive)
+// — útil para respostas de API cuja documentação pública não confirma a
+// convenção de casing exata (ex.: a Klavi documenta `accesskey` minúsculo,
+// mas a API real usa `accessKey`).
+export function ofPick(obj: Record<string, unknown>, ...keys: string[]): unknown {
+  for (const key of keys) {
+    if (obj[key] !== undefined && obj[key] !== null) return obj[key];
+  }
+  const lowerKeys = keys.map(k => k.toLowerCase());
+  const foundKey = Object.keys(obj).find(k => lowerKeys.includes(k.toLowerCase()));
+  return foundKey !== undefined ? obj[foundKey] : undefined;
+}
+
+function ofNormalizeMoney(value: unknown): number {
+  if (value && typeof value === 'object') {
+    return ofNormalizeMoney(ofPick(value as Record<string, unknown>, 'amount', 'value'));
+  }
+  const num = typeof value === 'number' ? value : parseFloat(String(value ?? '0').replace(',', '.'));
+  return Number.isFinite(num) ? Math.round(num * 100) / 100 : 0;
+}
+
+function ofNormalizeDate(value: unknown): string {
+  const raw = String(value ?? '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : new Date().toISOString().slice(0, 10);
+}
+
+// A Klavi entrega o relatório de forma assíncrona (webhook/console), e a
+// documentação pública não fixa um schema único de resposta — produtos
+// distintos (ex.: "pf checking account", "pf credit card") podem vir
+// aninhados sob a própria chave do produto. Por isso o parser varre tanto
+// a raiz quanto um nível de aninhamento à procura de arrays "accounts", em
+// vez de assumir uma única forma fixa; ajuste aqui se o payload real da
+// sandbox usar um formato diferente do inferido pela doc.
+function extractKlaviAccountNodes(raw: unknown): Record<string, unknown>[] {
+  const groups: Record<string, unknown>[][] = [];
+  if (!raw || typeof raw !== 'object') return [];
+  const obj = raw as Record<string, unknown>;
+
+  const direct = ofPick(obj, 'accounts', 'account');
+  if (Array.isArray(direct)) groups.push(direct.filter(isPlainObject));
+
+  for (const value of Object.values(obj)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const nested = ofPick(value as Record<string, unknown>, 'accounts', 'account');
+    if (Array.isArray(nested)) groups.push(nested.filter(isPlainObject));
+  }
+
+  const seen = new Set<Record<string, unknown>>();
+  const flat: Record<string, unknown>[] = [];
+  for (const group of groups) for (const node of group) {
+    if (seen.has(node)) continue;
+    seen.add(node);
+    flat.push(node);
+  }
+  return flat;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseKlaviAccountNode(node: Record<string, unknown>): OpenFinanceRemoteAccount | null {
+  const id = ofPick(node, 'accountid', 'accountId', 'id', 'number');
+  if (id == null) return null;
+  const type = String(ofPick(node, 'type', 'accounttype') ?? '');
+  const subtype = String(ofPick(node, 'subtype', 'accountsubtype') ?? '');
+  const bankName = ofPick(node, 'brandname', 'bacenname', 'institutionname', 'companyname');
+  const balanceRaw = ofPick(node, 'balance', 'availableamount', 'amount');
+  const creditLimitRaw = ofPick(node, 'creditlimit', 'limitamount', 'overdraftcontractedlimit');
+
+  return {
+    id: String(id),
+    name: String(ofPick(node, 'name', 'marketingname', 'brandname') ?? 'Conta Klavi'),
+    type: mapOpenFinanceAccountType(type, subtype),
+    bankName: bankName != null ? String(bankName) : null,
+    balance: ofNormalizeMoney(balanceRaw),
+    creditLimit: creditLimitRaw != null ? ofNormalizeMoney(creditLimitRaw) : null,
+  };
+}
+
+function parseKlaviTransactionNodes(node: Record<string, unknown>, accountId: string): OpenFinanceRemoteTransaction[] {
+  const list = ofPick(node, 'transactions', 'movements', 'lancamentos');
+  if (!Array.isArray(list)) return [];
+
+  const parsed: OpenFinanceRemoteTransaction[] = [];
+  for (const item of list) {
+    if (!isPlainObject(item)) continue;
+    const id = ofPick(item, 'transactionid', 'transactionId', 'id', 'movementid');
+    if (id == null) continue;
+
+    const rawAmount = ofNormalizeMoney(ofPick(item, 'amount', 'transactionamount'));
+    const indicator = stripAccentsLower(String(ofPick(item, 'creditdebittype', 'creditodebitotype', 'type') ?? ''));
+    const type: TransactionType = indicator.includes('debit') || indicator.includes('debito')
+      ? 'expense'
+      : indicator.includes('credit') || indicator.includes('credito')
+        ? 'income'
+        : (rawAmount >= 0 ? 'income' : 'expense');
+
+    const amount = Math.abs(rawAmount);
+    if (amount <= 0) continue;
+
+    parsed.push({
+      id: String(id),
+      accountId,
+      description: String(ofPick(item, 'description', 'transactionname', 'descricao') ?? 'Lançamento Klavi'),
+      amount,
+      type,
+      date: ofNormalizeDate(ofPick(item, 'date', 'transactiondate', 'movementdate')),
+    });
+  }
+  return parsed;
+}
+
+export function parseKlaviReport(raw: unknown): { accounts: OpenFinanceRemoteAccount[]; transactions: OpenFinanceRemoteTransaction[] } {
+  const accounts: OpenFinanceRemoteAccount[] = [];
+  const transactions: OpenFinanceRemoteTransaction[] = [];
+  const seenIds = new Set<string>();
+
+  for (const node of extractKlaviAccountNodes(raw)) {
+    const account = parseKlaviAccountNode(node);
+    if (!account || seenIds.has(account.id)) continue;
+    seenIds.add(account.id);
+    accounts.push(account);
+    transactions.push(...parseKlaviTransactionNodes(node, account.id));
+  }
+
+  return { accounts, transactions };
+}
+
+// --- Open Finance: normalização de dados da Belvo (agregação Brasil/OFDA) ---
+//
+// Ao contrário da Klavi, a agregação Brasil da Belvo é síncrona (pull), mas
+// a doc pública (SPA renderizada em JS) não expôs o schema completo de
+// accounts/transactions durante a implementação — os nomes de campo abaixo
+// (balance.current, credit_data.credit_limit, type INFLOW/OUTFLOW,
+// value_date) são best-effort a partir do conhecimento público da API e
+// podem precisar de ajuste contra a sandbox real.
+
+function belvoResultList(payload: unknown): Record<string, unknown>[] {
+  if (Array.isArray(payload)) return payload.filter(isPlainObject);
+  if (isPlainObject(payload) && Array.isArray(payload.results)) return payload.results.filter(isPlainObject);
+  return [];
+}
+
+export function parseBelvoAccounts(payload: unknown): OpenFinanceRemoteAccount[] {
+  return belvoResultList(payload).map(acc => {
+    const balance = ofPick(acc, 'balance');
+    const institution = ofPick(acc, 'institution');
+    const creditData = ofPick(acc, 'credit_data');
+    const creditLimitRaw = isPlainObject(creditData) ? ofPick(creditData, 'credit_limit') : undefined;
+    return {
+      id: String(ofPick(acc, 'id') ?? ''),
+      name: String(ofPick(acc, 'name', 'category') ?? 'Conta Belvo'),
+      type: mapOpenFinanceAccountType(String(ofPick(acc, 'category', 'type') ?? '')),
+      bankName: isPlainObject(institution) && institution.name != null ? String(institution.name) : null,
+      balance: ofNormalizeMoney(isPlainObject(balance) ? ofPick(balance, 'current') : ofPick(acc, 'balance')),
+      creditLimit: creditLimitRaw != null ? ofNormalizeMoney(creditLimitRaw) : null,
+    };
+  }).filter(account => account.id);
+}
+
+export function parseBelvoTransactions(payload: unknown, accountId: string): OpenFinanceRemoteTransaction[] {
+  return belvoResultList(payload).map(tx => {
+    const merchant = ofPick(tx, 'merchant');
+    const rawAmount = ofNormalizeMoney(ofPick(tx, 'amount'));
+    const kind = String(ofPick(tx, 'type') ?? '').toUpperCase();
+    const type: TransactionType = kind === 'INFLOW' ? 'income' : kind === 'OUTFLOW' ? 'expense' : (rawAmount >= 0 ? 'income' : 'expense');
+    return {
+      id: String(ofPick(tx, 'id') ?? ''),
+      accountId,
+      description: String(ofPick(tx, 'description') ?? (isPlainObject(merchant) ? merchant.name : undefined) ?? 'Lançamento Belvo'),
+      amount: Math.abs(rawAmount),
+      type,
+      date: ofNormalizeDate(ofPick(tx, 'value_date', 'accounting_date')),
+    };
+  }).filter(tx => tx.id && tx.amount > 0);
 }

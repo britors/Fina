@@ -3,6 +3,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getDb } from '../database';
+import { ofPick, parseBelvoAccounts, parseBelvoTransactions, parseKlaviReport, type OpenFinanceRemoteAccount, type OpenFinanceRemoteTransaction } from '../../shared/utils';
 import type {
   AccountType,
   BalanceAlertSettings,
@@ -28,6 +29,10 @@ interface ProviderSettings {
   hasApiKey: boolean;
   sandbox: boolean;
   connectionId: string;
+  taxId: string;
+  institutionCode: string;
+  institutionName: string;
+  requestId: string;
 }
 
 interface OpenFinanceSettings {
@@ -69,23 +74,15 @@ interface ConnectionRow {
   last_error: string | null;
 }
 
-type RemoteAccount = {
-  id: string;
-  name: string;
-  type: AccountType;
-  bankName: string | null;
-  balance: number;
-  creditLimit: number | null;
-};
+type RemoteAccount = OpenFinanceRemoteAccount;
+type RemoteTransaction = OpenFinanceRemoteTransaction;
 
-type RemoteTransaction = {
-  id: string;
-  accountId: string;
-  description: string;
-  amount: number;
-  type: TransactionType;
-  date: string;
-};
+interface KlaviSession {
+  linkId: string;
+  linkToken: string;
+  taxId: string;
+  institutions: { code: string; name: string }[];
+}
 
 const PROVIDERS: OpenFinanceProvider[] = ['pluggy', 'belvo', 'klavi'];
 const PROVIDER_NAMES: Record<OpenFinanceProvider, string> = {
@@ -174,6 +171,10 @@ function settings(): OpenFinanceSettings {
     hasClientId: hasSecret(provider, 'clientId'),
     hasClientSecret: hasSecret(provider, 'clientSecret'),
     hasApiKey: hasSecret(provider, 'apiKey'),
+    taxId: getSetting(settingKey(provider, 'tax_id'), ''),
+    institutionCode: getSetting(settingKey(provider, 'institution_code'), ''),
+    institutionName: getSetting(settingKey(provider, 'institution_name'), ''),
+    requestId: getSetting(settingKey(provider, 'request_id'), ''),
   }])) as Record<OpenFinanceProvider, ProviderSettings>;
 
   return {
@@ -190,7 +191,9 @@ function maskConnectionId(value: string): string | null {
 }
 
 function providerHasCredentials(provider: OpenFinanceProvider, providerSettings: ProviderSettings): boolean {
-  if (provider === 'klavi') return providerSettings.hasApiKey;
+  // Klavi autentica com um par accessKey/secretKey, igual ao client id/secret
+  // da Pluggy — reaproveita os mesmos campos de credencial (clientId=accessKey,
+  // clientSecret=secretKey) em vez de um apiKey único.
   return providerSettings.hasClientId && providerSettings.hasClientSecret;
 }
 
@@ -202,10 +205,10 @@ function providerStatus(
   connection: ConnectionRow | undefined,
 ): { status: OpenFinanceConnectionStatus; label: string } {
   if (!providerSettings.enabled) return { status: 'disabled', label: 'Inativo' };
-  if (provider !== 'pluggy') return { status: 'unsupported', label: 'Credenciais preparadas' };
   if (!hasCredentials || !providerSettings.connectionId.trim()) return { status: 'incomplete', label: 'Configuração incompleta' };
-  if (connection?.last_error) return { status: 'incomplete', label: 'Erro na última sincronização' };
-  if (linkedAccounts.length === 0) return { status: 'pending', label: 'Pendente de sincronização' };
+  if (connection?.last_error) return { status: 'incomplete', label: provider === 'klavi' ? 'Erro na última importação' : 'Erro na última sincronização' };
+  if (connection?.status === 'awaiting_import' && linkedAccounts.length === 0) return { status: 'awaiting_import', label: 'Aguardando importação do relatório' };
+  if (linkedAccounts.length === 0) return { status: 'pending', label: provider === 'klavi' ? 'Pendente de conexão' : 'Pendente de sincronização' };
   return { status: 'active', label: 'Ativo' };
 }
 
@@ -303,7 +306,8 @@ function getOverview(): OpenFinanceOverview {
       provider,
       name: PROVIDER_NAMES[provider],
       enabled: providerSettings.enabled,
-      supportedSync: provider === 'pluggy',
+      supportedSync: provider === 'pluggy' || provider === 'belvo',
+      supportsConnect: provider === 'klavi' || provider === 'belvo',
       hasCredentials,
       hasConnectionId: !!providerSettings.connectionId.trim(),
       status,
@@ -430,6 +434,11 @@ function getCashFlowForecast(weeksAhead = 8): CashFlowForecast {
   return { weeks, factors: topFactors };
 }
 
+// Sessão efêmera do fluxo de conexão da Klavi (link + instituições): o
+// linkToken vive só 1800s e não precisa sobreviver a um reinício do app,
+// então fica só em memória em vez de persistido em disco.
+let klaviSession: KlaviSession | null = null;
+
 export function registerOpenFinanceHandlers(): void {
   ipcMain.handle('openFinance:getSettings', () => settings());
 
@@ -460,8 +469,8 @@ export function registerOpenFinanceHandlers(): void {
       upsertConnection({
         provider: data.provider,
         connectionId,
-        status: data.provider === 'pluggy' ? 'pending' : 'unsupported',
-        products: data.provider === 'pluggy' ? ['accounts', 'transactions'] : null,
+        status: 'pending',
+        products: data.provider !== 'klavi' ? ['accounts', 'transactions'] : null,
       });
     }
     return settings();
@@ -480,7 +489,14 @@ export function registerOpenFinanceHandlers(): void {
     setSettings({
       [settingKey(provider, 'enabled')]: 'false',
       [settingKey(provider, 'connection_id')]: '',
+      [settingKey(provider, 'link_id')]: '',
+      [settingKey(provider, 'tax_id')]: '',
+      [settingKey(provider, 'institution_code')]: '',
+      [settingKey(provider, 'institution_name')]: '',
+      [settingKey(provider, 'request_id')]: '',
+      [settingKey(provider, 'external_id')]: '',
     });
+    if (provider === 'klavi') klaviSession = null;
     if (connectionId) {
       upsertConnection({ provider, connectionId, status: 'disabled' });
     }
@@ -489,20 +505,87 @@ export function registerOpenFinanceHandlers(): void {
 
   ipcMain.handle('openFinance:testProvider', async (_e, provider: string) => {
     assertProvider(provider);
-    if (provider !== 'pluggy') {
-      throw new Error('Teste automático disponível nesta versão apenas para Pluggy.');
+    if (provider === 'pluggy') {
+      const apiKey = await pluggyApiKey();
+      return { ok: !!apiKey };
     }
-    const apiKey = await pluggyApiKey();
-    return { ok: !!apiKey };
+    if (provider === 'klavi') {
+      const accessToken = await klaviAuth();
+      return { ok: !!accessToken };
+    }
+    if (provider === 'belvo') {
+      await belvoGet('/institutions/?page_size=1');
+      return { ok: true };
+    }
+    throw new Error('Provedor desconhecido.');
   });
 
   ipcMain.handle('openFinance:syncProvider', async (_e, payload: { provider: string } & SyncOptions): Promise<SyncResult> => {
     const { provider, ...options } = payload;
     assertProvider(provider);
-    if (provider !== 'pluggy') {
-      throw new Error('Sincronização automática disponível nesta versão apenas para Pluggy.');
-    }
-    return syncPluggy(options);
+    if (provider === 'pluggy') return syncPluggy(options);
+    if (provider === 'belvo') return syncBelvo(options);
+    throw new Error('Sincronização automática disponível nesta versão apenas para Pluggy e Belvo.');
+  });
+
+  ipcMain.handle('openFinance:klaviStartConnection', async (_e, payload: { taxId: string }) => {
+    const taxId = payload.taxId?.trim();
+    if (!taxId) throw new Error('Informe o CPF ou CNPJ do titular.');
+
+    const accessToken = await klaviAuth();
+    const link = await klaviCreateLink(accessToken, taxId);
+    const institutions = await klaviListInstitutions(link.linkToken);
+    const mapped = institutions.map(i => ({ code: i.institutionCode, name: i.name }));
+
+    klaviSession = { linkId: link.linkId, linkToken: link.linkToken, taxId, institutions: mapped };
+    setSettings({ [settingKey('klavi', 'tax_id')]: taxId });
+    return { institutions: mapped };
+  });
+
+  ipcMain.handle('openFinance:klaviCreateConsent', async (_e, payload: { institutionCode: string }) => {
+    if (!klaviSession) throw new Error('Sessão de conexão expirada. Clique em "Buscar instituições" novamente.');
+    const institutionCode = payload.institutionCode?.trim();
+    if (!institutionCode) throw new Error('Selecione uma instituição.');
+
+    const institutionName = klaviSession.institutions.find(i => i.code === institutionCode)?.name ?? '';
+    const consent = await klaviCreateConsentApi(klaviSession.linkToken, {
+      externalTrackId: randomUUID(),
+      personalTaxId: klaviSession.taxId,
+      institutionCode,
+    });
+
+    setSettings({
+      [settingKey('klavi', 'connection_id')]: consent.consentId,
+      [settingKey('klavi', 'link_id')]: klaviSession.linkId,
+      [settingKey('klavi', 'institution_code')]: institutionCode,
+      [settingKey('klavi', 'institution_name')]: institutionName,
+      [settingKey('klavi', 'request_id')]: '',
+    });
+    upsertConnection({
+      provider: 'klavi',
+      connectionId: consent.consentId,
+      institutionName: institutionName || null,
+      status: 'pending',
+      lastError: null,
+    });
+    klaviSession = null;
+    return { consentRedirectUrl: consent.consentRedirectUrl };
+  });
+
+  ipcMain.handle('openFinance:klaviRequestReport', async () => {
+    return klaviRequestReport();
+  });
+
+  ipcMain.handle('openFinance:klaviImportReport', async (_e, payload: { report: string }) => {
+    return klaviImportReport(payload.report);
+  });
+
+  ipcMain.handle('openFinance:belvoStartConnection', async () => {
+    return belvoStartConnection();
+  });
+
+  ipcMain.handle('openFinance:belvoCheckConnection', async () => {
+    return belvoCheckConnection();
   });
 }
 
@@ -657,10 +740,10 @@ async function loadPluggyTransactions(apiKey: string, account: RemoteAccount, da
   return transactions;
 }
 
-function upsertAccount(account: RemoteAccount): { id: string; created: boolean } {
+function upsertAccount(provider: OpenFinanceProvider, account: RemoteAccount): { id: string; created: boolean } {
   const db = getDb();
   const existing = db.prepare('SELECT id FROM accounts WHERE openfinance_provider = ? AND openfinance_id = ?')
-    .get('pluggy', account.id) as { id: string } | undefined;
+    .get(provider, account.id) as { id: string } | undefined;
   if (existing) {
     db.prepare(`
       UPDATE accounts
@@ -674,7 +757,7 @@ function upsertAccount(account: RemoteAccount): { id: string; created: boolean }
   db.prepare(`
     INSERT INTO accounts (id, name, type, bank_name, balance, credit_limit, color, currency, original_balance, openfinance_provider, openfinance_id)
     VALUES (?,?,?,?,?,?,NULL,'BRL',NULL,?,?)
-  `).run(id, account.name, account.type, account.bankName, account.balance, account.creditLimit, 'pluggy', account.id);
+  `).run(id, account.name, account.type, account.bankName, account.balance, account.creditLimit, provider, account.id);
   return { id, created: true };
 }
 
@@ -737,21 +820,21 @@ function detectBalanceDrops(): BalanceDropAlert[] {
   return alerts;
 }
 
-function importTransaction(tx: RemoteTransaction, accountId: string): boolean {
+function importTransaction(provider: OpenFinanceProvider, tx: RemoteTransaction, accountId: string): boolean {
   const db = getDb();
   const existing = db.prepare('SELECT 1 FROM transactions WHERE openfinance_provider = ? AND openfinance_id = ?')
-    .get('pluggy', tx.id);
+    .get(provider, tx.id);
   if (existing) return false;
 
   const id = randomUUID();
   const categoryId = findCategory(tx.description, tx.type);
   const hash = txHash(tx.date, tx.amount, tx.description);
-  const notes = `OPEN_FINANCE:pluggy|REMOTE_ID:${tx.id}|HASH:${hash}`;
+  const notes = `OPEN_FINANCE:${provider}|REMOTE_ID:${tx.id}|HASH:${hash}`;
 
   db.prepare(`
     INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring, openfinance_provider, openfinance_id)
     VALUES (?,?,?,?,?,?,?,'confirmed',?,0,?,?)
-  `).run(id, accountId, categoryId, tx.description, tx.amount, tx.type, tx.date, notes, 'pluggy', tx.id);
+  `).run(id, accountId, categoryId, tx.description, tx.amount, tx.type, tx.date, notes, provider, tx.id);
   db.prepare(`
     INSERT INTO transaction_payments (id, transaction_id, account_id, amount)
     VALUES (?,?,?,?)
@@ -780,7 +863,7 @@ async function syncPluggy(options: SyncOptions = {}): Promise<SyncResult> {
     const db = getDb();
     db.transaction(() => {
       for (const remote of remoteAccounts) {
-        const local = upsertAccount(remote);
+        const local = upsertAccount('pluggy', remote);
         accountMap.set(remote.id, local.id);
         if (local.created) accountsCreated++;
         else accountsUpdated++;
@@ -796,7 +879,7 @@ async function syncPluggy(options: SyncOptions = {}): Promise<SyncResult> {
       const transactions = await loadPluggyTransactions(apiKey, remote, options.dateFrom, options.dateTo);
       db.transaction(() => {
         for (const tx of transactions) {
-          if (importTransaction(tx, localAccountId)) transactionsImported++;
+          if (importTransaction('pluggy', tx, localAccountId)) transactionsImported++;
           else transactionsSkipped++;
         }
       })();
@@ -817,6 +900,403 @@ async function syncPluggy(options: SyncOptions = {}): Promise<SyncResult> {
     upsertConnection({
       provider: 'pluggy',
       connectionId: itemId,
+      status: 'incomplete',
+      lastError: err instanceof Error ? err.message : 'Erro desconhecido na sincronização.',
+    });
+    throw err;
+  }
+}
+
+// --- Klavi ---
+//
+// Ao contrário da Pluggy (REST síncrona), a Klavi entrega accounts/balances/
+// transactions de forma assíncrona: você solicita um relatório e ele chega
+// depois por webhook (ou fica disponível para download no console deles).
+// Como o Fina é um app desktop sem endereço público, não há como a Klavi nos
+// chamar de volta — por isso o fluxo abaixo cobre autenticação, criação de
+// link/consentimento (o usuário autoriza no site do banco pelo navegador) e
+// disparo do relatório, mas a entrega final é uma importação manual do JSON
+// recebido (ver klaviImportReport).
+//
+// URLs, verbos e nomes de campo de /auth, /links, /links/institutions,
+// /consents e /data/v1/personal/institution-data foram conferidos contra a
+// referência estruturada da própria doc da Klavi (extraindo o JSON
+// __NEXT_DATA__ da página em vez de confiar no resumo em texto livre, que
+// tinha errado tanto a URL do sandbox — é `api-sandbox.klavi.ai`, não
+// `api.sandbox.klavi.ai` — quanto o casing dos campos, que é camelCase). Sem
+// credenciais reais não dá pra testar um fluxo completo de ponta a ponta, e
+// a própria doc da Klavi já é inconsistente entre páginas em pelo menos dois
+// pontos que corrigimos aqui (institutionCode vs institutionId, e o path com
+// ou sem `/v1/`) — por isso as respostas ainda passam por `ofPick` (nome
+// exato, com fallback case-insensitive) como rede de segurança. O schema do
+// relatório em si (entregue por webhook/console, não por nenhum desses
+// endpoints) continua sem confirmação pública e segue best-effort em
+// shared/utils.ts.
+
+// "all" pede todos os produtos contratados pelo parceiro no onboarding —
+// evita descobrir dinamicamente quais slugs (pf_checking_account,
+// pf_credit_card, ...) estão de fato liberados na conta.
+const KLAVI_DEFAULT_PRODUCTS = ['all'];
+// Campo redirectURL é obrigatório na criação do consentimento, mas o Fina
+// não tem um servidor web para receber esse retorno (é um app desktop) —
+// aponta para o site da Klavi como destino inerte; o usuário fecha a aba
+// manualmente depois de autorizar no banco.
+const KLAVI_INERT_REDIRECT_URL = 'https://klavi.ai/';
+
+function klaviBaseUrl(): string {
+  const sandbox = getSetting(settingKey('klavi', 'sandbox'), 'true') === 'true';
+  return sandbox ? 'https://api-sandbox.klavi.ai' : 'https://api.klavi.ai';
+}
+
+async function klaviAuth(): Promise<string> {
+  const accessKey = getSecret('klavi', 'clientId');
+  const secretKey = getSecret('klavi', 'clientSecret');
+  if (!accessKey || !secretKey) throw new Error('Informe o Access Key e o Secret Key da Klavi.');
+
+  const auth = await httpJson<Record<string, unknown>>(`${klaviBaseUrl()}/data/v1/auth`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ accessKey, secretKey }),
+  });
+  const token = ofPick(auth, 'accessToken', 'accesstoken');
+  if (!token) throw new Error('A Klavi não retornou um token de acesso.');
+  return String(token);
+}
+
+async function klaviCreateLink(accessToken: string, personalTaxId: string): Promise<{ linkId: string; linkToken: string }> {
+  const link = await httpJson<Record<string, unknown>>(`${klaviBaseUrl()}/data/v1/links`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ personalTaxId }),
+  });
+  const linkId = ofPick(link, 'linkId', 'linkid');
+  const linkToken = ofPick(link, 'linkToken', 'linktoken');
+  if (!linkId || !linkToken) throw new Error('A Klavi não retornou os dados do link.');
+  return { linkId: String(linkId), linkToken: String(linkToken) };
+}
+
+async function klaviListInstitutions(linkToken: string): Promise<{ institutionCode: string; name: string }[]> {
+  const institutions = await httpJson<unknown>(`${klaviBaseUrl()}/data/v1/links/institutions`, {
+    method: 'GET',
+    headers: { authorization: `Bearer ${linkToken}` },
+  });
+  const list = Array.isArray(institutions) ? institutions : [];
+  return list.filter((i): i is Record<string, unknown> => !!i && typeof i === 'object').map(i => ({
+    institutionCode: String(ofPick(i, 'institutionCode', 'institutioncode') ?? ''),
+    name: String(ofPick(i, 'name') ?? ''),
+  })).filter(i => i.institutionCode);
+}
+
+async function klaviCreateConsentApi(linkToken: string, payload: { externalTrackId: string; personalTaxId: string; institutionCode: string }): Promise<{ consentId: string; consentRedirectUrl: string }> {
+  const consent = await httpJson<Record<string, unknown>>(`${klaviBaseUrl()}/data/v1/consents`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${linkToken}` },
+    body: JSON.stringify({ ...payload, redirectURL: KLAVI_INERT_REDIRECT_URL, validityPeriod: 12 }),
+  });
+  const consentId = ofPick(consent, 'consentId', 'consentid');
+  const consentRedirectUrl = ofPick(consent, 'consentRedirectUrl', 'consentredirecturl');
+  if (!consentId || !consentRedirectUrl) throw new Error('A Klavi não retornou os dados do consentimento.');
+  return { consentId: String(consentId), consentRedirectUrl: String(consentRedirectUrl) };
+}
+
+async function klaviFindConsentStatus(accessToken: string, consentId: string): Promise<string | null> {
+  const consents = await httpJson<unknown>(`${klaviBaseUrl()}/data/v1/consents`, {
+    method: 'GET',
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  const list = Array.isArray(consents) ? consents : [];
+  const match = list.find((c): c is Record<string, unknown> => {
+    if (!c || typeof c !== 'object') return false;
+    const id = ofPick(c as Record<string, unknown>, 'consentId', 'consentid');
+    return id != null && String(id) === consentId;
+  });
+  const status = match ? ofPick(match, 'status') : null;
+  return status != null ? String(status) : null;
+}
+
+async function klaviRequestReportApi(accessToken: string, payload: {
+  taxId: string;
+  institutionCode: string;
+  linkId: string;
+  consentIds: string[];
+  products: string[];
+}): Promise<string> {
+  const report = await httpJson<Record<string, unknown>>(`${klaviBaseUrl()}/data/v1/personal/institution-data`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(payload),
+  });
+  const requestId = ofPick(report, 'requestId', 'requestid');
+  if (!requestId) throw new Error('A Klavi não retornou um identificador de solicitação.');
+  return String(requestId);
+}
+
+async function klaviRequestReport(): Promise<{ requestId: string }> {
+  if (!providerEnabled('klavi')) throw new Error('Ative a integração Klavi antes de solicitar o relatório.');
+  const consentId = providerConnectionId('klavi');
+  const linkId = getSetting(settingKey('klavi', 'link_id'));
+  const taxId = getSetting(settingKey('klavi', 'tax_id'));
+  const institutionCode = getSetting(settingKey('klavi', 'institution_code'));
+  if (!consentId || !linkId || !taxId || !institutionCode) {
+    throw new Error('Conecte uma instituição na Klavi antes de solicitar o relatório.');
+  }
+
+  try {
+    const accessToken = await klaviAuth();
+    const consentStatus = await klaviFindConsentStatus(accessToken, consentId);
+    if (consentStatus?.toUpperCase() !== 'AUTHORISED') {
+      throw new Error(`Consentimento ainda não autorizado pelo banco (status: ${consentStatus ?? 'desconhecido'}). Finalize a autorização na aba aberta no navegador e tente novamente.`);
+    }
+
+    const requestId = await klaviRequestReportApi(accessToken, {
+      taxId,
+      institutionCode,
+      linkId,
+      consentIds: [consentId],
+      products: KLAVI_DEFAULT_PRODUCTS,
+    });
+
+    setSettings({ [settingKey('klavi', 'request_id')]: requestId });
+    upsertConnection({ provider: 'klavi', connectionId: consentId, status: 'awaiting_import', lastError: null });
+    return { requestId };
+  } catch (err) {
+    upsertConnection({
+      provider: 'klavi',
+      connectionId: consentId,
+      status: 'incomplete',
+      lastError: err instanceof Error ? err.message : 'Erro ao solicitar o relatório à Klavi.',
+    });
+    throw err;
+  }
+}
+
+function klaviImportReport(rawJson: string): SyncResult {
+  const consentId = providerConnectionId('klavi');
+  if (!consentId) throw new Error('Conecte uma instituição na Klavi antes de importar um relatório.');
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    throw new Error('O texto colado não é um JSON válido.');
+  }
+
+  try {
+    const { accounts, transactions } = parseKlaviReport(parsed);
+    if (accounts.length === 0) throw new Error('Nenhuma conta foi encontrada no relatório informado.');
+
+    const db = getDb();
+    const accountMap = new Map<string, string>();
+    let accountsCreated = 0;
+    let accountsUpdated = 0;
+    let transactionsImported = 0;
+    let transactionsSkipped = 0;
+
+    db.transaction(() => {
+      for (const remote of accounts) {
+        const local = upsertAccount('klavi', remote);
+        accountMap.set(remote.id, local.id);
+        if (local.created) accountsCreated++;
+        else accountsUpdated++;
+        recordBalanceSnapshot(local.id, remote.balance);
+      }
+      for (const tx of transactions) {
+        const localAccountId = accountMap.get(tx.accountId);
+        if (!localAccountId) { transactionsSkipped++; continue; }
+        if (importTransaction('klavi', tx, localAccountId)) transactionsImported++;
+        else transactionsSkipped++;
+      }
+    })();
+
+    const institutionName = getSetting(settingKey('klavi', 'institution_name')) || null;
+    upsertConnection({
+      provider: 'klavi',
+      connectionId: consentId,
+      institutionName,
+      status: 'active',
+      lastSyncAt: new Date().toISOString(),
+      lastError: null,
+    });
+
+    return { provider: 'klavi', accountsCreated, accountsUpdated, transactionsImported, transactionsSkipped };
+  } catch (err) {
+    upsertConnection({
+      provider: 'klavi',
+      connectionId: consentId,
+      status: 'incomplete',
+      lastError: err instanceof Error ? err.message : 'Erro ao importar o relatório da Klavi.',
+    });
+    throw err;
+  }
+}
+
+// --- Belvo ---
+//
+// Diferente da Klavi, a agregação bancária Brasil (OFDA) da Belvo é síncrona:
+// depois que o link é criado, accounts/transactions são consultados por pull
+// (GET), igual à Pluggy — dá para ter um "Sincronizar" de verdade. O único
+// ponto assistido é a criação do link em si, que exige que o usuário
+// autorize no My Belvo Portal (Belvo não expõe um endpoint de puro
+// redirecionamento sem esse portal para o fluxo OFDA); o Fina gera um token
+// de widget com um external_id próprio e abre o portal no navegador do
+// usuário, depois consulta /links/?external_id= para descobrir o link
+// criado. Endpoints e formatos baseados em developers.belvo.com — alguns
+// nomes de campo (accounts/transactions) não foram confirmados na doc
+// pública durante a implementação e podem precisar de ajuste contra a
+// sandbox real.
+
+function belvoBaseUrl(): string {
+  const sandbox = getSetting(settingKey('belvo', 'sandbox'), 'true') === 'true';
+  return sandbox ? 'https://sandbox.belvo.com/api' : 'https://api.belvo.com/api';
+}
+
+function belvoCredentials(): { id: string; password: string } {
+  const id = getSecret('belvo', 'clientId');
+  const password = getSecret('belvo', 'clientSecret');
+  if (!id || !password) throw new Error('Informe o Secret ID e o Secret Password da Belvo.');
+  return { id, password };
+}
+
+function belvoAuthHeader(): string {
+  const { id, password } = belvoCredentials();
+  return `Basic ${Buffer.from(`${id}:${password}`).toString('base64')}`;
+}
+
+async function belvoGet<T>(pathOrUrl: string): Promise<T> {
+  const url = pathOrUrl.startsWith('http') ? pathOrUrl : `${belvoBaseUrl()}${pathOrUrl}`;
+  return httpJson<T>(url, { method: 'GET', headers: { authorization: belvoAuthHeader() } });
+}
+
+async function belvoCreateWidgetToken(externalId: string): Promise<{ access: string }> {
+  const { id, password } = belvoCredentials();
+  return httpJson(`${belvoBaseUrl()}/token/`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      id,
+      password,
+      scopes: 'read_institutions,write_links,read_consents,write_consents,write_consent_callback',
+      fetch_resources: ['ACCOUNTS', 'TRANSACTIONS'],
+      widget: { external_id: externalId },
+    }),
+  });
+}
+
+async function belvoFindLinkByExternalId(externalId: string): Promise<{ id: string; status: string; institution?: { name?: string } } | null> {
+  const result = await belvoGet<{ results?: { id: string; status: string; institution?: { name?: string } }[] }>(
+    `/links/?external_id=${encodeURIComponent(externalId)}`,
+  );
+  const links = Array.isArray(result?.results) ? result.results : [];
+  return links[0] ?? null;
+}
+
+async function belvoStartConnection(): Promise<{ portalUrl: string }> {
+  if (!providerEnabled('belvo')) throw new Error('Ative a integração Belvo antes de conectar.');
+  const externalId = randomUUID();
+  const token = await belvoCreateWidgetToken(externalId);
+  if (!token.access) throw new Error('A Belvo não retornou um token de acesso.');
+
+  setSettings({ [settingKey('belvo', 'external_id')]: externalId });
+  return { portalUrl: `https://meuportal.belvo.com/?access_token=${encodeURIComponent(token.access)}` };
+}
+
+async function belvoCheckConnection(): Promise<{ status: string; institutionName: string }> {
+  const externalId = getSetting(settingKey('belvo', 'external_id'));
+  if (!externalId) throw new Error('Clique em "Iniciar conexão" antes de verificar o status.');
+
+  const link = await belvoFindLinkByExternalId(externalId);
+  if (!link) return { status: 'not_found', institutionName: '' };
+
+  const institutionName = link.institution?.name ?? '';
+  if (link.status === 'valid') {
+    setSettings({
+      [settingKey('belvo', 'connection_id')]: link.id,
+      [settingKey('belvo', 'institution_name')]: institutionName,
+    });
+    upsertConnection({
+      provider: 'belvo',
+      connectionId: link.id,
+      institutionName: institutionName || null,
+      status: 'pending',
+      lastError: null,
+    });
+  }
+  return { status: link.status, institutionName };
+}
+
+async function loadBelvoAccounts(linkId: string): Promise<RemoteAccount[]> {
+  const payload = await belvoGet<unknown>(`/accounts/?link=${encodeURIComponent(linkId)}`);
+  return parseBelvoAccounts(payload);
+}
+
+async function loadBelvoTransactions(linkId: string, accountId: string, dateFrom?: string, dateTo?: string): Promise<RemoteTransaction[]> {
+  const qs = new URLSearchParams({ link: linkId, account: accountId });
+  if (dateFrom) qs.set('date_from', dateFrom);
+  if (dateTo) qs.set('date_to', dateTo);
+
+  const transactions: RemoteTransaction[] = [];
+  let url = `/transactions/?${qs.toString()}`;
+  for (let page = 0; page < 20 && url; page++) {
+    const payload = await belvoGet<{ results?: unknown[]; next?: string | null }>(url);
+    transactions.push(...parseBelvoTransactions(payload, accountId));
+    url = typeof payload?.next === 'string' ? payload.next : '';
+  }
+  return transactions;
+}
+
+async function syncBelvo(options: SyncOptions = {}): Promise<SyncResult> {
+  if (!providerEnabled('belvo')) throw new Error('Ative a integração Belvo antes de sincronizar.');
+  const linkId = providerConnectionId('belvo');
+  if (!linkId) throw new Error('Conecte uma instituição na Belvo antes de sincronizar.');
+
+  try {
+    const remoteAccounts = await loadBelvoAccounts(linkId);
+    const accountMap = new Map<string, string>();
+    let accountsCreated = 0;
+    let accountsUpdated = 0;
+    let transactionsImported = 0;
+    let transactionsSkipped = 0;
+
+    const db = getDb();
+    db.transaction(() => {
+      for (const remote of remoteAccounts) {
+        const local = upsertAccount('belvo', remote);
+        accountMap.set(remote.id, local.id);
+        if (local.created) accountsCreated++;
+        else accountsUpdated++;
+        recordBalanceSnapshot(local.id, remote.balance);
+      }
+    })();
+
+    for (const remote of remoteAccounts) {
+      const localAccountId = accountMap.get(remote.id);
+      if (!localAccountId) continue;
+      if (options.accountId && options.accountId !== localAccountId) continue;
+
+      const transactions = await loadBelvoTransactions(linkId, remote.id, options.dateFrom, options.dateTo);
+      db.transaction(() => {
+        for (const tx of transactions) {
+          if (importTransaction('belvo', tx, localAccountId)) transactionsImported++;
+          else transactionsSkipped++;
+        }
+      })();
+    }
+
+    upsertConnection({
+      provider: 'belvo',
+      connectionId: linkId,
+      institutionName: remoteAccounts.find(account => account.bankName)?.bankName ?? null,
+      status: 'active',
+      products: ['accounts', 'transactions'],
+      lastSyncAt: new Date().toISOString(),
+      lastError: null,
+    });
+
+    return { provider: 'belvo', accountsCreated, accountsUpdated, transactionsImported, transactionsSkipped };
+  } catch (err) {
+    upsertConnection({
+      provider: 'belvo',
+      connectionId: linkId,
       status: 'incomplete',
       lastError: err instanceof Error ? err.message : 'Erro desconhecido na sincronização.',
     });
