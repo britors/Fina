@@ -29,8 +29,10 @@
     category: "Office",
     synopsis: "Gerenciador de finanças pessoais",
     description: "Controle total das suas finanças: meios de pagamento, transações, orçamentos, investimentos, metas e muito mais.",
-    // build/icon.png gerado por npm run generate-icons
-    icon: "build/icon.png"
+    // build/icons/ (conjunto hicolor 16→1024) gerado por npm run generate-icons.
+    // Um único PNG grande deixa o .deb/.rpm com só um tamanho de ícone, que
+    // ambientes como o KDE não escalam bem para o menu/barra de tarefas.
+    icon: "build/icons"
   },
 
   deb: {

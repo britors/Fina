@@ -93,23 +93,24 @@ yay -S fina
 paru -S fina
 ```
 
-### Linux — Debian / Ubuntu (.deb)
+### Linux — openSUSE Leap, Fedora e Ubuntu/Debian
+
+Nenhuma está nos repositórios oficiais ainda (nem OBS, nem Copr, nem PPA). O
+instalador de conveniência serve as três — ele detecta a distro via
+`/etc/os-release` e baixa o pacote certo (`.rpm` ou `.deb`) da release mais
+recente:
 
 ```bash
-# Baixe o .deb da página de releases
-wget https://github.com/britors/Fina/releases/latest/download/fina_amd64.deb
-sudo dpkg -i fina_amd64.deb
+curl -fsSL https://raw.githubusercontent.com/britors/Fina/main/scripts/install.sh | sudo bash
 ```
 
-### Linux — Fedora / openSUSE (.rpm)
+Em openSUSE e Fedora instala o `.rpm` via `zypper --allow-unsigned-rpm` /
+`dnf install --nogpgcheck` (o RPM ainda não é assinado, sem chave GPG
+configurada). Em Ubuntu/Debian instala o `.deb` via `apt-get install`
+(assim as dependências são resolvidas normalmente, ao contrário de `dpkg -i`).
 
-```bash
-# Baixe o .rpm da página de releases
-wget https://github.com/britors/Fina/releases/latest/download/fina_x86_64.rpm
-sudo rpm -i fina_x86_64.rpm
-# ou
-sudo dnf install fina_x86_64.rpm
-```
+Para travar numa versão específica: `FINA_VERSION=v17.2.0 sudo -E bash
+install.sh` (baixe o script primeiro se for usar essa variante).
 
 ### Windows
 

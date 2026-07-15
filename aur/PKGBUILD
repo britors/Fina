@@ -1,7 +1,7 @@
 # Maintainer: Rodrigo Brito <rodrigo@w3ti.com.br>
 pkgname=fina
 pkgver=17.2.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Gerenciador de finanças pessoais"
 arch=('x86_64')
 url="https://github.com/britors/Fina"
@@ -18,7 +18,7 @@ prepare() {
   local _electron_version
   _electron_version=$(electron38 --version | sed 's/^v//')
   npx @electron/rebuild -f -w better-sqlite3-multiple-ciphers -v "$_electron_version"
-  # gera build/icon.png a partir do SVG (não versionado no tarball)
+  # gera build/icon.png e build/icons/ a partir do SVG (não versionados no tarball)
   npm run generate-icons
 }
 
@@ -42,9 +42,14 @@ package() {
 exec electron38 /usr/lib/$pkgname "\$@"
 EOF
 
-  # Ícone gerado em prepare() via generate-icons
+  # Ícones gerados em prepare() via generate-icons. Instala todos os
+  # tamanhos do tema hicolor — só o 512x512 fica com ícone genérico em
+  # ambientes (como o KDE) que não escalam bem esse fallback.
+  for icon in build/icons/*x*.png; do
+    size="$(basename "$icon" .png)"
+    install -Dm644 "$icon" "$pkgdir/usr/share/icons/hicolor/$size/apps/$pkgname.png"
+  done
   install -Dm644 "build/icon.png" "$pkgdir/usr/share/pixmaps/$pkgname.png"
-  install -Dm644 "build/icon.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/$pkgname.png"
 
   # Entrada .desktop
   install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/$pkgname.desktop" <<EOF
