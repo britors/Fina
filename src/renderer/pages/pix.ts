@@ -2,6 +2,7 @@ import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { openModal } from '../components/modal';
+import { attachMoneyMask, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import type { PixKeyValidation, PixPayment, PixPaymentStatus, PixRecipient } from '../../shared/types';
 import type { Account } from '../../shared/types';
@@ -201,7 +202,7 @@ async function openPixPaymentModal(onDone: () => void): Promise<void> {
         </div>
         <div class="form-group">
           <label class="form-label">Valor</label>
-          <input class="form-ctrl" id="pix-amount" type="number" step="0.01" min="0" placeholder="0,00">
+          <input class="form-ctrl" id="pix-amount" type="text" inputmode="decimal" placeholder="0,00">
         </div>
       </div>
       <div class="form-row">
@@ -228,7 +229,7 @@ async function openPixPaymentModal(onDone: () => void): Promise<void> {
       const provider = selectedOption?.dataset.provider ?? 'pluggy';
       const source_account_id = accountSelect.value;
       const pix_key = modal.querySelector<HTMLInputElement>('#pix-key')!.value.trim();
-      const amount = parseFloat(modal.querySelector<HTMLInputElement>('#pix-amount')!.value);
+      const amount = moneyInputValue(modal.querySelector<HTMLInputElement>('#pix-amount'));
       const recipient_name = modal.querySelector<HTMLInputElement>('#pix-recipient-name')!.value.trim();
       const recipient_bank = modal.querySelector<HTMLInputElement>('#pix-recipient-bank')!.value.trim();
       const description = modal.querySelector<HTMLInputElement>('#pix-description')!.value.trim();
@@ -266,6 +267,7 @@ async function openPixPaymentModal(onDone: () => void): Promise<void> {
       }
     },
   });
+  attachMoneyMask(overlay.querySelector('#pix-amount'));
 
   const recipientSelect = overlay.querySelector<HTMLSelectElement>('#pix-recipient-select')!;
   const keyInput = overlay.querySelector<HTMLInputElement>('#pix-key')!;

@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate } from '../../shared/utils';
 import { openModal } from '../components/modal';
+import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import type { Account, BillInterval, BillPriceIncrease, BillWithCategory, Category, DetectedRecurrence } from '../../shared/types';
@@ -152,7 +153,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
 function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => void): void {
   const today = new Date().toISOString().slice(0, 10);
-  openModal({
+  const overlay = openModal({
     title: bill?.id ? 'Editar despesa fixa' : 'Nova despesa fixa',
     body: `
       <div class="form-group">
@@ -162,7 +163,7 @@ function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => vo
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Valor (R$)</label>
-          <input class="form-ctrl" id="f-amount" type="number" min="0" step="0.01" value="${bill?.amount ?? ''}">
+          <input class="form-ctrl" id="f-amount" type="text" inputmode="decimal" placeholder="0,00" value="${formatMoneyValue(bill?.amount)}">
         </div>
         <div class="form-group">
           <label class="form-label">Vencimento base</label>
@@ -196,7 +197,7 @@ function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => vo
     `,
     onSave: async () => {
       const description = (document.getElementById('f-desc') as HTMLInputElement).value.trim();
-      const amount = parseFloat((document.getElementById('f-amount') as HTMLInputElement).value);
+      const amount = moneyInputValue(document.getElementById('f-amount') as HTMLInputElement);
       const due = (document.getElementById('f-due') as HTMLInputElement).value;
       const accountId = (document.getElementById('f-account') as HTMLSelectElement).value;
       const categoryId = (document.getElementById('f-category') as HTMLSelectElement).value;
@@ -224,6 +225,7 @@ function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => vo
       onDone();
     },
   });
+  attachMoneyMask(overlay.querySelector('#f-amount'));
 }
 
 function detectionToPrefill(d: DetectedRecurrence): Partial<BillWithCategory> {

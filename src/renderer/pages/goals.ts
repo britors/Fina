@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
+import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { Account, AIGoalDraft, Debt, Goal, GoalType } from '../../shared/types';
@@ -218,11 +219,11 @@ export async function render(el: HTMLElement): Promise<void> {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Valor alvo</label>
-              <input class="form-ctrl" id="f-target" type="number" step="0.01" min="0" value="${goal?.target_amount ?? draft?.target_amount ?? 0}">
+              <input class="form-ctrl" id="f-target" type="text" inputmode="decimal" value="${formatMoneyValue(goal?.target_amount ?? draft?.target_amount ?? 0)}">
             </div>
             <div class="form-group">
               <label class="form-label">Valor acumulado</label>
-              <input class="form-ctrl" id="f-current" type="number" step="0.01" min="0" value="${goal?.current_amount ?? draft?.current_amount ?? 0}">
+              <input class="form-ctrl" id="f-current" type="text" inputmode="decimal" value="${formatMoneyValue(goal?.current_amount ?? draft?.current_amount ?? 0)}">
             </div>
           </div>
           <div class="form-row">
@@ -250,6 +251,8 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>`;
 
     document.body.appendChild(overlay);
+    attachMoneyMask(overlay.querySelector('#f-target'));
+    attachMoneyMask(overlay.querySelector('#f-current'));
 
     const close = (): void => {
       overlay.remove();
@@ -264,8 +267,8 @@ export async function render(el: HTMLElement): Promise<void> {
       const payload = {
         name,
         type: (overlay.querySelector<HTMLSelectElement>('#f-type')!).value,
-        target_amount:  parseFloat((overlay.querySelector<HTMLInputElement>('#f-target')!).value)  || 0,
-        current_amount: parseFloat((overlay.querySelector<HTMLInputElement>('#f-current')!).value) || 0,
+        target_amount:  moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-target'))  || 0,
+        current_amount: moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-current')) || 0,
         target_date: (overlay.querySelector<HTMLInputElement>('#f-date')!).value || null,
         account_id:  (overlay.querySelector<HTMLSelectElement>('#f-account')!).value || null,
         description: (overlay.querySelector<HTMLInputElement>('#f-desc')!).value.trim() || null,

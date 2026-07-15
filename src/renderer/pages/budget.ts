@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, calculateBudgetPercentage } from '../../shared/utils';
 import { openModal } from '../components/modal';
+import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { openCategoryModal } from '../components/categoryModal';
 import { setTopbarActions } from '../components/topbar';
@@ -217,7 +218,7 @@ async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void,
       </div>
       <div class="form-group">
         <label class="form-label">Limite (R$)</label>
-        <input class="form-ctrl" id="f-limit" type="number" step="0.01" value="${b?.limit_amount ?? draft?.limit_amount ?? ''}">
+        <input class="form-ctrl" id="f-limit" type="text" inputmode="decimal" placeholder="0,00" value="${formatMoneyValue(b?.limit_amount ?? draft?.limit_amount)}">
       </div>
       <div class="form-group">
         <label style="display:flex;align-items:center;gap:8px;font-weight:400">
@@ -230,7 +231,7 @@ async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void,
       const cat   = (overlay.querySelector('#f-cat')   as HTMLSelectElement).value;
       const m     = parseInt((overlay.querySelector('#f-month') as HTMLInputElement).value);
       const y     = parseInt((overlay.querySelector('#f-year')  as HTMLInputElement).value);
-      const limit = parseFloat((overlay.querySelector('#f-limit') as HTMLInputElement).value);
+      const limit = moneyInputValue(overlay.querySelector('#f-limit') as HTMLInputElement);
       const carryOver = (overlay.querySelector('#f-carry-over') as HTMLInputElement).checked;
       if (!cat || isNaN(m) || isNaN(y) || isNaN(limit)) { showAlert('Preencha todos os campos.'); return false; }
       const payload = { category_id: cat, month: m, year: y, limit_amount: limit, carry_over: (carryOver ? 1 : 0) as 0 | 1 };
@@ -239,6 +240,7 @@ async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void,
       onDone();
     },
   });
+  attachMoneyMask(overlay.querySelector('#f-limit'));
 
   overlay.querySelector('#btn-new-cat')?.addEventListener('click', () => {
     openCategoryModal(null, async () => {

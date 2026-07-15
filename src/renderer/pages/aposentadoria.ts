@@ -1,5 +1,6 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
+import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import type { Account, InvestmentSummary } from '../../shared/types';
 
 interface ProjectionPoint {
@@ -52,11 +53,11 @@ export async function render(el: HTMLElement): Promise<void> {
               ${inputField('Idade de aposentadoria', 'retirement-age', retirementAge, 1)}
             </div>
             ${inputField('Expectativa de vida (anos)', 'life-expectancy', lifeExpectancy, 1)}
-            ${inputField('Patrimônio atual', 'initial', initial, 100)}
-            ${inputField('Aporte mensal', 'monthly', monthly, 50)}
+            ${moneyField('Patrimônio atual', 'initial', initial)}
+            ${moneyField('Aporte mensal', 'monthly', monthly)}
             ${inputField('Rendimento anual até se aposentar (%)', 'accum-rate', accumRate, 0.5)}
             ${inputField('Rendimento anual na aposentadoria (%)', 'retirement-rate', retirementRate, 0.5)}
-            ${inputField('Renda mensal desejada', 'desired-income', desiredIncome, 100)}
+            ${moneyField('Renda mensal desejada', 'desired-income', desiredIncome)}
             <button class="btn btn-primary" id="btn-simulate" style="width:100%;justify-content:center;margin-top:4px">
               <i class="ti ti-calculator"></i> Simular
             </button>
@@ -83,15 +84,19 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
     `;
 
+    attachMoneyMask(el.querySelector('#initial'));
+    attachMoneyMask(el.querySelector('#monthly'));
+    attachMoneyMask(el.querySelector('#desired-income'));
+
     el.querySelector('#btn-simulate')?.addEventListener('click', () => {
       currentAge = Math.max(0, Math.round(readNumber(el, 'current-age', currentAge)));
       retirementAge = Math.max(currentAge, Math.round(readNumber(el, 'retirement-age', retirementAge)));
       lifeExpectancy = Math.max(retirementAge + 1, Math.round(readNumber(el, 'life-expectancy', lifeExpectancy)));
-      initial = readNumber(el, 'initial', initial);
-      monthly = readNumber(el, 'monthly', monthly);
+      initial = readMoney(el, 'initial', initial);
+      monthly = readMoney(el, 'monthly', monthly);
       accumRate = readNumber(el, 'accum-rate', accumRate);
       retirementRate = readNumber(el, 'retirement-rate', retirementRate);
-      desiredIncome = readNumber(el, 'desired-income', desiredIncome);
+      desiredIncome = readMoney(el, 'desired-income', desiredIncome);
       renderPage();
     });
   }
@@ -179,6 +184,15 @@ function inputField(label: string, id: string, value: number, step: number): str
   `;
 }
 
+function moneyField(label: string, id: string, value: number): string {
+  return `
+    <div class="form-group">
+      <label class="form-label">${label}</label>
+      <input class="form-ctrl" id="${id}" type="text" inputmode="decimal" value="${formatMoneyValue(value)}">
+    </div>
+  `;
+}
+
 function metricCard(label: string, value: string, sub: string, icon: string, color: string): string {
   return `
     <div class="stat-card">
@@ -207,5 +221,10 @@ function valueAt(points: ProjectionPoint[], month: number): number {
 
 function readNumber(root: HTMLElement, id: string, fallback: number): number {
   const value = parseFloat(root.querySelector<HTMLInputElement>(`#${id}`)?.value ?? '');
+  return isNaN(value) ? fallback : value;
+}
+
+function readMoney(root: HTMLElement, id: string, fallback: number): number {
+  const value = moneyInputValue(root.querySelector<HTMLInputElement>(`#${id}`));
   return isNaN(value) ? fallback : value;
 }

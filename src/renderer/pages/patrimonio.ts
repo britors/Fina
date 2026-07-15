@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
+import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import type { Asset, AssetType } from '../../shared/types';
 
@@ -169,11 +170,11 @@ export async function render(el: HTMLElement): Promise<void> {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Valor de aquisição</label>
-              <input class="form-ctrl" id="f-acq" type="number" step="0.01" min="0" value="${asset?.acquisition_value ?? 0}">
+              <input class="form-ctrl" id="f-acq" type="text" inputmode="decimal" value="${formatMoneyValue(asset?.acquisition_value ?? 0)}">
             </div>
             <div class="form-group">
               <label class="form-label">Valor atual</label>
-              <input class="form-ctrl" id="f-cur" type="number" step="0.01" min="0" value="${asset?.current_value ?? 0}">
+              <input class="form-ctrl" id="f-cur" type="text" inputmode="decimal" value="${formatMoneyValue(asset?.current_value ?? 0)}">
             </div>
           </div>
           <div class="form-group">
@@ -192,6 +193,8 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>`;
 
     document.body.appendChild(overlay);
+    attachMoneyMask(overlay.querySelector('#f-acq'));
+    attachMoneyMask(overlay.querySelector('#f-cur'));
 
     const close = (): void => {
       overlay.remove();
@@ -207,8 +210,8 @@ export async function render(el: HTMLElement): Promise<void> {
       const payload = {
         name,
         type: (overlay.querySelector<HTMLSelectElement>('#f-type')!).value,
-        acquisition_value: parseFloat((overlay.querySelector<HTMLInputElement>('#f-acq')!).value) || 0,
-        current_value: parseFloat((overlay.querySelector<HTMLInputElement>('#f-cur')!).value) || 0,
+        acquisition_value: moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-acq')) || 0,
+        current_value: moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-cur')) || 0,
         acquisition_date: (overlay.querySelector<HTMLInputElement>('#f-date')!).value || null,
         description: (overlay.querySelector<HTMLInputElement>('#f-desc')!).value.trim() || null,
       };

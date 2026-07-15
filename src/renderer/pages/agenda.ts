@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate, getDaysUntilDue } from '../../shared/utils';
 import { openModal } from '../components/modal';
+import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
@@ -238,7 +239,7 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Valor (R$)</label>
-          <input class="form-ctrl" id="f-amount" type="number" step="0.01" value="${b?.amount ?? draft?.amount ?? ''}">
+          <input class="form-ctrl" id="f-amount" type="text" inputmode="decimal" placeholder="0,00" value="${formatMoneyValue(b?.amount ?? draft?.amount)}">
         </div>
         <div class="form-group">
           <label class="form-label">Vencimento</label>
@@ -275,7 +276,7 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
     `,
     onSave: async () => {
       const desc   = (document.getElementById('f-desc')    as HTMLInputElement).value.trim();
-      const amount = parseFloat((document.getElementById('f-amount') as HTMLInputElement).value);
+      const amount = moneyInputValue(document.getElementById('f-amount') as HTMLInputElement);
       const due    = (document.getElementById('f-due')     as HTMLInputElement).value;
       const cat    = (document.getElementById('f-category') as HTMLSelectElement).value;
       const status = (document.getElementById('f-status')  as HTMLSelectElement).value as BillStatus;
@@ -289,6 +290,7 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
     },
   });
   overlay.dataset.syncFirstPaymentAmount = b ? 'false' : 'true';
+  attachMoneyMask(overlay.querySelector('#f-amount'));
   bindPaymentRows(overlay, 'bill');
   overlay.querySelector('#f-amount')?.addEventListener('input', () => {
     syncFirstPaymentAmount(overlay, 'bill');
@@ -440,7 +442,7 @@ function paymentRowHtml(accountId: string, amount: number, prefix = 'bill'): str
         <option value="">— Selecione —</option>
         ${accounts.map(a => `<option value="${a.id}" ${accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
       </select>
-      <input class="form-ctrl ${prefix}-payment-amount" type="number" step="0.01" min="0" value="${amount || ''}" placeholder="Valor">
+      <input class="form-ctrl ${prefix}-payment-amount" type="text" inputmode="decimal" value="${amount ? formatMoneyValue(amount) : ''}" placeholder="Valor">
       <button class="btn btn-ghost btn-sm ${prefix}-payment-remove" type="button" title="Remover"><i class="ti ti-x"></i></button>
     </div>
   `;
@@ -450,6 +452,7 @@ function bindPaymentRows(overlay: HTMLElement, prefix: string): void {
   overlay.querySelectorAll<HTMLElement>(`.${prefix}-payment-row`).forEach(row => {
     if (row.dataset.bound === 'true') return;
     row.dataset.bound = 'true';
+    attachMoneyMask(row.querySelector<HTMLInputElement>(`.${prefix}-payment-amount`));
     row.querySelectorAll('input, select').forEach(ctrl => {
       ctrl.addEventListener('input', () => {
         if ((ctrl as HTMLElement).classList.contains(`${prefix}-payment-amount`)) {
@@ -482,7 +485,7 @@ function collectPayments(prefix: string, total: number, allowEmpty: boolean): Pa
   const payments = rows
     .map(row => ({
       account_id: row.querySelector<HTMLSelectElement>(`.${prefix}-payment-account`)!.value,
-      amount: parseFloat(row.querySelector<HTMLInputElement>(`.${prefix}-payment-amount`)!.value),
+      amount: moneyInputValue(row.querySelector<HTMLInputElement>(`.${prefix}-payment-amount`)),
     }))
     .filter(payment => payment.account_id || Number.isFinite(payment.amount));
 
@@ -511,9 +514,9 @@ function collectPayments(prefix: string, total: number, allowEmpty: boolean): Pa
 function remainingAmount(overlay: HTMLElement, prefix: string): number {
   const total = prefix === 'pay'
     ? parseFloat(overlay.querySelector<HTMLInputElement>('#pay-total')?.value ?? '0') || 0
-    : parseFloat((overlay.querySelector<HTMLInputElement>('#f-amount')?.value ?? '0')) || 0;
+    : moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-amount')) || 0;
   const used = [...overlay.querySelectorAll<HTMLInputElement>(`.${prefix}-payment-amount`)]
-    .reduce((sum, input) => sum + (parseFloat(input.value) || 0), 0);
+    .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
   return Math.max(0, Math.round((total - used) * 100) / 100);
 }
 
@@ -522,9 +525,9 @@ function updatePaymentSummary(overlay: HTMLElement, prefix: string): void {
   if (!summary) return;
   const total = prefix === 'pay'
     ? parseFloat(overlay.querySelector<HTMLInputElement>('#pay-total')?.value ?? '0') || 0
-    : parseFloat((overlay.querySelector<HTMLInputElement>('#f-amount')?.value ?? '0')) || 0;
+    : moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-amount')) || 0;
   const used = [...overlay.querySelectorAll<HTMLInputElement>(`.${prefix}-payment-amount`)]
-    .reduce((sum, input) => sum + (parseFloat(input.value) || 0), 0);
+    .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
   const rest = Math.round((total - used) * 100) / 100;
   summary.innerHTML = `Total: <strong>${formatCurrency(total)}</strong> · Distribuído: <strong>${formatCurrency(used)}</strong> · Restante: <strong style="color:${Math.abs(rest) < 0.005 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(rest)}</strong>`;
 }

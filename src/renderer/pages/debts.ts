@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
+import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { AIDebtDraft, Debt, DebtType, DebtStatus, DebtSimulation } from '../../shared/types';
@@ -203,11 +204,11 @@ export async function render(el: HTMLElement): Promise<void> {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Valor original</label>
-              <input class="form-ctrl" id="f-orig" type="number" step="0.01" min="0" value="${debt?.original_amount ?? draft?.original_amount ?? 0}">
+              <input class="form-ctrl" id="f-orig" type="text" inputmode="decimal" value="${formatMoneyValue(debt?.original_amount ?? draft?.original_amount ?? 0)}">
             </div>
             <div class="form-group">
               <label class="form-label">Saldo devedor</label>
-              <input class="form-ctrl" id="f-balance" type="number" step="0.01" min="0" value="${debt?.outstanding_balance ?? draft?.outstanding_balance ?? 0}">
+              <input class="form-ctrl" id="f-balance" type="text" inputmode="decimal" value="${formatMoneyValue(debt?.outstanding_balance ?? draft?.outstanding_balance ?? 0)}">
             </div>
             <div class="form-group">
               <label class="form-label">Juros (% a.m.)</label>
@@ -225,7 +226,7 @@ export async function render(el: HTMLElement): Promise<void> {
             </div>
             <div class="form-group">
               <label class="form-label">Valor da parcela</label>
-              <input class="form-ctrl" id="f-install" type="number" step="0.01" min="0" value="${debt?.installment_amount ?? draft?.installment_amount ?? 0}">
+              <input class="form-ctrl" id="f-install" type="text" inputmode="decimal" value="${formatMoneyValue(debt?.installment_amount ?? draft?.installment_amount ?? 0)}">
             </div>
           </div>
           <div class="form-group">
@@ -240,6 +241,9 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>`;
 
     document.body.appendChild(overlay);
+    attachMoneyMask(overlay.querySelector('#f-orig'));
+    attachMoneyMask(overlay.querySelector('#f-balance'));
+    attachMoneyMask(overlay.querySelector('#f-install'));
 
     const close = (): void => {
       overlay.remove();
@@ -256,12 +260,12 @@ export async function render(el: HTMLElement): Promise<void> {
         type:                    (overlay.querySelector<HTMLSelectElement>('#f-type')!).value,
         creditor:                (overlay.querySelector<HTMLInputElement>('#f-cred')!).value.trim() || null,
         status:                  (overlay.querySelector<HTMLSelectElement>('#f-status')!).value,
-        original_amount:         parseFloat((overlay.querySelector<HTMLInputElement>('#f-orig')!).value)    || 0,
-        outstanding_balance:     parseFloat((overlay.querySelector<HTMLInputElement>('#f-balance')!).value) || 0,
+        original_amount:         moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-orig'))    || 0,
+        outstanding_balance:     moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-balance')) || 0,
         interest_rate:           parseFloat((overlay.querySelector<HTMLInputElement>('#f-rate')!).value)    || 0,
         installments_total:      parseInt((overlay.querySelector<HTMLInputElement>('#f-total')!).value)     || 1,
         installments_remaining:  parseInt((overlay.querySelector<HTMLInputElement>('#f-rem')!).value)       || 1,
-        installment_amount:      parseFloat((overlay.querySelector<HTMLInputElement>('#f-install')!).value) || 0,
+        installment_amount:      moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-install')) || 0,
         next_due_date:           (overlay.querySelector<HTMLInputElement>('#f-due')!).value || null,
       };
       if (debt) { await invoke('debts:update', { id: debt.id, ...payload }); }
@@ -287,7 +291,7 @@ export async function render(el: HTMLElement): Promise<void> {
           </div>
           <div class="form-group">
             <label class="form-label">Pagamento extra por mês</label>
-            <input class="form-ctrl" id="sim-extra" type="number" step="10" min="0" value="0" placeholder="R$ 0,00">
+            <input class="form-ctrl" id="sim-extra" type="text" inputmode="decimal" placeholder="0,00">
           </div>
           <div id="sim-result" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;display:none">
           </div>
@@ -299,6 +303,7 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>`;
 
     document.body.appendChild(overlay);
+    attachMoneyMask(overlay.querySelector('#sim-extra'));
 
     const close = (): void => {
       overlay.remove();
@@ -308,7 +313,7 @@ export async function render(el: HTMLElement): Promise<void> {
     overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', close));
 
     overlay.querySelector('#btn-sim-calc')?.addEventListener('click', async () => {
-      const extra = parseFloat((overlay.querySelector<HTMLInputElement>('#sim-extra')!).value) || 0;
+      const extra = moneyInputValue(overlay.querySelector<HTMLInputElement>('#sim-extra')) || 0;
       const [base, withExtra] = await Promise.all([
         invoke<DebtSimulation>('debts:simulate', { balance: debt.outstanding_balance, rate: debt.interest_rate, min_payment: debt.installment_amount, extra_payment: 0 }),
         invoke<DebtSimulation>('debts:simulate', { balance: debt.outstanding_balance, rate: debt.interest_rate, min_payment: debt.installment_amount, extra_payment: extra }),

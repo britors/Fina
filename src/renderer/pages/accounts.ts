@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate, accountTypeLabel, isCreditLikeAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
+import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { openPayInvoiceModal } from './transactions';
@@ -207,15 +208,15 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
       <div class="form-row">
         <div class="form-group" id="f-balance-brl-group">
           <label class="form-label">Saldo (R$)</label>
-          <input class="form-ctrl" id="f-balance" type="number" step="0.01" value="${acc?.balance ?? 0}">
+          <input class="form-ctrl" id="f-balance" type="text" inputmode="decimal" value="${formatMoneyValue(acc?.balance ?? 0)}">
         </div>
         <div class="form-group" id="f-balance-foreign-group" style="display:none">
           <label class="form-label" id="f-balance-foreign-label">Saldo original</label>
-          <input class="form-ctrl" id="f-original-balance" type="number" step="0.01" value="${acc?.original_balance ?? ''}">
+          <input class="form-ctrl" id="f-original-balance" type="text" inputmode="decimal" value="${formatMoneyValue(acc?.original_balance)}">
         </div>
         <div class="form-group">
           <label class="form-label">Limite de crédito (R$)</label>
-          <input class="form-ctrl" id="f-limit" type="number" step="0.01" value="${acc?.credit_limit ?? ''}">
+          <input class="form-ctrl" id="f-limit" type="text" inputmode="decimal" value="${formatMoneyValue(acc?.credit_limit)}">
         </div>
       </div>
       <div class="form-row" id="f-cycle-group" style="display:none">
@@ -237,9 +238,9 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
       const type       = (document.getElementById('f-type')     as HTMLSelectElement).value as AccountType;
       const bank       = (document.getElementById('f-bank')     as HTMLInputElement).value.trim();
       const curr       = (document.getElementById('f-currency') as HTMLSelectElement).value as AccountCurrency;
-      const balance    = parseFloat((document.getElementById('f-balance') as HTMLInputElement).value);
-      const original   = parseFloat((document.getElementById('f-original-balance') as HTMLInputElement).value);
-      const limit      = parseFloat((document.getElementById('f-limit') as HTMLInputElement).value);
+      const balance    = moneyInputValue(document.getElementById('f-balance') as HTMLInputElement);
+      const original   = moneyInputValue(document.getElementById('f-original-balance') as HTMLInputElement);
+      const limit      = moneyInputValue(document.getElementById('f-limit') as HTMLInputElement);
       const closingDay = parseInt((document.getElementById('f-closing-day') as HTMLInputElement).value, 10);
       const dueDay     = parseInt((document.getElementById('f-due-day') as HTMLInputElement).value, 10);
 
@@ -294,6 +295,9 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
   overlay.querySelector('#f-type')?.addEventListener('change', toggleCreditCardFields);
   toggleCurrencyFields();
   toggleCreditCardFields();
+  attachMoneyMask(overlay.querySelector('#f-balance'));
+  attachMoneyMask(overlay.querySelector('#f-original-balance'));
+  attachMoneyMask(overlay.querySelector('#f-limit'));
 }
 
 function esc(s?: string | null): string {
@@ -388,7 +392,7 @@ async function openInvoiceListModal(account: Account, onDone: () => void): Promi
 
 function openInvoiceFormModal(account: Account, invoice: CreditCardInvoice | null, onSaved: () => void): void {
   const today = new Date().toISOString().split('T')[0];
-  openModal({
+  const overlay = openModal({
     title: invoice ? 'Editar fatura' : 'Nova fatura',
     body: `
       <div class="form-row">
@@ -404,7 +408,7 @@ function openInvoiceFormModal(account: Account, invoice: CreditCardInvoice | nul
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Valor (R$)</label>
-          <input class="form-ctrl" id="f-inv-amount" type="number" step="0.01" min="0" value="${invoice?.amount ?? 0}">
+          <input class="form-ctrl" id="f-inv-amount" type="text" inputmode="decimal" value="${formatMoneyValue(invoice?.amount ?? 0)}">
         </div>
         <div class="form-group">
           <label class="form-label">Status</label>
@@ -419,7 +423,7 @@ function openInvoiceFormModal(account: Account, invoice: CreditCardInvoice | nul
     onSave: async () => {
       const closing = (document.getElementById('f-inv-closing') as HTMLInputElement).value;
       const due     = (document.getElementById('f-inv-due')     as HTMLInputElement).value;
-      const amount  = parseFloat((document.getElementById('f-inv-amount') as HTMLInputElement).value);
+      const amount  = moneyInputValue(document.getElementById('f-inv-amount') as HTMLInputElement);
       const status  = (document.getElementById('f-inv-status')  as HTMLSelectElement).value as CreditCardInvoiceStatus;
       if (!closing || !due || isNaN(amount)) { showAlert('Preencha todos os campos.'); return false; }
       try {
@@ -432,4 +436,5 @@ function openInvoiceFormModal(account: Account, invoice: CreditCardInvoice | nul
       onSaved();
     },
   });
+  attachMoneyMask(overlay.querySelector('#f-inv-amount'));
 }

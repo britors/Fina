@@ -1,5 +1,6 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
+import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import type { Debt } from '../../shared/types';
 
 type Strategy = 'avalanche' | 'snowball';
@@ -58,7 +59,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="card-header">Pagamento extra mensal</div>
         <div class="card-hr"></div>
         <div class="card-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <input class="form-ctrl" id="extra-payment" type="number" min="0" step="50" value="${extraPayment}" style="max-width:180px">
+          <input class="form-ctrl" id="extra-payment" type="text" inputmode="decimal" value="${formatMoneyValue(extraPayment)}" style="max-width:180px">
           <button class="btn btn-primary" id="btn-recalc"><i class="ti ti-calculator"></i> Recalcular</button>
           <span style="font-size:0.82rem;color:var(--text-3)">Esse valor é direcionado para a dívida prioritária de cada estratégia.</span>
         </div>
@@ -100,14 +101,15 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
     `;
 
+    attachMoneyMask(el.querySelector('#extra-payment'));
     el.querySelector('#btn-recalc')?.addEventListener('click', () => {
-      const value = parseFloat((el.querySelector<HTMLInputElement>('#extra-payment')!).value);
+      const value = moneyInputValue(el.querySelector<HTMLInputElement>('#extra-payment'));
       extraPayment = isNaN(value) ? 0 : Math.max(0, value);
       renderPage();
     });
     el.querySelector<HTMLInputElement>('#extra-payment')?.addEventListener('keydown', e => {
       if (e.key !== 'Enter') return;
-      const value = parseFloat((e.target as HTMLInputElement).value);
+      const value = moneyInputValue(e.target as HTMLInputElement);
       extraPayment = isNaN(value) ? 0 : Math.max(0, value);
       renderPage();
     });
