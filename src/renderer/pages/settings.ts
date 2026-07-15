@@ -887,17 +887,18 @@ async function renderCategories(el: HTMLElement): Promise<void> {
     <div class="settings-hr" style="margin-top:8px"></div>
     ${cats.length === 0 ? `<div style="color:var(--text-3);padding:12px 0;font-size:12px">Nenhuma categoria cadastrada.</div>` : ''}
     ${cats.map(c => `
-      <div class="settings-row">
+      <div class="settings-row" style="${c.parent_id ? 'padding-left:32px' : ''}">
         <div style="display:flex;align-items:center;gap:12px">
           <div class="cat-dot" style="background:${c.color}22">
             <i class="ti ${c.icon}" style="color:${c.color};font-size:15px"></i>
           </div>
           <div>
-            <div class="settings-row-label">${esc(c.name)}</div>
-            <div class="settings-row-sub">${categoryTypeLabel(c)}</div>
+            <div class="settings-row-label">${c.parent_id ? '└ ' : ''}${esc(c.name)}</div>
+            <div class="settings-row-sub">${c.parent_name ? `${esc(c.parent_name)} › ` : ''}${categoryTypeLabel(c)}</div>
           </div>
         </div>
         <div class="settings-row-right">
+          ${!c.parent_id ? `<button class="btn btn-ghost btn-sm" data-add-subcat="${c.id}">+ Subcategoria</button>` : ''}
           <button class="btn btn-ghost btn-sm" data-edit-cat="${c.id}">Editar</button>
           <button class="btn btn-danger btn-sm" data-del-cat="${c.id}">✕</button>
         </div>
@@ -913,6 +914,13 @@ async function renderCategories(el: HTMLElement): Promise<void> {
     btn.addEventListener('click', () => {
       const cat = cats.find(c => c.id === btn.dataset.editCat);
       if (cat) openCategoryModal(cat, () => renderCategories(el));
+    });
+  });
+
+  el.querySelectorAll<HTMLElement>('[data-add-subcat]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const parent = cats.find(c => c.id === btn.dataset.addSubcat);
+      if (parent) void openCategoryModal(null, () => renderCategories(el), parent.type, parent.id);
     });
   });
 

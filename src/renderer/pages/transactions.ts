@@ -6,6 +6,7 @@ import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { Account, AITransactionBatchDraft, AITransactionDraft, Category, CategorySuggestion, CreditCardInvoice, PaymentSplit, PaymentSplitWithAccount, TransactionStatus, TransactionWithDetails, TransactionType } from '../../shared/types';
+import { categoryOptions } from '../components/categorySelect';
 
 let accounts: Account[]  = [];
 let categories: Category[] = [];
@@ -321,7 +322,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         <div class="form-group">
           <label class="form-label">Categoria</label>
           <select class="form-ctrl" id="f-category">
-            ${categories.map(c => `<option value="${c.id}" ${(tx?.category_id ?? draft?.category_id) === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+            ${categoryOptions(categories, tx?.category_id ?? draft?.category_id, { type: initialType === 'income' ? 'income' : 'expense' })}
           </select>
         </div>
       </div>
@@ -421,12 +422,18 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
   attachMoneyMask(overlay.querySelector('#f-amount'));
 
   overlay.querySelector('#f-type')?.addEventListener('change', e => {
-    const isTransfer = (e.target as HTMLSelectElement).value === 'transfer';
+    const selectedType = (e.target as HTMLSelectElement).value as TransactionType;
+    const isTransfer = selectedType === 'transfer';
     (overlay.querySelector('#f-to-account-group') as HTMLElement).style.display = isTransfer ? '' : 'none';
     (overlay.querySelector('#single-account-group') as HTMLElement).style.display = isTransfer ? '' : 'none';
     (overlay.querySelector('#payment-splits-group') as HTMLElement).style.display = isTransfer ? 'none' : '';
     updatePaymentSummary(overlay);
     updateInstallmentsVisibility(overlay, !!tx);
+    const categorySelect = overlay.querySelector<HTMLSelectElement>('#f-category');
+    if (categorySelect && !isTransfer) {
+      const previous = categorySelect.value;
+      categorySelect.innerHTML = categoryOptions(categories, previous, { type: selectedType });
+    }
   });
   overlay.querySelector('#f-amount')?.addEventListener('input', () => {
     syncFirstPaymentAmount(overlay);
@@ -547,7 +554,7 @@ function openBatchReviewModal(batch: AITransactionBatchDraft, onDone: () => void
                 <td><input class="form-ctrl ai-batch-date" type="date" value="${draft.date ?? new Date().toISOString().slice(0, 10)}" style="width:140px"></td>
                 <td>
                   <select class="form-ctrl ai-batch-category" style="min-width:150px">
-                    ${categories.filter(c => c.type === (draft.type === 'income' ? 'income' : 'expense')).map(c => `<option value="${c.id}" ${draft.category_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+                    ${categoryOptions(categories, draft.category_id, { type: draft.type === 'income' ? 'income' : 'expense' })}
                   </select>
                   ${draft.warnings.length ? `<div style="font-size:0.72rem;color:var(--warning);margin-top:4px">${esc(draft.warnings.join(' '))}</div>` : ''}
                 </td>
@@ -609,8 +616,7 @@ function openBatchReviewModal(batch: AITransactionBatchDraft, onDone: () => void
       const categorySelect = row?.querySelector<HTMLSelectElement>('.ai-batch-category');
       if (!categorySelect) return;
       const previous = categorySelect.value;
-      const filtered = categories.filter(category => category.type === select.value);
-      categorySelect.innerHTML = filtered.map(c => `<option value="${c.id}" ${previous === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+      categorySelect.innerHTML = categoryOptions(categories, previous, { type: select.value as 'income' | 'expense' });
     });
   });
 }
@@ -667,7 +673,7 @@ function openImportModal(): void {
           <label class="form-label">Categoria padrão *</label>
           <select class="form-ctrl" id="imp-category">
             <option value="">— Selecione —</option>
-            ${categories.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+            ${categoryOptions(categories)}
           </select>
         </div>
         <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text-2)">

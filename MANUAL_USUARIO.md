@@ -468,6 +468,7 @@ A tabela mostra:
 
 - Descrição.
 - Meio de pagamento.
+- Categoria e subcategoria, quando houver.
 - Categoria.
 - Data.
 - Valor.
@@ -588,6 +589,8 @@ Contas em Dólar ou Euro têm o saldo convertido automaticamente para Real usand
 
 A tela `Orçamento` permite definir limites mensais por categoria de despesa.
 
+O limite pode ser definido na categoria principal ou em subcategorias. Um orçamento na categoria principal soma seus gastos diretos e os gastos das subcategorias. Para evitar dupla contagem, o Fina não permite orçamento simultâneo no pai e em uma filha no mesmo mês.
+
 ### Botão da tela
 
 - `Criar com IA`: gera um rascunho de orçamento a partir de texto livre e abre o cadastro para revisão.
@@ -644,11 +647,26 @@ Campos disponíveis:
 
 A tela `Relatórios` mostra análises visuais das receitas e despesas.
 
-### Botão da tela
+### Botões da tela
 
-- `Exportar PDF`: gera um relatório em PDF do mês atual.
+- `Exportar CSV filtrado`: exporta os lançamentos que atendem ao período e aos filtros ativos, separando categoria e subcategoria.
+- `Exportar PDF filtrado`: gera um PDF usando o mesmo período, conta, responsável, status e categoria selecionados.
 
-### Período dos gráficos
+### Filtros
+
+Os campos `Mês de` e `Mês até` definem o intervalo completo, do primeiro dia do mês inicial ao último dia do mês final.
+
+Também é possível filtrar por:
+
+- Meio de pagamento.
+- Responsável, no modo família/casal.
+- Status confirmado ou pendente.
+- Categoria principal.
+- Subcategoria.
+
+O botão `Limpar filtros` retorna à visão geral.
+
+### Atalhos de período
 
 Use os botões:
 
@@ -656,7 +674,7 @@ Use os botões:
 - `6 meses`.
 - `12 meses`.
 
-Eles controlam o histórico exibido no gráfico e na tabela.
+Eles ajustam rapidamente os meses inicial e final usados em todos os gráficos e tabelas.
 
 ### Gráfico de receitas e despesas
 
@@ -664,7 +682,23 @@ Mostra a comparação mensal entre receitas e despesas.
 
 ### Despesas por categoria
 
-Mostra um gráfico circular com a participação de cada categoria de despesa no mês atual.
+Mostra um gráfico circular com a participação de cada categoria de despesa no período. O dropdown permite selecionar uma categoria e detalhar suas subcategorias, incluindo os lançamentos feitos diretamente no pai como `Sem subcategoria`.
+
+### Análises sintéticas e detalhadas
+
+A tela também apresenta:
+
+- Média mensal de despesas.
+- Ticket médio dos lançamentos.
+- Variação contra o período anterior de mesma duração.
+- Concentração dos gastos na maior categoria.
+- Proporção entre despesas essenciais e variáveis.
+- Distribuição dos gastos por dia da semana.
+- Despesas por meio de pagamento.
+- Evolução multimensal por categoria ou subcategoria.
+- Categorias que cresceram ou diminuíram contra o período anterior.
+- Total, participação, quantidade, média e maior lançamento por categoria.
+- Maiores despesas do recorte selecionado.
 
 ### Resumo do período
 
@@ -1359,6 +1393,7 @@ Permite gerenciar categorias de receitas e despesas.
 Ações disponíveis:
 
 - `Nova`: cria uma categoria.
+- `+ Subcategoria`: cria uma subcategoria vinculada à categoria principal.
 - `Editar`: altera categoria existente.
 - `Excluir`: remove uma categoria.
 
@@ -1369,6 +1404,8 @@ Ao criar ou editar categoria, informe:
 - Classificação: essencial ou variável, quando a categoria for de despesa.
 - Ícone.
 - Cor.
+
+Subcategorias herdam o tipo e a classificação da categoria principal. O Fina suporta um nível de hierarquia. Categorias com filhas ou com dados vinculados não podem ser excluídas. Nos seletores, as filhas aparecem recuadas e os relatórios permitem consolidar ou detalhar seus valores.
 
 Categorias são usadas em transações, orçamentos, relatórios, gráficos, score e decisões sugeridas.
 

@@ -1,6 +1,7 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import { writeFileSync } from 'node:fs';
 import { getDb } from '../database';
+import { categoryOrChildPredicate } from '../categoryHierarchyQueries';
 
 function esc(s: string | null | undefined): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -15,6 +16,7 @@ export function registerExportHandlers(): void {
   // ── CSV de transações ─────────────────────────────────────────────────────
   ipcMain.handle('export:csv', async (_e, filters: {
     month?: number; year?: number; dateFrom?: string; dateTo?: string; account_id?: string; type?: string;
+    category_id?: string; owner?: string; status?: string;
   } = {}) => {
     const { filePath } = await dialog.showSaveDialog({
       title: 'Exportar transações',
@@ -26,7 +28,9 @@ export function registerExportHandlers(): void {
     if (!filePath) return null;
 
     let q = `
-      SELECT t.date, t.description, c.name as category,
+      SELECT t.date, t.description,
+             COALESCE(parent.name, c.name) as category,
+             CASE WHEN parent.id IS NULL THEN '' ELSE c.name END as subcategory,
              COALESCE(
                (SELECT group_concat(a2.name, ' + ')
                 FROM transaction_payments p
@@ -38,6 +42,7 @@ export function registerExportHandlers(): void {
       FROM transactions t
       JOIN accounts a ON a.id = t.account_id
       JOIN categories c ON c.id = t.category_id
+      LEFT JOIN categories parent ON parent.id = c.parent_id
       WHERE 1=1
     `;
     const params: (string | number)[] = [];
@@ -54,6 +59,12 @@ export function registerExportHandlers(): void {
       params.push(filters.account_id, filters.account_id);
     }
     if (filters.type)  { q += ` AND t.type = ?`; params.push(filters.type); }
+    if (filters.category_id) {
+      q += ` AND ${categoryOrChildPredicate('t.category_id')}`;
+      params.push(filters.category_id, filters.category_id);
+    }
+    if (filters.owner) { q += ' AND t.owner = ?'; params.push(filters.owner); }
+    if (filters.status) { q += ' AND t.status = ?'; params.push(filters.status); }
     q += ' ORDER BY t.date DESC';
 
     const rows = getDb().prepare(q).all(...params) as Record<string, unknown>[];
@@ -61,10 +72,11 @@ export function registerExportHandlers(): void {
     const typeLabel = (t: string) => t === 'income' ? 'Receita' : t === 'expense' ? 'Despesa' : 'Transferência';
     const statusLabel = (s: string) => s === 'confirmed' ? 'Confirmado' : 'Pendente';
 
-    const header = 'Data,Descrição,Categoria,Meio de pagamento,Tipo,Valor,Status,Observações';
+    const header = 'Data,Descrição,Categoria,Subcategoria,Meio de pagamento,Tipo,Valor,Status,Observações';
     const lines = rows.map(r => [
       r.date, `"${String(r.description).replace(/"/g, '""')}"`,
       `"${String(r.category).replace(/"/g, '""')}"`,
+      `"${String(r.subcategory ?? '').replace(/"/g, '""')}"`,
       `"${String(r.account).replace(/"/g, '""')}"`,
       typeLabel(String(r.type)),
       String(r.amount),
@@ -76,29 +88,47 @@ export function registerExportHandlers(): void {
     return filePath;
   });
 
-  // ── PDF de relatório mensal ───────────────────────────────────────────────
-  ipcMain.handle('export:pdf', async (_e, { month, year }: { month: number; year: number }) => {
+  // ── PDF de relatório mensal ou filtrado ───────────────────────────────────
+  ipcMain.handle('export:pdf', async (_e, filters: {
+    month?: number; year?: number; dateFrom?: string; dateTo?: string; account_id?: string;
+    category_id?: string; owner?: string; status?: string;
+  }) => {
+    const now = new Date();
+    const month = filters.month ?? now.getMonth() + 1;
+    const year = filters.year ?? now.getFullYear();
+    const dateFrom = filters.dateFrom ?? `${year}-${String(month).padStart(2, '0')}-01`;
+    const dateTo = filters.dateTo ?? `${year}-${String(month).padStart(2, '0')}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
     const { filePath } = await dialog.showSaveDialog({
       title: 'Exportar relatório PDF',
-      defaultPath: `relatorio-${year}-${String(month).padStart(2, '0')}.pdf`,
+      defaultPath: `relatorio-${dateFrom.slice(0, 7)}-a-${dateTo.slice(0, 7)}.pdf`,
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     });
     if (!filePath) return null;
 
     const db = getDb();
-    const pad = String(month).padStart(2, '0');
+    const where = ['t.date >= ?', 't.date <= ?'];
+    const params: (string | number)[] = [dateFrom, dateTo];
+    if (filters.account_id) {
+      where.push('(t.account_id = ? OR EXISTS (SELECT 1 FROM transaction_payments filter_payment WHERE filter_payment.transaction_id=t.id AND filter_payment.account_id=?))');
+      params.push(filters.account_id, filters.account_id);
+    }
+    if (filters.category_id) {
+      where.push(categoryOrChildPredicate('t.category_id'));
+      params.push(filters.category_id, filters.category_id);
+    }
+    if (filters.owner) { where.push('t.owner = ?'); params.push(filters.owner); }
+    if (filters.status) { where.push('t.status = ?'); params.push(filters.status); }
 
     const summary = db.prepare(`
       SELECT
-        COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income,
-        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense
-      FROM transactions
-      WHERE status='confirmed'
-        AND strftime('%m',date)=? AND strftime('%Y',date)=?
-    `).get(pad, String(year)) as { income: number; expense: number };
+        COALESCE(SUM(CASE WHEN t.type='income'  THEN t.amount ELSE 0 END),0) AS income,
+        COALESCE(SUM(CASE WHEN t.type='expense' THEN t.amount ELSE 0 END),0) AS expense
+      FROM transactions t WHERE ${where.join(' AND ')}
+    `).get(...params) as { income: number; expense: number };
 
     const txs = db.prepare(`
-      SELECT t.date, t.description, c.name as category,
+      SELECT t.date, t.description,
+             CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END as category,
              COALESCE(
                (SELECT group_concat(a2.name, ' + ')
                 FROM transaction_payments p
@@ -110,12 +140,13 @@ export function registerExportHandlers(): void {
       FROM transactions t
       JOIN accounts a ON a.id = t.account_id
       JOIN categories c ON c.id = t.category_id
-      WHERE strftime('%m',t.date)=? AND strftime('%Y',t.date)=?
+      LEFT JOIN categories parent ON parent.id = c.parent_id
+      WHERE ${where.join(' AND ')}
       ORDER BY t.date DESC
-    `).all(pad, String(year)) as { date: string; description: string; category: string; account: string; type: string; amount: number; status: string }[];
+    `).all(...params) as { date: string; description: string; category: string; account: string; type: string; amount: number; status: string }[];
 
     const userName = (db.prepare(`SELECT value FROM app_settings WHERE key='user_name'`).get() as { value: string } | undefined)?.value ?? 'Usuário';
-    const monthName = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const periodName = `${new Date(dateFrom + 'T12:00').toLocaleDateString('pt-BR')} a ${new Date(dateTo + 'T12:00').toLocaleDateString('pt-BR')}`;
     const balance = summary.income - summary.expense;
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
@@ -136,7 +167,7 @@ export function registerExportHandlers(): void {
   .type-expense { color: #c0392b; }
 </style></head><body>
 <h1>Relatório Financeiro</h1>
-<div class="sub">${esc(userName)} · ${monthName}</div>
+<div class="sub">${esc(userName)} · ${periodName}</div>
 <div class="summary">
   <div class="summary-card">
     <div class="summary-label">Receitas</div>

@@ -34,10 +34,16 @@ function suggestCategory(description: string, type: TransactionType): { id: stri
   if (fromHistory) return { id: fromHistory.categoryId, name: fromHistory.categoryName, reason: fromHistory.reason };
 
   const db = getDb();
-  const categories = db.prepare('SELECT id, name FROM categories WHERE type = ?').all(type === 'income' ? 'income' : 'expense') as { id: string; name: string }[];
+  const categories = db.prepare(`
+    SELECT c.id, c.name,
+      CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END AS display_name
+    FROM categories c
+    LEFT JOIN categories parent ON parent.id = c.parent_id
+    WHERE c.type = ?
+  `).all(type === 'income' ? 'income' : 'expense') as { id: string; name: string; display_name: string }[];
   const desc = normalizeText(description);
   const direct = categories.find(c => desc.includes(normalizeText(c.name)));
-  if (direct) return { ...direct, reason: `A descrição contém o nome da categoria "${direct.name}".` };
+  if (direct) return { id: direct.id, name: direct.display_name, reason: `A descrição contém o nome da categoria "${direct.display_name}".` };
 
   const hints: Record<string, string[]> = {
     Alimentação: ['mercado', 'supermercado', 'restaurante', 'ifood', 'padaria', 'hortifruti', 'acougue'],
@@ -53,7 +59,7 @@ function suggestCategory(description: string, type: TransactionType): { id: stri
   for (const category of categories) {
     const words = hints[category.name] ?? [];
     const matchedWord = words.find(word => desc.includes(word));
-    if (matchedWord) return { ...category, reason: `A descrição contém "${matchedWord}", associado à categoria "${category.name}".` };
+    if (matchedWord) return { id: category.id, name: category.display_name, reason: `A descrição contém "${matchedWord}", associado à categoria "${category.display_name}".` };
   }
 
   return null;

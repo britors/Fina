@@ -4,6 +4,7 @@ import { getDb } from '../database';
 import { adjustBalance } from './transactions';
 import { attachToInvoice } from '../invoices';
 import type { Bill, BillInterval, BillPriceIncrease, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
+import { categoryOrChildPredicate } from '../categoryHierarchyQueries';
 
 type BillInput = Omit<Bill, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[] };
 type BillUpdateInput = Partial<Bill> & { id: string; payments?: PaymentSplit[] };
@@ -124,11 +125,17 @@ export function registerBillHandlers(): void {
     if (filters.status)      { conds.push('b.status = ?');      params.push(filters.status); }
     if (filters.dateFrom)    { conds.push('b.due_date >= ?');   params.push(filters.dateFrom); }
     if (filters.dateTo)      { conds.push('b.due_date <= ?');   params.push(filters.dateTo); }
-    if (filters.category_id) { conds.push('b.category_id = ?'); params.push(filters.category_id); }
+    if (filters.category_id) {
+      conds.push(categoryOrChildPredicate('b.category_id'));
+      params.push(filters.category_id, filters.category_id);
+    }
     const rows = getDb().prepare(`
-      SELECT b.*, c.name as category_name, c.icon as category_icon, c.color as category_color
+      SELECT b.*,
+        CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END as category_name,
+        c.icon as category_icon, c.color as category_color
       FROM bills b
       LEFT JOIN categories c ON b.category_id = c.id
+      LEFT JOIN categories parent ON parent.id = c.parent_id
       WHERE ${conds.join(' AND ')}
       ORDER BY b.due_date
     `).all(...params) as Bill[];

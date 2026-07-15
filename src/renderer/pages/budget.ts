@@ -7,6 +7,7 @@ import { openCategoryModal } from '../components/categoryModal';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { AIBudgetDraft, BudgetWithProgress, Category } from '../../shared/types';
+import { categoryOptions } from '../components/categorySelect';
 
 export async function render(el: HTMLElement): Promise<void> {
   const now = new Date();
@@ -189,10 +190,6 @@ function budgetRow(b: BudgetWithProgress, showPeriod = false): string {
 async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void, month?: number, year?: number, draft?: AIBudgetDraft): Promise<void> {
   const cats = await invoke<Category[]>('categories:list', 'expense');
 
-  function catOptions(list: Category[], selectedId?: string): string {
-    return list.map(c => `<option value="${c.id}" ${selectedId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
-  }
-
   const overlay = openModal({
     title: b ? 'Editar orçamento' : 'Novo orçamento',
     body: `
@@ -201,7 +198,7 @@ async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void,
         <label class="form-label">Categoria</label>
         <div style="display:flex;gap:8px">
           <select class="form-ctrl" id="f-cat" style="flex:1">
-            ${catOptions(cats, b?.category_id ?? draft?.category_id)}
+            ${categoryOptions(cats, b?.category_id ?? draft?.category_id)}
           </select>
           <button class="btn btn-ghost btn-sm" id="btn-new-cat" type="button"><i class="ti ti-plus"></i> Nova</button>
         </div>
@@ -247,7 +244,7 @@ async function openBudgetModal(b: BudgetWithProgress | null, onDone: () => void,
       const updated = await invoke<Category[]>('categories:list', 'expense');
       const sel = overlay.querySelector<HTMLSelectElement>('#f-cat')!;
       const prev = sel.value;
-      sel.innerHTML = catOptions(updated, prev);
+      sel.innerHTML = categoryOptions(updated, prev);
       if (updated.length > 0 && !sel.value) sel.value = updated[updated.length - 1].id;
     }, 'expense');
   });

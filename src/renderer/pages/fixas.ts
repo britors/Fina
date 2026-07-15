@@ -5,6 +5,7 @@ import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../component
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import type { Account, BillInterval, BillPriceIncrease, BillWithCategory, Category, DetectedRecurrence } from '../../shared/types';
+import { categoryOptions } from '../components/categorySelect';
 
 const INTERVAL_LABELS: Record<BillInterval, string> = {
   weekly:     'Semanal',
@@ -181,8 +182,7 @@ function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => vo
         <div class="form-group">
           <label class="form-label">Categoria</label>
           <select class="form-ctrl" id="f-category">
-            <option value="">— Sem categoria —</option>
-            ${categories.map(c => `<option value="${c.id}" ${bill?.category_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+            ${categoryOptions(categories, bill?.category_id, { emptyLabel: '— Sem categoria —' })}
           </select>
         </div>
       </div>

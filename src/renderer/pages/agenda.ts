@@ -6,6 +6,7 @@ import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { Account, AIBillDraft, Bill, BillInterval, BillStatus, BillWithCategory, Category, CreditCardInvoiceWithAccount, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
+import { categoryOptions } from '../components/categorySelect';
 
 const INTERVAL_LABELS: Record<BillInterval, string> = {
   weekly:     'Semanal',
@@ -54,7 +55,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <input class="form-ctrl" id="bill-to" type="date" value="${filterTo}" style="width:auto">
         <select class="form-ctrl" id="bill-category" style="width:auto">
           <option value="">Todas as categorias</option>
-          ${expenseCategories.map(c => `<option value="${c.id}" ${filterCategory === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+          ${categoryOptions(expenseCategories, filterCategory, { emptyLabel: 'Todas as categorias' })}
         </select>
         <button class="btn btn-ghost btn-sm" id="bill-filter-reset">Limpar filtros</button>
       </div>
@@ -260,8 +261,7 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
         <div class="form-group">
           <label class="form-label">Categoria</label>
           <select class="form-ctrl" id="f-category">
-            <option value="">— Sem categoria —</option>
-            ${expenseCategories.map(c => `<option value="${c.id}" ${(b?.category_id ?? draft?.category_id)===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+            ${categoryOptions(expenseCategories, b?.category_id ?? draft?.category_id, { emptyLabel: '— Sem categoria —' })}
           </select>
         </div>
         <div class="form-group">
@@ -344,7 +344,7 @@ async function openPayBillModal(b: BillWithCategory, onDone: () => void): Promis
           : `<div class="form-group">
                <label class="form-label">Categoria</label>
                <select class="form-ctrl" id="f-pay-category">
-                 ${expenseCategories.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+                 ${categoryOptions(expenseCategories)}
                </select>
              </div>`
         }

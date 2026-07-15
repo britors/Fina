@@ -14,6 +14,7 @@ export async function render(el: HTMLElement): Promise<void> {
   let toMonth   = now.getMonth() + 1;
   let toYear    = now.getFullYear();
   let firstLoad = true;
+  let expenseRootId = '';
 
   async function load(): Promise<void> {
     if (firstLoad) {
@@ -28,12 +29,12 @@ export async function render(el: HTMLElement): Promise<void> {
       ? monthLabel(fromMonth, fromYear)
       : `${monthLabel(fromMonth, fromYear)} – ${monthLabel(toMonth, toYear)}`;
 
-    const [accounts, summary, recent, bills, expenses, forecast, endOfMonthForecast, invSummary, assetSummary, goals, debtSummary, quotes, consolidatedBalance, cashFlow] = await Promise.all([
+    const [accounts, summary, recent, bills, rootExpenses, forecast, endOfMonthForecast, invSummary, assetSummary, goals, debtSummary, quotes, consolidatedBalance, cashFlow] = await Promise.all([
       invoke<Account[]>('accounts:list'),
       invoke<MonthlySummary>('transactions:getSummaryRange', { dateFrom, dateTo }),
       invoke<TransactionWithDetails[]>('transactions:list', { dateFrom, dateTo, limit: 5 }),
       invoke<Bill[]>('bills:getUpcoming', 30),
-      invoke<{ name: string; color: string; total: number }[]>('transactions:getExpensesByCategoryRange', { dateFrom, dateTo }),
+      invoke<{ id: string; name: string; color: string; total: number }[]>('transactions:getExpensesByCategoryRange', { dateFrom, dateTo }),
       invoke<ForecastPoint[]>('forecast:get', 30),
       invoke<EndOfMonthForecast>('forecast:endOfMonth'),
       invoke<InvestmentSummary>('investments:getSummary'),
@@ -44,10 +45,15 @@ export async function render(el: HTMLElement): Promise<void> {
       invoke<ConsolidatedBalance>('openFinance:getConsolidatedBalance'),
       invoke<CashFlowForecast>('openFinance:getCashFlowForecast', 8),
     ]);
+    if (expenseRootId && !rootExpenses.some(category => category.id === expenseRootId)) expenseRootId = '';
+    const expenses = expenseRootId
+      ? await invoke<{ id: string | null; name: string; color: string; total: number }[]>('transactions:getExpenseSubcategoryBreakdown', { rootCategoryId: expenseRootId, dateFrom, dateTo })
+      : rootExpenses;
 
     const totalBalance  = accounts.reduce((s, a) => s + (isCreditLikeAccountType(a.type) ? -a.balance : a.balance), 0);
     const netWorth       = totalBalance + invSummary.total_current + (assetSummary.total ?? 0) - (debtSummary.total_debt ?? 0);
     const donutSegs      = expenses.map(e => ({ value: e.total, color: e.color, label: e.name }));
+    const expenseTotal   = expenses.reduce((sum, expense) => sum + expense.total, 0);
     const urgentGoals    = goals.filter(g => {
       if (!g.target_date) return false;
       const days = Math.ceil((new Date(g.target_date + 'T12:00').getTime() - Date.now()) / 86400_000);
@@ -123,7 +129,13 @@ export async function render(el: HTMLElement): Promise<void> {
 
       <!-- Donut chart -->
       <div class="card">
-        <div class="card-header"><span>Gastos por categoria</span></div>
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <span>${expenseRootId ? 'Gastos por subcategoria' : 'Gastos por categoria'}</span>
+          <select class="form-ctrl" id="dash-expense-category" style="width:auto;max-width:180px;font-size:11px">
+            <option value="">Todas as categorias</option>
+            ${rootExpenses.map(category => `<option value="${category.id}" ${expenseRootId === category.id ? 'selected' : ''}>${esc(category.name)}</option>`).join('')}
+          </select>
+        </div>
         <div class="card-hr"></div>
         <div class="card-body" style="padding:16px 20px">
           ${donutSegs.length === 0
@@ -131,7 +143,7 @@ export async function render(el: HTMLElement): Promise<void> {
             : `<div class="chart-container">
                 ${createDonut(donutSegs, 150,
                   periodLabel,
-                  formatCurrency(summary.expense))}
+                  formatCurrency(expenseTotal))}
                 <div class="chart-legend" style="max-width:140px">
                   ${donutSegs.slice(0, 5).map(s => `
                     <div class="legend-item">
@@ -363,6 +375,10 @@ export async function render(el: HTMLElement): Promise<void> {
       fromMonth = now.getMonth() + 1; fromYear = now.getFullYear();
       toMonth   = now.getMonth() + 1; toYear   = now.getFullYear();
       load();
+    });
+    el.querySelector<HTMLSelectElement>('#dash-expense-category')?.addEventListener('change', event => {
+      expenseRootId = (event.target as HTMLSelectElement).value;
+      void load();
     });
     el.querySelector<HTMLSelectElement>('#of-bank-filter')?.addEventListener('change', e => {
       const bank = (e.target as HTMLSelectElement).value;

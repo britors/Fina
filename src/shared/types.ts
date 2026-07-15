@@ -34,6 +34,10 @@ export interface Category {
   color: string;
   type: CategoryType;
   kind: CategoryKind;
+  parent_id: string | null;
+  parent_name?: string | null;
+  depth?: 0 | 1;
+  children_count?: number;
   created_at: string;
 }
 

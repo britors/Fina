@@ -2,6 +2,7 @@ import { invoke } from '../api';
 import { openModal } from './modal';
 import { showAlert } from './alertDialog';
 import type { Category, CategoryKind, CategoryType } from '../../shared/types';
+import { categoryOptions } from './categorySelect';
 
 const ICONS = [
   'ti-briefcase',   'ti-code',             'ti-building-bank', 'ti-cash',
@@ -19,11 +20,20 @@ function esc(s?: string): string {
   return (s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-export function openCategoryModal(cat: Category | null, onDone: () => void, defaultType: CategoryType = 'expense'): void {
+export async function openCategoryModal(
+  cat: Category | null,
+  onDone: () => void,
+  defaultType: CategoryType = 'expense',
+  initialParentId?: string,
+): Promise<void> {
+  const categories = await invoke<Category[]>('categories:list');
   let selIcon  = cat?.icon  ?? ICONS[0];
   let selColor = cat?.color ?? COLORS[0];
-  const initialType = cat?.type ?? defaultType;
-  const initialKind = cat?.kind ?? (initialType === 'income' ? 'income' : 'variable');
+  const selectedParentId = cat?.parent_id ?? initialParentId ?? null;
+  const selectedParent = categories.find(category => category.id === selectedParentId);
+  const initialType = selectedParent?.type ?? cat?.type ?? defaultType;
+  const initialKind = selectedParent?.kind ?? cat?.kind ?? (initialType === 'income' ? 'income' : 'variable');
+  const availableParents = categories.filter(category => !category.parent_id && category.id !== cat?.id);
   const accent = (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#1D9E75').trim();
   const selBg  = accent + '22';
 
@@ -35,15 +45,22 @@ export function openCategoryModal(cat: Category | null, onDone: () => void, defa
         <input class="form-ctrl" id="f-cat-name" value="${esc(cat?.name ?? '')}">
       </div>
       <div class="form-group">
+        <label class="form-label">Categoria pai <span style="color:var(--text-3)">(opcional)</span></label>
+        <select class="form-ctrl" id="f-cat-parent">
+          ${categoryOptions(availableParents, selectedParentId, { emptyLabel: '— Categoria principal —' })}
+        </select>
+        <div style="font-size:11px;color:var(--text-3);margin-top:5px">Subcategorias herdam o tipo e a classificação da categoria pai.</div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Tipo</label>
-        <select class="form-ctrl" id="f-cat-type">
+        <select class="form-ctrl" id="f-cat-type" ${selectedParent ? 'disabled' : ''}>
           <option value="expense" ${initialType !== 'income' ? 'selected' : ''}>Despesa</option>
           <option value="income"  ${initialType === 'income' ? 'selected' : ''}>Receita</option>
         </select>
       </div>
       <div class="form-group" id="f-cat-kind-group" style="display:${initialType === 'income' ? 'none' : ''}">
         <label class="form-label">Classificação</label>
-        <select class="form-ctrl" id="f-cat-kind">
+        <select class="form-ctrl" id="f-cat-kind" ${selectedParent ? 'disabled' : ''}>
           <option value="essential" ${initialKind === 'essential' ? 'selected' : ''}>Essencial</option>
           <option value="variable" ${initialKind !== 'essential' ? 'selected' : ''}>Variável</option>
         </select>
@@ -74,12 +91,14 @@ export function openCategoryModal(cat: Category | null, onDone: () => void, defa
     `,
     onSave: () => {
       const name = (document.getElementById('f-cat-name') as HTMLInputElement).value.trim();
-      const type = (document.getElementById('f-cat-type') as HTMLSelectElement).value as CategoryType;
-      const kind = type === 'income' ? 'income' : (document.getElementById('f-cat-kind') as HTMLSelectElement).value as CategoryKind;
+      const parent_id = (document.getElementById('f-cat-parent') as HTMLSelectElement).value || null;
+      const parent = categories.find(category => category.id === parent_id);
+      const type = parent?.type ?? (document.getElementById('f-cat-type') as HTMLSelectElement).value as CategoryType;
+      const kind = parent?.kind ?? (type === 'income' ? 'income' : (document.getElementById('f-cat-kind') as HTMLSelectElement).value as CategoryKind);
       if (!name) { showAlert('Informe o nome.'); return false; }
       const p = cat
-        ? invoke('categories:update', { id: cat.id, name, icon: selIcon, color: selColor, type, kind })
-        : invoke('categories:create', { name, icon: selIcon, color: selColor, type, kind });
+        ? invoke('categories:update', { id: cat.id, name, icon: selIcon, color: selColor, type, kind, parent_id })
+        : invoke('categories:create', { name, icon: selIcon, color: selColor, type, kind, parent_id });
       p.then(() => onDone());
     },
   });
@@ -87,6 +106,19 @@ export function openCategoryModal(cat: Category | null, onDone: () => void, defa
   overlay.querySelector<HTMLSelectElement>('#f-cat-type')?.addEventListener('change', e => {
     const type = (e.target as HTMLSelectElement).value as CategoryType;
     (overlay.querySelector('#f-cat-kind-group') as HTMLElement).style.display = type === 'income' ? 'none' : '';
+  });
+
+  overlay.querySelector<HTMLSelectElement>('#f-cat-parent')?.addEventListener('change', e => {
+    const parent = categories.find(category => category.id === (e.target as HTMLSelectElement).value);
+    const typeSelect = overlay.querySelector<HTMLSelectElement>('#f-cat-type')!;
+    const kindSelect = overlay.querySelector<HTMLSelectElement>('#f-cat-kind')!;
+    typeSelect.disabled = !!parent;
+    kindSelect.disabled = !!parent;
+    if (parent) {
+      typeSelect.value = parent.type;
+      kindSelect.value = parent.kind;
+    }
+    (overlay.querySelector('#f-cat-kind-group') as HTMLElement).style.display = typeSelect.value === 'income' ? 'none' : '';
   });
 
   overlay.querySelectorAll<HTMLElement>('[data-color]').forEach(dot => {

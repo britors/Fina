@@ -4,13 +4,17 @@ import { getDb } from '../database';
 import type { PaymentSplit, PaymentSplitWithAccount, Transaction, TransactionFilters, TransactionType } from '../../shared/types';
 import { isCreditLikeAccountType } from '../../shared/utils';
 import { attachToInvoice, adjustInvoiceAmount } from '../invoices';
+import { buildExpenseAnalyticsWhere, categoryOrChildPredicate, EXPENSES_BY_ROOT_MONTH_SQL, EXPENSES_BY_ROOT_RANGE_SQL, EXPENSE_CATEGORY_DETAILS_SQL, EXPENSE_MONTHLY_ROOT_SERIES_SQL, EXPENSE_MONTHLY_SUBCATEGORY_SERIES_SQL, EXPENSE_SUBCATEGORY_BREAKDOWN_SQL } from '../categoryHierarchyQueries';
+import type { ExpenseAnalyticsFilters } from '../categoryHierarchyQueries';
 
 const JOIN = `
   SELECT t.*, a.name as account_name,
-    c.name as category_name, c.icon as category_icon, c.color as category_color
+    CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END as category_name,
+    c.icon as category_icon, c.color as category_color
   FROM transactions t
   JOIN accounts a ON t.account_id = a.id
   JOIN categories c ON t.category_id = c.id
+  LEFT JOIN categories parent ON parent.id = c.parent_id
 `;
 
 type TransactionInput = Omit<Transaction, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[] };
@@ -167,7 +171,131 @@ function enrichTransactions<T extends Transaction & { account_name: string }>(ro
   return rows.map(row => enrichTransaction(row)!);
 }
 
+function getExpenseAnalytics(filters: ExpenseAnalyticsFilters): object {
+  const db = getDb();
+  const filtered = buildExpenseAnalyticsWhere(filters);
+  const withoutCategory = buildExpenseAnalyticsWhere(filters, false);
+  const detailMode = !!filters.rootCategoryId && !filters.subcategoryId;
+  const subcategoryMode = !!filters.subcategoryId;
+  const dimension = detailMode
+    ? `CASE WHEN c.id = '${filters.rootCategoryId!.replace(/'/g, "''")}' THEN NULL ELSE c.id END AS id,
+       CASE WHEN c.id = '${filters.rootCategoryId!.replace(/'/g, "''")}' THEN 'Sem subcategoria' ELSE c.name END AS name,
+       c.color`
+    : subcategoryMode
+      ? 'c.id AS id, c.name AS name, c.color'
+    : 'root.id AS id, root.name AS name, root.color';
+  const group = detailMode || subcategoryMode ? 'c.id, c.name, c.color' : 'root.id, root.name, root.color';
+
+  const availableRoots = db.prepare(`
+    SELECT root.id, root.name, root.color, SUM(t.amount) AS total
+    FROM transactions t
+    JOIN categories c ON c.id=t.category_id
+    JOIN categories root ON root.id=COALESCE(c.parent_id,c.id)
+    WHERE ${withoutCategory.sql}
+    GROUP BY root.id, root.name, root.color ORDER BY total DESC
+  `).all(...withoutCategory.params);
+
+  const categories = db.prepare(`
+    SELECT ${dimension}, SUM(t.amount) AS total,
+      COUNT(*) AS transaction_count, AVG(t.amount) AS average_amount, MAX(t.amount) AS largest_amount
+    FROM transactions t
+    JOIN categories c ON c.id=t.category_id
+    JOIN categories root ON root.id=COALESCE(c.parent_id,c.id)
+    WHERE ${filtered.sql}
+    GROUP BY ${group} ORDER BY total DESC
+  `).all(...filtered.params);
+
+  const monthlySeries = db.prepare(`
+    SELECT strftime('%Y-%m',t.date) AS month, ${dimension}, SUM(t.amount) AS total
+    FROM transactions t
+    JOIN categories c ON c.id=t.category_id
+    JOIN categories root ON root.id=COALESCE(c.parent_id,c.id)
+    WHERE ${filtered.sql}
+    GROUP BY month, ${group} ORDER BY month, total DESC
+  `).all(...filtered.params);
+
+  const topTransactions = db.prepare(`
+    SELECT t.id, t.date, t.description, t.amount, a.name AS account_name,
+      CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END AS category_name
+    FROM transactions t
+    JOIN accounts a ON a.id=t.account_id
+    JOIN categories c ON c.id=t.category_id
+    LEFT JOIN categories parent ON parent.id=c.parent_id
+    WHERE ${filtered.sql}
+    ORDER BY t.amount DESC, t.date DESC LIMIT 10
+  `).all(...filtered.params);
+
+  const kindBreakdown = db.prepare(`
+    SELECT root.kind AS kind, SUM(t.amount) AS total
+    FROM transactions t
+    JOIN categories c ON c.id=t.category_id
+    JOIN categories root ON root.id=COALESCE(c.parent_id,c.id)
+    WHERE ${filtered.sql}
+    GROUP BY root.kind ORDER BY total DESC
+  `).all(...filtered.params);
+
+  const weekdayBreakdown = db.prepare(`
+    SELECT CAST(strftime('%w',t.date) AS INTEGER) AS weekday, SUM(t.amount) AS total, COUNT(*) AS transaction_count
+    FROM transactions t
+    WHERE ${filtered.sql}
+    GROUP BY weekday ORDER BY weekday
+  `).all(...filtered.params);
+
+  const accountBreakdown = db.prepare(`
+    SELECT a.id, a.name, SUM(p.amount) AS total
+    FROM transactions t
+    JOIN transaction_payments p ON p.transaction_id=t.id
+    JOIN accounts a ON a.id=p.account_id
+    WHERE ${filtered.sql}
+    GROUP BY a.id,a.name ORDER BY total DESC
+  `).all(...filtered.params);
+
+  return { availableRoots, categories, monthlySeries, topTransactions, kindBreakdown, weekdayBreakdown, accountBreakdown };
+}
+
+function getFilteredMonthlyHistory(filters: ExpenseAnalyticsFilters): object[] {
+  const clauses = ['t.date >= ?', 't.date <= ?'];
+  const params: string[] = [filters.dateFrom, filters.dateTo];
+  if (filters.account_id) {
+    clauses.push('(t.account_id = ? OR EXISTS (SELECT 1 FROM transaction_payments filter_payment WHERE filter_payment.transaction_id=t.id AND filter_payment.account_id=?))');
+    params.push(filters.account_id, filters.account_id);
+  }
+  if (filters.owner) { clauses.push('t.owner = ?'); params.push(filters.owner); }
+  if (filters.status) { clauses.push('t.status = ?'); params.push(filters.status); }
+  if (filters.subcategoryId) {
+    clauses.push("t.type='expense'", 't.category_id = ?'); params.push(filters.subcategoryId);
+  } else if (filters.rootCategoryId) {
+    clauses.push("t.type='expense'", categoryOrChildPredicate('t.category_id'));
+    params.push(filters.rootCategoryId, filters.rootCategoryId);
+  }
+
+  const rows = getDb().prepare(`
+    SELECT strftime('%Y-%m',t.date) AS month,
+      SUM(CASE WHEN t.type='income' THEN t.amount ELSE 0 END) AS income,
+      SUM(CASE WHEN t.type='expense' THEN t.amount ELSE 0 END) AS expense
+    FROM transactions t WHERE ${clauses.join(' AND ')}
+    GROUP BY month ORDER BY month
+  `).all(...params) as { month: string; income: number; expense: number }[];
+  const byMonth = new Map(rows.map(row => [row.month, row]));
+  const start = new Date(`${filters.dateFrom}T12:00:00`);
+  const end = new Date(`${filters.dateTo}T12:00:00`);
+  const result: object[] = [];
+  for (let cursor = new Date(start.getFullYear(), start.getMonth(), 1); cursor <= end; cursor.setMonth(cursor.getMonth() + 1)) {
+    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+    const row = byMonth.get(key);
+    result.push({
+      month: key,
+      label: cursor.toLocaleDateString('pt-BR', { month: 'short' }),
+      income: row?.income ?? 0,
+      expense: row?.expense ?? 0,
+    });
+  }
+  return result;
+}
+
 export function registerTransactionHandlers(): void {
+  ipcMain.handle('transactions:getExpenseAnalytics', (_e, filters: ExpenseAnalyticsFilters) => getExpenseAnalytics(filters));
+  ipcMain.handle('transactions:getFilteredMonthlyHistory', (_e, filters: ExpenseAnalyticsFilters) => getFilteredMonthlyHistory(filters));
   ipcMain.handle('transactions:list', (_e, filters: TransactionFilters = {}) => {
     const conds: string[] = ['1=1'];
     const params: unknown[] = [];
@@ -189,7 +317,10 @@ export function registerTransactionHandlers(): void {
       conds.push('(t.account_id = ? OR EXISTS (SELECT 1 FROM transaction_payments p WHERE p.transaction_id = t.id AND p.account_id = ?))');
       params.push(filters.account_id, filters.account_id);
     }
-    if (filters.category_id) { conds.push('t.category_id = ?'); params.push(filters.category_id); }
+    if (filters.category_id) {
+      conds.push(categoryOrChildPredicate('t.category_id'));
+      params.push(filters.category_id, filters.category_id);
+    }
     if (filters.type)        { conds.push('t.type = ?');        params.push(filters.type); }
     if (filters.status)      { conds.push('t.status = ?');      params.push(filters.status); }
     if (filters.owner)       { conds.push('t.owner = ?');       params.push(filters.owner); }
@@ -343,17 +474,7 @@ export function registerTransactionHandlers(): void {
   });
 
   ipcMain.handle('transactions:getExpensesByCategory', (_e, { month, year }: { month: number; year: number }) => {
-    return getDb().prepare(`
-      SELECT c.name, c.color, COALESCE(SUM(t.amount), 0) as total
-      FROM categories c
-      LEFT JOIN transactions t ON t.category_id = c.id AND t.type = 'expense'
-        AND CAST(strftime('%m', t.date) AS INTEGER) = ?
-        AND CAST(strftime('%Y', t.date) AS INTEGER) = ?
-      WHERE c.type = 'expense'
-      GROUP BY c.id
-      HAVING total > 0
-      ORDER BY total DESC
-    `).all(month, year);
+    return getDb().prepare(EXPENSES_BY_ROOT_MONTH_SQL).all(month, year);
   });
 
   // Variante por intervalo de datas (dateFrom/dateTo, formato YYYY-MM-DD), usada
@@ -370,15 +491,33 @@ export function registerTransactionHandlers(): void {
   });
 
   ipcMain.handle('transactions:getExpensesByCategoryRange', (_e, { dateFrom, dateTo }: { dateFrom: string; dateTo: string }) => {
-    return getDb().prepare(`
-      SELECT c.name, c.color, COALESCE(SUM(t.amount), 0) as total
-      FROM categories c
-      LEFT JOIN transactions t ON t.category_id = c.id AND t.type = 'expense'
-        AND t.date >= ? AND t.date <= ?
-      WHERE c.type = 'expense'
-      GROUP BY c.id
-      HAVING total > 0
-      ORDER BY total DESC
-    `).all(dateFrom, dateTo);
+    return getDb().prepare(EXPENSES_BY_ROOT_RANGE_SQL).all(dateFrom, dateTo);
+  });
+
+  ipcMain.handle('transactions:getExpenseSubcategoryBreakdown', (_e, {
+    rootCategoryId, dateFrom, dateTo,
+  }: { rootCategoryId: string; dateFrom: string; dateTo: string }) => {
+    const root = getDb().prepare('SELECT id FROM categories WHERE id = ? AND parent_id IS NULL').get(rootCategoryId);
+    if (!root) throw new Error('Categoria principal não encontrada.');
+    return getDb().prepare(EXPENSE_SUBCATEGORY_BREAKDOWN_SQL)
+      .all(rootCategoryId, rootCategoryId, rootCategoryId, rootCategoryId, dateFrom, dateTo);
+  });
+
+  ipcMain.handle('transactions:getExpenseCategoryDetails', (_e, {
+    dateFrom, dateTo,
+  }: { dateFrom: string; dateTo: string }) =>
+    getDb().prepare(EXPENSE_CATEGORY_DETAILS_SQL).all(dateFrom, dateTo)
+  );
+
+  ipcMain.handle('transactions:getExpenseMonthlyCategorySeries', (_e, {
+    dateFrom, dateTo, rootCategoryId,
+  }: { dateFrom: string; dateTo: string; rootCategoryId?: string }) => {
+    if (!rootCategoryId) {
+      return getDb().prepare(EXPENSE_MONTHLY_ROOT_SERIES_SQL).all(dateFrom, dateTo);
+    }
+    const root = getDb().prepare('SELECT id FROM categories WHERE id = ? AND parent_id IS NULL').get(rootCategoryId);
+    if (!root) throw new Error('Categoria principal não encontrada.');
+    return getDb().prepare(EXPENSE_MONTHLY_SUBCATEGORY_SERIES_SQL)
+      .all(rootCategoryId, rootCategoryId, rootCategoryId, rootCategoryId, dateFrom, dateTo);
   });
 }

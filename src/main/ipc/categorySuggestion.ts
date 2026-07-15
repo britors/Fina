@@ -16,9 +16,12 @@ export function suggestCategoryFromHistory(description: string, type: Transactio
 
   const db = getDb();
   const rows = db.prepare(`
-    SELECT t.category_id, c.name as category_name, t.description
+    SELECT t.category_id,
+      CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END as category_name,
+      t.description
     FROM transactions t
     JOIN categories c ON c.id = t.category_id
+    LEFT JOIN categories parent ON parent.id = c.parent_id
     WHERE t.type = ? AND t.category_id IS NOT NULL
   `).all(type) as { category_id: string; category_name: string; description: string }[];
 

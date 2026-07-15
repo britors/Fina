@@ -2,16 +2,34 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import type { Budget, BudgetWithProgress } from '../../shared/types';
+import { CATEGORY_SPENT_MONTH_SQL } from '../categoryHierarchyQueries';
 
 function monthSpent(categoryId: string, month: number, year: number): number {
-  const row = getDb().prepare(`
-    SELECT COALESCE(SUM(amount), 0) as spent
-    FROM transactions
-    WHERE category_id = ? AND type = 'expense'
-      AND CAST(strftime('%m', date) AS INTEGER) = ?
-      AND CAST(strftime('%Y', date) AS INTEGER) = ?
-  `).get(categoryId, month, year) as { spent: number };
+  const row = getDb().prepare(CATEGORY_SPENT_MONTH_SQL).get(categoryId, categoryId, month, year) as { spent: number };
   return row.spent;
+}
+
+function assertNoOverlappingBudget(categoryId: string, month: number, year: number, exceptId?: string): void {
+  const db = getDb();
+  const category = db.prepare('SELECT parent_id FROM categories WHERE id = ?').get(categoryId) as { parent_id: string | null } | undefined;
+  if (!category) throw new Error('Categoria não encontrada.');
+
+  const conflict = category.parent_id
+    ? db.prepare(`
+        SELECT 1 FROM budgets
+        WHERE category_id = ? AND month = ? AND year = ? AND id != COALESCE(?, '')
+        LIMIT 1
+      `).get(category.parent_id, month, year, exceptId ?? null)
+    : db.prepare(`
+        SELECT 1 FROM budgets b
+        JOIN categories child ON child.id = b.category_id
+        WHERE child.parent_id = ? AND b.month = ? AND b.year = ? AND b.id != COALESCE(?, '')
+        LIMIT 1
+      `).get(categoryId, month, year, exceptId ?? null);
+
+  if (conflict) {
+    throw new Error('Não é possível ter orçamento na categoria pai e em uma subcategoria no mesmo mês.');
+  }
 }
 
 // Saldo do envelope trazido do mês anterior: só existe se o orçamento do mês
@@ -67,6 +85,7 @@ export function registerBudgetHandlers(): void {
   });
 
   ipcMain.handle('budgets:create', (_e, data: Omit<Budget, 'id' | 'created_at' | 'updated_at'>) => {
+    assertNoOverlappingBudget(data.category_id, data.month, data.year);
     const id = randomUUID();
     getDb().prepare(
       'INSERT INTO budgets (id, category_id, month, year, limit_amount, carry_over) VALUES (?,?,?,?,?,?)'
@@ -75,6 +94,8 @@ export function registerBudgetHandlers(): void {
   });
 
   ipcMain.handle('budgets:update', (_e, { id, ...data }: Partial<Budget> & { id: string }) => {
+    if (!data.category_id || data.month == null || data.year == null) throw new Error('Preencha todos os campos do orçamento.');
+    assertNoOverlappingBudget(data.category_id, data.month, data.year, id);
     getDb().prepare(
       `UPDATE budgets SET category_id=?, month=?, year=?, limit_amount=?, carry_over=?, updated_at=datetime('now') WHERE id=?`
     ).run(data.category_id, data.month, data.year, data.limit_amount, data.carry_over ? 1 : 0, id);

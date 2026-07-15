@@ -215,15 +215,15 @@ function financialSummary(): object {
   }
 
   const expensesByCategory = db.prepare(`
-    SELECT c.name as category, COALESCE(SUM(t.amount),0) as total
-    FROM categories c
-    JOIN transactions t ON t.category_id = c.id
-    WHERE c.type='expense'
-      AND t.type='expense'
+    SELECT root.name as category, SUM(t.amount) as total
+    FROM transactions t
+    JOIN categories c ON t.category_id = c.id
+    JOIN categories root ON root.id = COALESCE(c.parent_id, c.id)
+    WHERE t.type='expense'
       AND t.status='confirmed'
       AND strftime('%m', t.date)=?
       AND strftime('%Y', t.date)=?
-    GROUP BY c.id
+    GROUP BY root.id, root.name
     ORDER BY total DESC
     LIMIT 10
   `).all(currentMonth, String(year));
@@ -239,15 +239,19 @@ function financialSummary(): object {
   `).all();
 
   const budgets = db.prepare(`
-    SELECT c.name as category, b.limit_amount,
+    SELECT CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END as category, b.limit_amount,
       COALESCE((
         SELECT SUM(t.amount) FROM transactions t
-        WHERE t.category_id=b.category_id AND t.type='expense' AND t.status='confirmed'
+        WHERE (t.category_id=b.category_id OR EXISTS (
+            SELECT 1 FROM categories child WHERE child.id=t.category_id AND child.parent_id=b.category_id
+          ))
+          AND t.type='expense' AND t.status='confirmed'
           AND strftime('%m', t.date)=printf('%02d', b.month)
           AND strftime('%Y', t.date)=CAST(b.year AS TEXT)
       ),0) as spent
     FROM budgets b
     JOIN categories c ON c.id=b.category_id
+    LEFT JOIN categories parent ON parent.id=c.parent_id
     WHERE b.month=? AND b.year=?
   `).all(month, year);
 
@@ -373,12 +377,13 @@ function periodSummary(period: SummaryPeriod): object {
   `).get(dateFrom, dateTo) as { income: number; expense: number };
 
   const topExpenseCategories = db.prepare(`
-    SELECT c.name as category, COALESCE(SUM(t.amount),0) as total
-    FROM categories c
-    JOIN transactions t ON t.category_id = c.id
-    WHERE c.type='expense' AND t.type='expense' AND t.status='confirmed'
+    SELECT root.name as category, SUM(t.amount) as total
+    FROM transactions t
+    JOIN categories c ON t.category_id = c.id
+    JOIN categories root ON root.id = COALESCE(c.parent_id, c.id)
+    WHERE t.type='expense' AND t.status='confirmed'
       AND t.date >= ? AND t.date <= ?
-    GROUP BY c.id
+    GROUP BY root.id, root.name
     ORDER BY total DESC
     LIMIT 5
   `).all(dateFrom, dateTo);
@@ -550,17 +555,27 @@ function matchAccount(hint: unknown, preferredType?: string): string | undefined
 }
 
 function matchCategory(hint: unknown, type: 'income' | 'expense'): string | undefined {
-  const categories = getDb().prepare('SELECT id, name FROM categories WHERE type = ? ORDER BY created_at, name').all(type) as { id: string; name: string }[];
+  const categories = getDb().prepare(`
+    SELECT c.id, c.name,
+      CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END AS path
+    FROM categories c
+    LEFT JOIN categories parent ON parent.id = c.parent_id
+    WHERE c.type = ?
+    ORDER BY c.created_at, c.name
+  `).all(type) as { id: string; name: string; path: string }[];
   if (categories.length === 0) return undefined;
   const text = normalizeText(asString(hint) ?? '');
   if (text) {
-    const direct = categories.find(category => {
+    const exactPath = categories.find(category => normalizeText(category.path) === text);
+    if (exactPath) return exactPath.id;
+    const matches = categories.filter(category => {
       const name = normalizeText(category.name);
-      return name.includes(text) || text.includes(name);
+      const path = normalizeText(category.path);
+      return name === text || path.includes(text) || text.includes(path);
     });
-    if (direct) return direct.id;
+    if (matches.length === 1) return matches[0].id;
   }
-  return categories[0]?.id;
+  return undefined;
 }
 
 function normalizeCreateDraft(target: AICreateDraftTarget, raw: Record<string, unknown>): AICreateDraft {

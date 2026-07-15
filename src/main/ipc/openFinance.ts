@@ -667,7 +667,7 @@ function txHash(date: string, amount: number, description: string): string {
 
 function defaultCategory(type: TransactionType): string {
   const db = getDb();
-  const category = db.prepare('SELECT id FROM categories WHERE type = ? ORDER BY created_at, id LIMIT 1')
+  const category = db.prepare('SELECT id FROM categories WHERE type = ? ORDER BY CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END, created_at, id LIMIT 1')
     .get(type === 'income' ? 'income' : 'expense') as { id: string } | undefined;
   if (!category) throw new Error(`Cadastre ao menos uma categoria de ${type === 'income' ? 'receita' : 'despesa'} antes de sincronizar.`);
   return category.id;
@@ -675,10 +675,16 @@ function defaultCategory(type: TransactionType): string {
 
 function findCategory(description: string, type: TransactionType): string {
   const db = getDb();
-  const categories = db.prepare('SELECT id, name FROM categories WHERE type = ?').all(type === 'income' ? 'income' : 'expense') as { id: string; name: string }[];
+  const categories = db.prepare(`
+    SELECT c.id, c.name,
+      CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END AS path
+    FROM categories c
+    LEFT JOIN categories parent ON parent.id = c.parent_id
+    WHERE c.type = ?
+  `).all(type === 'income' ? 'income' : 'expense') as { id: string; name: string; path: string }[];
   const normalized = description.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const direct = categories.find(c => normalized.includes(c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()));
-  return direct?.id ?? defaultCategory(type);
+  const matches = categories.filter(c => normalized.includes(c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()));
+  return matches.length === 1 ? matches[0].id : defaultCategory(type);
 }
 
 function parsePluggyAccounts(payload: unknown): RemoteAccount[] {

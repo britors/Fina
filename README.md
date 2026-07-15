@@ -5,6 +5,13 @@ Aplicativo desktop para controle de finanças pessoais, construído com **Electr
 O Fina foi criado para ajudar pessoas a enxergarem sua situação financeira, planejarem como sair das dívidas e encontrarem caminhos para aumentar seu patrimônio.
 ![alt text](fina.png)
 
+## Destaques da versão 17.4
+
+- Categorias e subcategorias com seleção hierárquica em lançamentos, contas, despesas fixas, importação e orçamento.
+- Drill-down de despesas por subcategoria no Dashboard e em Relatórios.
+- Relatórios com intervalo mensal, filtros combinados, evolução, comparação, concentração, ticket médio e análises por classificação, dia da semana e meio de pagamento.
+- Exportações CSV e PDF respeitando os filtros ativos e identificando categoria/subcategoria.
+
 ## Destaques da versão 16.0
 
 - Nova tela `Pix` com histórico e auditoria local de tentativas de pagamento.
