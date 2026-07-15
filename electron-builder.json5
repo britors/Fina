@@ -40,7 +40,12 @@
   },
 
   rpm: {
-    depends: ["libsecret", "gtk3", "libnotify", "nss", "libXtst"]
+    depends: ["libsecret", "gtk3", "libnotify", "nss", "libXtst"],
+    // Evita gerar symlinks /usr/lib/.build-id/... para os binários do Electron
+    // empacotados sem recompilação. Como esses binários são idênticos aos de
+    // outros apps Electron (mesmo build-id), os symlinks colidem entre pacotes
+    // não relacionados na instalação (ex.: conflito com o pacote "prosa").
+    fpm: ["--rpm-rpmbuild-define", "_build_id_links none"]
   },
 
   win: {
