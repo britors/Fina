@@ -7,6 +7,7 @@ import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { Account, AITransactionBatchDraft, AITransactionDraft, Category, CategorySuggestion, CreditCardInvoice, PaymentSplit, PaymentSplitWithAccount, TransactionStatus, TransactionWithDetails, TransactionType } from '../../shared/types';
 import { categoryOptions } from '../components/categorySelect';
+import { consumePendingTransactionFilter } from '../navigation';
 
 let accounts: Account[]  = [];
 let categories: Category[] = [];
@@ -31,6 +32,28 @@ export async function render(el: HTMLElement): Promise<void> {
   let toYear    = now.getFullYear();
   let typeFilter: TransactionType | '' = '';
   let ownerFilter = '';
+  let categoryFilter = '';
+  let accountFilter = '';
+  let statusFilter: TransactionStatus | '' = '';
+  let weekdayFilter: number | null = null;
+
+  const pending = consumePendingTransactionFilter();
+  if (pending) {
+    if (pending.dateFrom) {
+      const [y, m] = pending.dateFrom.split('-').map(Number);
+      fromYear = y; fromMonth = m;
+    }
+    if (pending.dateTo) {
+      const [y, m] = pending.dateTo.split('-').map(Number);
+      toYear = y; toMonth = m;
+    }
+    if (pending.type) typeFilter = pending.type;
+    if (pending.categoryId) categoryFilter = pending.categoryId;
+    if (pending.accountId) accountFilter = pending.accountId;
+    if (pending.owner) ownerFilter = pending.owner;
+    if (pending.status) statusFilter = pending.status as TransactionStatus;
+    if (pending.weekday != null) weekdayFilter = pending.weekday;
+  }
 
   const [loadedAccounts, loadedCategories, settings] = await Promise.all([
     invoke<Account[]>('accounts:list'),
@@ -110,9 +133,13 @@ export async function render(el: HTMLElement): Promise<void> {
       ? monthLabel(fromMonth, fromYear)
       : `${monthLabel(fromMonth, fromYear)} – ${monthLabel(toMonth, toYear)}`;
 
-    const txs = await invoke<TransactionWithDetails[]>('transactions:list', {
-      dateFrom, dateTo, type: typeFilter || undefined, owner: ownerFilter || undefined, limit: 200,
+    const weekdayLabels = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+    const fetched = await invoke<TransactionWithDetails[]>('transactions:list', {
+      dateFrom, dateTo, type: typeFilter || undefined, owner: ownerFilter || undefined,
+      category_id: categoryFilter || undefined, account_id: accountFilter || undefined,
+      status: statusFilter || undefined, limit: 200,
     });
+    const txs = weekdayFilter == null ? fetched : fetched.filter(t => new Date(`${t.date}T12:00:00`).getDay() === weekdayFilter);
     const summary = calculateMonthlySummary(txs);
 
     el.innerHTML = `
@@ -121,12 +148,25 @@ export async function render(el: HTMLElement): Promise<void> {
         <span class="chip ${!typeFilter ? 'active' : ''}" data-type="">Todos</span>
         <span class="chip ${typeFilter === 'income' ? 'active' : ''}" data-type="income">Receitas</span>
         <span class="chip ${typeFilter === 'expense' ? 'active' : ''}" data-type="expense">Despesas</span>
+        <select class="form-ctrl" id="tx-category-filter" style="width:auto;max-width:200px">
+          ${categoryOptions(categories, categoryFilter, { emptyLabel: 'Todas categorias' })}
+        </select>
+        <select class="form-ctrl" id="tx-account-filter" style="width:auto;max-width:170px">
+          <option value="">Todos meios</option>
+          ${accounts.map(a => `<option value="${a.id}" ${accountFilter === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+        </select>
+        <select class="form-ctrl" id="tx-status-filter" style="width:auto">
+          <option value="" ${!statusFilter ? 'selected' : ''}>Todos status</option>
+          <option value="confirmed" ${statusFilter === 'confirmed' ? 'selected' : ''}>Confirmados</option>
+          <option value="pending" ${statusFilter === 'pending' ? 'selected' : ''}>Pendentes</option>
+        </select>
         ${familyEnabled && familyMembers.length ? `
           <select class="form-ctrl" id="tx-owner-filter" style="width:auto">
             <option value="">Todos responsáveis</option>
             ${familyMembers.map(m => `<option value="${esc(m)}" ${ownerFilter === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}
           </select>
         ` : ''}
+        ${weekdayFilter != null ? `<span class="chip active" id="tx-weekday-chip" style="cursor:pointer" title="Clique para remover">${esc(weekdayLabels[weekdayFilter])} ✕</span>` : ''}
         <div style="flex:1"></div>
         <!-- Period filter -->
         <span style="font-size:0.8rem;color:var(--text-2)">Período</span>
@@ -222,6 +262,22 @@ export async function render(el: HTMLElement): Promise<void> {
     });
     el.querySelector<HTMLSelectElement>('#tx-owner-filter')?.addEventListener('change', e => {
       ownerFilter = (e.target as HTMLSelectElement).value;
+      renderPage();
+    });
+    el.querySelector<HTMLSelectElement>('#tx-category-filter')?.addEventListener('change', e => {
+      categoryFilter = (e.target as HTMLSelectElement).value;
+      renderPage();
+    });
+    el.querySelector<HTMLSelectElement>('#tx-account-filter')?.addEventListener('change', e => {
+      accountFilter = (e.target as HTMLSelectElement).value;
+      renderPage();
+    });
+    el.querySelector<HTMLSelectElement>('#tx-status-filter')?.addEventListener('change', e => {
+      statusFilter = (e.target as HTMLSelectElement).value as TransactionStatus | '';
+      renderPage();
+    });
+    el.querySelector('#tx-weekday-chip')?.addEventListener('click', () => {
+      weekdayFilter = null;
       renderPage();
     });
     el.querySelector('#tx-reset')?.addEventListener('click', () => {

@@ -1,4 +1,4 @@
-import type { TransactionStatus } from '../shared/types';
+import type { TransactionStatus, TransactionType } from '../shared/types';
 
 export interface ExpenseAnalyticsFilters {
   dateFrom: string;
@@ -17,8 +17,12 @@ export function categoryOrChildPredicate(categoryColumn: string): string {
   ))`;
 }
 
-export function buildExpenseAnalyticsWhere(filters: ExpenseAnalyticsFilters, includeCategory = true): { sql: string; params: string[] } {
-  const clauses = [`t.type = 'expense'`, 't.date >= ?', 't.date <= ?'];
+export function buildExpenseAnalyticsWhere(
+  filters: ExpenseAnalyticsFilters,
+  includeCategory = true,
+  type: TransactionType = 'expense',
+): { sql: string; params: string[] } {
+  const clauses = [`t.type = '${type}'`, 't.date >= ?', 't.date <= ?'];
   const params: string[] = [filters.dateFrom, filters.dateTo];
   if (filters.account_id) {
     clauses.push('(t.account_id = ? OR EXISTS (SELECT 1 FROM transaction_payments filter_payment WHERE filter_payment.transaction_id = t.id AND filter_payment.account_id = ?))');

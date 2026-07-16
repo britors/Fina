@@ -3,7 +3,10 @@ import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
+import { createAreaChart } from '../components/charts';
 import type { Asset, AssetType } from '../../shared/types';
+
+type NetWorthPoint = { month: string; label: string; account_balance: number; net_worth: number };
 
 const TYPE_META: Record<AssetType, { label: string; icon: string; color: string }> = {
   imovel:      { label: 'Imóvel',      icon: 'ti-home',        color: '#8B5CF6' },
@@ -15,9 +18,13 @@ const TYPE_META: Record<AssetType, { label: string; icon: string; color: string 
 
 export async function render(el: HTMLElement): Promise<void> {
   let assets: Asset[] = [];
+  let netWorthHistory: NetWorthPoint[] = [];
 
   async function load(): Promise<void> {
-    assets = await invoke<Asset[]>('assets:list');
+    [assets, netWorthHistory] = await Promise.all([
+      invoke<Asset[]>('assets:list'),
+      invoke<NetWorthPoint[]>('assets:getNetWorthHistory', 12),
+    ]);
   }
 
   setTopbarActions(`
@@ -57,6 +64,24 @@ export async function render(el: HTMLElement): Promise<void> {
           </div>
           <div class="stat-sub">
             ${totalAcquisition > 0 ? ((gain / totalAcquisition) * 100).toFixed(1) + '%' : '—'}
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">Evolução do patrimônio líquido</div>
+        <div class="card-hr"></div>
+        <div class="card-body" style="padding:16px 20px">
+          ${netWorthHistory.length < 2
+            ? `<div class="empty" style="padding:20px"><div class="empty-title">Sem histórico suficiente</div></div>`
+            : createAreaChart(netWorthHistory.map(point => {
+                const [year, month] = point.month.split('-').map(Number);
+                const lastDay = new Date(year, month, 0).getDate();
+                return { date: `${point.month}-${String(lastDay).padStart(2, '0')}`, balance: point.net_worth };
+              }), 720, 170)
+          }
+          <div style="font-size:10.5px;color:var(--text-3);margin-top:10px">
+            Reconstruído a partir dos lançamentos confirmados (saldo em contas). Investimentos, bens e dívidas entram pelo valor de hoje em todos os meses, por não terem histórico datado.
           </div>
         </div>
       </div>

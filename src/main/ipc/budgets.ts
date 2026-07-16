@@ -2,7 +2,7 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import type { Budget, BudgetWithProgress } from '../../shared/types';
-import { CATEGORY_SPENT_MONTH_SQL } from '../categoryHierarchyQueries';
+import { CATEGORY_SPENT_MONTH_SQL, categoryOrChildPredicate } from '../categoryHierarchyQueries';
 
 function monthSpent(categoryId: string, month: number, year: number): number {
   const row = getDb().prepare(CATEGORY_SPENT_MONTH_SQL).get(categoryId, categoryId, month, year) as { spent: number };
@@ -104,5 +104,26 @@ export function registerBudgetHandlers(): void {
 
   ipcMain.handle('budgets:delete', (_e, id: string) => {
     getDb().prepare('DELETE FROM budgets WHERE id = ?').run(id);
+  });
+
+  // Soma o orçamento definido (categoria ou suas filhas) para cada categoria
+  // em todos os meses que caem dentro do intervalo informado — usado no
+  // relatório para mostrar "orçado x realizado" em recortes de vários meses.
+  ipcMain.handle('budgets:getRangeTotals', (_e, { categoryIds, dateFrom, dateTo }: {
+    categoryIds: string[]; dateFrom: string; dateTo: string;
+  }) => {
+    const fromYm = dateFrom.slice(0, 7);
+    const toYm = dateTo.slice(0, 7);
+    const db = getDb();
+    return categoryIds.filter(Boolean).map(categoryId => {
+      const row = db.prepare(`
+        SELECT COALESCE(SUM(b.limit_amount), 0) AS budgeted,
+          COUNT(DISTINCT printf('%04d-%02d', b.year, b.month)) AS budgeted_months
+        FROM budgets b
+        WHERE ${categoryOrChildPredicate('b.category_id')}
+          AND printf('%04d-%02d', b.year, b.month) >= ? AND printf('%04d-%02d', b.year, b.month) <= ?
+      `).get(categoryId, categoryId, fromYm, toYm) as { budgeted: number; budgeted_months: number };
+      return { category_id: categoryId, budgeted: row.budgeted, budgeted_months: row.budgeted_months };
+    });
   });
 }

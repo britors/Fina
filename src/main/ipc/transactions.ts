@@ -171,10 +171,10 @@ function enrichTransactions<T extends Transaction & { account_name: string }>(ro
   return rows.map(row => enrichTransaction(row)!);
 }
 
-function getExpenseAnalytics(filters: ExpenseAnalyticsFilters): object {
+function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: TransactionType = 'expense'): object {
   const db = getDb();
-  const filtered = buildExpenseAnalyticsWhere(filters);
-  const withoutCategory = buildExpenseAnalyticsWhere(filters, false);
+  const filtered = buildExpenseAnalyticsWhere(filters, true, type);
+  const withoutCategory = buildExpenseAnalyticsWhere(filters, false, type);
   const detailMode = !!filters.rootCategoryId && !filters.subcategoryId;
   const subcategoryMode = !!filters.subcategoryId;
   const dimension = detailMode
@@ -250,7 +250,26 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters): object {
     GROUP BY a.id,a.name ORDER BY total DESC
   `).all(...filtered.params);
 
-  return { availableRoots, categories, monthlySeries, topTransactions, kindBreakdown, weekdayBreakdown, accountBreakdown };
+  const ownerBreakdown = db.prepare(`
+    SELECT COALESCE(NULLIF(TRIM(t.owner), ''), 'Sem responsável') AS owner,
+      SUM(t.amount) AS total, COUNT(*) AS transaction_count
+    FROM transactions t
+    WHERE ${filtered.sql}
+    GROUP BY owner ORDER BY total DESC
+  `).all(...filtered.params);
+
+  const destinationBreakdown = db.prepare(`
+    SELECT LOWER(TRIM(t.description)) AS key, MIN(t.description) AS description,
+      SUM(t.amount) AS total, COUNT(*) AS transaction_count, AVG(t.amount) AS average_amount
+    FROM transactions t
+    WHERE ${filtered.sql} AND TRIM(t.description) <> ''
+    GROUP BY key ORDER BY total DESC LIMIT 15
+  `).all(...filtered.params);
+
+  return {
+    availableRoots, categories, monthlySeries, topTransactions, kindBreakdown,
+    weekdayBreakdown, accountBreakdown, ownerBreakdown, destinationBreakdown,
+  };
 }
 
 function getFilteredMonthlyHistory(filters: ExpenseAnalyticsFilters): object[] {
@@ -295,6 +314,7 @@ function getFilteredMonthlyHistory(filters: ExpenseAnalyticsFilters): object[] {
 
 export function registerTransactionHandlers(): void {
   ipcMain.handle('transactions:getExpenseAnalytics', (_e, filters: ExpenseAnalyticsFilters) => getExpenseAnalytics(filters));
+  ipcMain.handle('transactions:getIncomeAnalytics', (_e, filters: ExpenseAnalyticsFilters) => getExpenseAnalytics(filters, 'income'));
   ipcMain.handle('transactions:getFilteredMonthlyHistory', (_e, filters: ExpenseAnalyticsFilters) => getFilteredMonthlyHistory(filters));
   ipcMain.handle('transactions:list', (_e, filters: TransactionFilters = {}) => {
     const conds: string[] = ['1=1'];

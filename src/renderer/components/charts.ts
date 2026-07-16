@@ -1,6 +1,15 @@
 export interface DonutSegment { value: number; color: string; label: string; }
 
-export function createDonut(segments: DonutSegment[], size = 170, line1 = '', line2 = ''): string {
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// `ids` é opcional e alinhado por índice a `segments`: quando informado, cada
+// fatia recebe `data-cat-id` e cursor de ponteiro, para que a página chamadora
+// implemente drill-down (ex.: clicar na fatia e navegar para os lançamentos
+// daquela categoria) via delegação de evento, sem acoplar este componente a
+// nenhuma lógica de navegação.
+export function createDonut(segments: DonutSegment[], size = 170, line1 = '', line2 = '', ids: (string | null)[] = []): string {
   const total = segments.reduce((s, g) => s + g.value, 0);
   const cx = size / 2, cy = size / 2, r = size / 2 - 20;
   const circ = 2 * Math.PI * r;
@@ -13,14 +22,16 @@ export function createDonut(segments: DonutSegment[], size = 170, line1 = '', li
   }
 
   let offset = 0;
-  const arcs = segments.map(seg => {
+  const arcs = segments.map((seg, index) => {
     const dash = (seg.value / total) * circ;
     const gap  = circ - dash;
+    const id = ids[index];
+    const clickAttrs = id !== undefined ? `data-cat-id="${id ?? ''}" style="cursor:pointer"` : '';
     const el   = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none"
       stroke="${seg.color}" stroke-width="26"
       stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}"
       stroke-dashoffset="${(-offset).toFixed(2)}"
-      transform="rotate(-90 ${cx} ${cy})"/>`;
+      transform="rotate(-90 ${cx} ${cy})" ${clickAttrs}><title>${esc(seg.label)}</title></circle>`;
     offset += dash;
     return el;
   });
