@@ -110,5 +110,5 @@ jobs:
         with:
           files: |
             dist/*.exe
-            dist/*.yml
+            dist/latest.yml
             dist/*.blockmap
