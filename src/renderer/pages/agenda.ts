@@ -283,9 +283,29 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
       if (!desc || isNaN(amount) || !due) { showAlert('Preencha todos os campos.'); return false; }
       const payments = collectPayments('bill', amount, true);
       if (!payments) return false;
-      const payload = { description: desc, amount, due_date: due, status, account_id: payments[0]?.account_id ?? null, category_id: cat || null, recurring: 0 as const, payments };
-      if (b) { await invoke('bills:update', { id: b.id, ...payload }); }
-      else   { await invoke('bills:create', payload); }
+
+      // Editar e mudar o status para "Pago" segue o mesmo caminho do botão
+      // "Pagar": gera o lançamento de despesa e remove a conta de contas a
+      // pagar (bills:markAsPaid), em vez de só trocar o campo status.
+      const markingAsPaid = !!b && b.status !== 'paid' && status === 'paid';
+      const finalCategoryId = cat || (markingAsPaid ? b!.category_id : null) || null;
+      if (markingAsPaid && !finalCategoryId) { showAlert('Selecione uma categoria para o lançamento.'); return false; }
+      if (markingAsPaid && payments.length === 0) { showAlert('Defina pelo menos um meio de pagamento.'); return false; }
+
+      const payload = { description: desc, amount, due_date: due, status: markingAsPaid ? b!.status : status, account_id: payments[0]?.account_id ?? null, category_id: cat || null, recurring: 0 as const, payments };
+      if (b) {
+        await invoke('bills:update', { id: b.id, ...payload });
+        if (markingAsPaid) {
+          try {
+            await invoke('bills:markAsPaid', { id: b.id, category_id: finalCategoryId, date: due, payments });
+          } catch (err) {
+            showAlert(err instanceof Error ? err.message : 'Não foi possível marcar como paga.');
+            return false;
+          }
+        }
+      } else {
+        await invoke('bills:create', payload);
+      }
       onDone();
     },
   });
