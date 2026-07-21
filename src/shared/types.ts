@@ -5,6 +5,8 @@ export type CategoryType = 'income' | 'expense';
 export type CategoryKind = 'essential' | 'variable' | 'income';
 export type BillStatus = 'pending' | 'paid' | 'overdue';
 export type BillInterval = 'weekly' | 'biweekly' | 'monthly' | 'bimonthly' | 'quarterly' | 'semiannual' | 'annual';
+export type ReceivableStatus = 'pending' | 'received' | 'overdue';
+export type ReceivableInterval = BillInterval;
 export type CreditCardInvoiceStatus = 'open' | 'closed' | 'paid';
 
 export type AccountCurrency = 'BRL' | 'USD' | 'EUR';
@@ -118,6 +120,42 @@ export interface BillWithCategory extends Bill {
   category_icon: string | null;
   category_color: string | null;
   payments?: PaymentSplitWithAccount[];
+}
+
+export interface Receivable {
+  id: string;
+  description: string;
+  amount: number;
+  due_date: string;
+  status: ReceivableStatus;
+  account_id: string | null;
+  category_id: string | null;
+  recurring: 0 | 1;
+  recurrence_interval: ReceivableInterval;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReceivableWithCategory extends Receivable {
+  category_name: string | null;
+  category_icon: string | null;
+  category_color: string | null;
+  payments?: PaymentSplitWithAccount[];
+}
+
+export interface ReceivablePriceHistory {
+  id: string;
+  receivable_id: string;
+  amount: number;
+  changed_at: string;
+}
+
+export interface ReceivablePriceIncrease {
+  receivable_id: string;
+  description: string;
+  previous_amount: number;
+  new_amount: number;
+  changed_at: string;
 }
 
 export interface CreditCardInvoice {
@@ -362,7 +400,7 @@ export interface BalanceDropAlert {
 
 // ── IA: rascunhos de criação com confirmação ────────────────────────────────
 
-export type AICreateDraftTarget = 'transaction' | 'bill' | 'budget' | 'debt' | 'goal';
+export type AICreateDraftTarget = 'transaction' | 'bill' | 'receivable' | 'budget' | 'debt' | 'goal';
 
 export interface AICreateDraftBase {
   target: AICreateDraftTarget;
@@ -395,6 +433,16 @@ export interface AIBillDraft extends AICreateDraftBase {
   amount?: number;
   due_date?: string;
   status?: BillStatus;
+  account_id?: string | null;
+  category_id?: string | null;
+}
+
+export interface AIReceivableDraft extends AICreateDraftBase {
+  target: 'receivable';
+  description?: string;
+  amount?: number;
+  due_date?: string;
+  status?: ReceivableStatus;
   account_id?: string | null;
   category_id?: string | null;
 }
@@ -434,7 +482,7 @@ export interface AIGoalDraft extends AICreateDraftBase {
   description?: string | null;
 }
 
-export type AICreateDraft = AITransactionDraft | AIBillDraft | AIBudgetDraft | AIDebtDraft | AIGoalDraft;
+export type AICreateDraft = AITransactionDraft | AIBillDraft | AIReceivableDraft | AIBudgetDraft | AIDebtDraft | AIGoalDraft;
 
 // ── Pix via Open Finance ─────────────────────────────────────────────────────
 

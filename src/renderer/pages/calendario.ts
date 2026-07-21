@@ -1,13 +1,13 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
-import type { BillWithCategory, TransactionWithDetails } from '../../shared/types';
+import type { BillWithCategory, ReceivableWithCategory, TransactionWithDetails } from '../../shared/types';
 
 type DayEvent = {
-  kind: 'tx' | 'bill';
+  kind: 'tx' | 'bill' | 'receivable';
   title: string;
   amount: number;
-  type: 'income' | 'expense' | 'transfer' | 'bill';
+  type: 'income' | 'expense' | 'transfer' | 'bill' | 'receivable';
   status: string;
 };
 
@@ -22,9 +22,10 @@ export async function render(el: HTMLElement): Promise<void> {
     const dateFrom = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
     const dateTo = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    const [txs, bills] = await Promise.all([
+    const [txs, bills, receivables] = await Promise.all([
       invoke<TransactionWithDetails[]>('transactions:list', { dateFrom, dateTo, limit: 500 }),
       invoke<BillWithCategory[]>('bills:list', { dateFrom, dateTo }),
+      invoke<ReceivableWithCategory[]>('receivables:list', { dateFrom, dateTo }),
     ]);
 
     const events = new Map<string, DayEvent[]>();
@@ -46,10 +47,20 @@ export async function render(el: HTMLElement): Promise<void> {
         status: bill.status,
       });
     }
+    for (const receivable of receivables) {
+      addEvent(events, receivable.due_date, {
+        kind: 'receivable',
+        title: receivable.description,
+        amount: receivable.amount,
+        type: 'receivable',
+        status: receivable.status,
+      });
+    }
 
     const totalIncome = txs.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
     const totalExpense = txs.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
     const totalBills = bills.filter(b => b.status !== 'paid').reduce((sum, b) => sum + b.amount, 0);
+    const totalReceivables = receivables.filter(r => r.status !== 'received').reduce((sum, r) => sum + r.amount, 0);
     const label = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
     el.innerHTML = `
@@ -60,7 +71,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <button class="btn btn-ghost btn-sm" id="cal-today">Mês atual</button>
       </div>
 
-      <div class="grid-3" style="margin-bottom:16px">
+      <div class="grid-3" style="margin-bottom:16px;grid-template-columns:repeat(4,1fr)">
         <div class="stat-card">
           <div class="stat-label">Receitas no mês</div>
           <div class="stat-value stat-green">${formatCurrency(totalIncome)}</div>
@@ -70,8 +81,12 @@ export async function render(el: HTMLElement): Promise<void> {
           <div class="stat-value stat-red">${formatCurrency(totalExpense)}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Contas pendentes</div>
+          <div class="stat-label">Contas a pagar pendentes</div>
           <div class="stat-value">${formatCurrency(totalBills)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Contas a receber pendentes</div>
+          <div class="stat-value">${formatCurrency(totalReceivables)}</div>
         </div>
       </div>
 
@@ -121,7 +136,7 @@ function calendarCells(year: number, month: number, events: Map<string, DayEvent
   for (let day = 1; day <= lastDay; day++) {
     const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const items = events.get(iso) ?? [];
-    const income = items.filter(e => e.type === 'income').reduce((sum, e) => sum + e.amount, 0);
+    const income = items.filter(e => e.type === 'income' || e.type === 'receivable').reduce((sum, e) => sum + e.amount, 0);
     const out = items.filter(e => e.type === 'expense' || e.type === 'bill').reduce((sum, e) => sum + e.amount, 0);
     cells.push(`
       <div style="min-height:128px;border-right:0.5px solid var(--border);border-bottom:0.5px solid var(--border);padding:8px;overflow:hidden">
@@ -145,8 +160,8 @@ function emptyCell(): string {
 }
 
 function eventChip(event: DayEvent): string {
-  const color = event.type === 'income' ? 'var(--accent)' : event.type === 'transfer' ? 'var(--text-3)' : 'var(--danger)';
-  const icon = event.kind === 'bill' ? 'ti-calendar-dollar' : event.type === 'income' ? 'ti-arrow-up-right' : event.type === 'transfer' ? 'ti-transfer' : 'ti-arrow-down-right';
+  const color = event.type === 'income' || event.type === 'receivable' ? 'var(--accent)' : event.type === 'transfer' ? 'var(--text-3)' : 'var(--danger)';
+  const icon = event.kind === 'bill' || event.kind === 'receivable' ? 'ti-calendar-dollar' : event.type === 'income' ? 'ti-arrow-up-right' : event.type === 'transfer' ? 'ti-transfer' : 'ti-arrow-down-right';
   return `
     <div title="${esc(event.title)}" style="display:flex;align-items:center;gap:5px;min-width:0;font-size:0.72rem;color:${color};background:var(--bg);border:0.5px solid var(--border);border-radius:6px;padding:4px 6px">
       <i class="ti ${icon}" style="flex-shrink:0"></i>

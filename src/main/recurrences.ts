@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from './database';
 import { addInterval } from './ipc/bills';
-import type { BillInterval } from '../shared/types';
+import type { BillInterval, ReceivableInterval } from '../shared/types';
 
 interface RecurrenceResult {
   transactions: number;
   bills: number;
+  receivables: number;
 }
 
 // Contas a pagar são geradas com essa antecedência em relação ao vencimento,
@@ -18,7 +19,7 @@ export function generateRecurrences(): RecurrenceResult {
   const month = now.getMonth() + 1;
   const year  = now.getFullYear();
 
-  const result: RecurrenceResult = { transactions: 0, bills: 0 };
+  const result: RecurrenceResult = { transactions: 0, bills: 0, receivables: 0 };
 
   // ── Transações recorrentes ────────────────────────────────────────────────
   const recurringTxs = db.prepare(`
@@ -87,6 +88,41 @@ export function generateRecurrences(): RecurrenceResult {
 
     const nextDue = addInterval(bill.due_date, bill.recurrence_interval ?? 'monthly', 1);
     advanceBillDue.run(nextDue, bill.id);
+  }
+
+  // ── Recebimentos recorrentes (mensalidades/receitas fixas) ────────────────
+  // Mesma lógica das contas recorrentes acima, espelhada para receivables.
+  const recurringReceivables = db.prepare(`
+    SELECT * FROM receivables
+    WHERE recurring = 1 AND status != 'received' AND due_date <= date('now', '+' || ? || ' days')
+  `).all(BILL_LEAD_DAYS) as {
+    id: string; description: string; amount: number; due_date: string;
+    account_id: string | null; category_id: string | null; recurrence_interval: ReceivableInterval;
+  }[];
+
+  const checkReceivableLog  = db.prepare(`SELECT 1 FROM recurring_log WHERE source_id=? AND source_type='receivable' AND generated_date=?`);
+  const insertReceivableLog = db.prepare(`INSERT OR IGNORE INTO recurring_log (source_id, source_type, generated_date) VALUES (?,?,?)`);
+  const insertReceivable    = db.prepare(`
+    INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring)
+    VALUES (?,?,?,?,?,?,?,0)
+  `);
+  const receivablePayments = db.prepare(`SELECT account_id, amount, is_pix FROM receivable_payments WHERE receivable_id=?`);
+  const insertReceivablePayment = db.prepare(`INSERT INTO receivable_payments (id, receivable_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
+  const advanceReceivableDue = db.prepare(`UPDATE receivables SET due_date=?, updated_at=datetime('now') WHERE id=?`);
+
+  for (const receivable of recurringReceivables) {
+    if (checkReceivableLog.get(receivable.id, receivable.due_date)) continue;
+
+    const newId = randomUUID();
+    insertReceivable.run(newId, receivable.description, receivable.amount, receivable.due_date, 'pending', receivable.account_id, receivable.category_id);
+    for (const payment of receivablePayments.all(receivable.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[]) {
+      insertReceivablePayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
+    }
+    insertReceivableLog.run(receivable.id, 'receivable', receivable.due_date);
+    result.receivables++;
+
+    const nextDue = addInterval(receivable.due_date, receivable.recurrence_interval ?? 'monthly', 1);
+    advanceReceivableDue.run(nextDue, receivable.id);
   }
 
   return result;

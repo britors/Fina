@@ -170,6 +170,7 @@ function renderAppearance(el: HTMLElement, s: Settings): void {
 
 function renderNotifications(el: HTMLElement, s: Settings): void {
   const notifBills        = s.notif_bills        !== 'false';
+  const notifReceivables  = s.notif_receivables  !== 'false';
   const notifBudget       = s.notif_budget       !== 'false';
   const notifSubscription = s.notif_subscription !== 'false';
   const notifSummary      = s.notif_summary      === 'true';
@@ -181,7 +182,8 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
     <div class="settings-section-label">NOTIFICAÇÕES</div>
     <div class="settings-hr"></div>
     ${[
-      { id: 'bills',        key: 'notif_bills',        label: 'Contas a vencer',           sub: 'Alerta 3 dias antes do vencimento',      val: notifBills        },
+      { id: 'bills',        key: 'notif_bills',        label: 'Contas a pagar a vencer',   sub: 'Alerta 3 dias antes do vencimento',      val: notifBills        },
+      { id: 'receivables',  key: 'notif_receivables',  label: 'Contas a receber a vencer', sub: 'Alerta 3 dias antes do vencimento',      val: notifReceivables  },
       { id: 'budget',       key: 'notif_budget',       label: 'Orçamento excedido',        sub: 'Notifica ao ultrapassar o limite',       val: notifBudget       },
       { id: 'subscription', key: 'notif_subscription', label: 'Assinatura aumentou de preço', sub: 'Notifica quando uma fixa/assinatura sobe de valor', val: notifSubscription },
       { id: 'summary',      key: 'notif_summary',      label: 'Resumo semanal',            sub: 'Relatório toda segunda-feira',           val: notifSummary      },

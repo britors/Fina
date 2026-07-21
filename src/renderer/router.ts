@@ -12,8 +12,10 @@ import { render as renderBudget       } from './pages/budget';
 import { render as renderReports      } from './pages/reports';
 import { render as renderSettings     } from './pages/settings';
 import { render as renderAgenda       } from './pages/agenda';
+import { render as renderContasReceber } from './pages/contasReceber';
 import { render as renderPix          } from './pages/pix';
 import { render as renderFixas        } from './pages/fixas';
+import { render as renderFixasReceber } from './pages/fixasReceber';
 import { render as renderCalendario   } from './pages/calendario';
 import { render as renderPatrimonio   } from './pages/patrimonio';
 import { render as renderInvestments  } from './pages/investments';
@@ -65,9 +67,11 @@ const ROUTES: Record<string, Route> = {
   budget:       { title: 'Orçamento',                                   subtitle: monthLabel,     render: renderBudget       },
   reports:      { title: 'Relatórios',    subtitle: 'Últimos 6 meses',                           render: renderReports      },
   settings:     { title: 'Configurações', subtitle: 'Personalize o Fina de acordo com suas preferências', render: renderSettings },
-  agenda:       { title: 'Contas à pagar',        subtitle: 'Contas a pagar e receber',                   render: renderAgenda       },
+  agenda:       { title: 'Contas a pagar',        subtitle: 'Vencimentos e pagamentos pendentes',          render: renderAgenda       },
+  'contas-receber': { title: 'Contas a receber', subtitle: 'Vencimentos e recebimentos pendentes',         render: renderContasReceber },
   pix:          { title: 'Pix',                    subtitle: 'Histórico e auditoria de pagamentos',         render: renderPix          },
   fixas:        { title: 'Despesas fixas', subtitle: 'Assinaturas e compromissos recorrentes',             render: renderFixas        },
+  'fixas-receber': { title: 'Receitas fixas', subtitle: 'Salários, mensalidades e recebimentos recorrentes', render: renderFixasReceber },
   calendario:   { title: 'Calendário', subtitle: 'Vencimentos e lançamentos por dia',                      render: renderCalendario   },
   patrimonio:   { title: 'Patrimônio',    subtitle: 'Imóveis, veículos e outros bens',             render: renderPatrimonio   },
   investments:  { title: 'Investimentos', subtitle: 'Carteira e rendimentos',                      render: renderInvestments  },

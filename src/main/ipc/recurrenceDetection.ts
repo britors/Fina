@@ -19,24 +19,25 @@ function guessInterval(avgDays: number): BillInterval | 'irregular' {
   return 'irregular';
 }
 
-function detectRecurrences(): DetectedRecurrence[] {
+function detectRecurrences(type: 'expense' | 'income'): DetectedRecurrence[] {
   const db = getDb();
 
   const dismissedKeys = new Set(
     (db.prepare('SELECT key FROM dismissed_recurrence_suggestions').all() as { key: string }[]).map(r => r.key)
   );
 
+  const trackedTable = type === 'income' ? 'receivables' : 'bills';
   const trackedKeys = new Set(
-    (db.prepare("SELECT description FROM bills WHERE recurring = 1").all() as { description: string }[])
+    (db.prepare(`SELECT description FROM ${trackedTable} WHERE recurring = 1`).all() as { description: string }[])
       .map(r => normalizeKey(r.description))
   );
 
   const rows = db.prepare(`
     SELECT description, amount, date
     FROM transactions
-    WHERE type = 'expense' AND status = 'confirmed' AND date >= date('now', '-12 months')
+    WHERE type = ? AND status = 'confirmed' AND date >= date('now', '-12 months')
     ORDER BY date ASC
-  `).all() as { description: string; amount: number; date: string }[];
+  `).all(type) as { description: string; amount: number; date: string }[];
 
   const groups = new Map<string, { description: string; amounts: number[]; dates: string[] }>();
   for (const row of rows) {
@@ -54,8 +55,9 @@ function detectRecurrences(): DetectedRecurrence[] {
 
   const results: DetectedRecurrence[] = [];
 
-  for (const [key, group] of groups) {
-    if (group.dates.length < 3 || dismissedKeys.has(key) || trackedKeys.has(key)) continue;
+  for (const [rawKey, group] of groups) {
+    const key = `${type}:${rawKey}`;
+    if (group.dates.length < 3 || dismissedKeys.has(key) || trackedKeys.has(rawKey)) continue;
 
     const gaps: number[] = [];
     for (let i = 1; i < group.dates.length; i++) {
@@ -91,7 +93,7 @@ function detectRecurrences(): DetectedRecurrence[] {
 }
 
 export function registerRecurrenceDetectionHandlers(): void {
-  ipcMain.handle('recurrenceDetection:list', () => detectRecurrences());
+  ipcMain.handle('recurrenceDetection:list', (_e, type: 'expense' | 'income' = 'expense') => detectRecurrences(type));
 
   ipcMain.handle('recurrenceDetection:dismiss', (_e, key: string) => {
     getDb().prepare('INSERT OR IGNORE INTO dismissed_recurrence_suggestions (key) VALUES (?)').run(key);

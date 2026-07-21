@@ -6,6 +6,7 @@ import { getDb } from '../database';
 import type {
   Account,
   AIBillDraft,
+  AIReceivableDraft,
   AIBudgetDraft,
   AICreateDraft,
   AICreateDraftTarget,
@@ -14,6 +15,7 @@ import type {
   AIGoalDraft,
   AITransactionDraft,
   BillStatus,
+  ReceivableStatus,
   DebtStatus,
   DebtType,
   GoalType,
@@ -424,10 +426,11 @@ function buildDecisionPrompt(decision: { title: string; body: string; impact: st
   ].join('\n');
 }
 
-const DRAFT_TARGETS: AICreateDraftTarget[] = ['transaction', 'bill', 'budget', 'debt', 'goal'];
+const DRAFT_TARGETS: AICreateDraftTarget[] = ['transaction', 'bill', 'receivable', 'budget', 'debt', 'goal'];
 const TRANSACTION_TYPES: TransactionType[] = ['income', 'expense', 'transfer'];
 const TRANSACTION_STATUSES: TransactionStatus[] = ['confirmed', 'pending'];
 const BILL_STATUSES: BillStatus[] = ['pending', 'paid', 'overdue'];
+const RECEIVABLE_STATUSES: ReceivableStatus[] = ['pending', 'received', 'overdue'];
 const DEBT_TYPES: DebtType[] = ['emprestimo', 'financiamento', 'cartao', 'cheque_especial', 'pessoal', 'outro'];
 const DEBT_STATUSES: DebtStatus[] = ['em_dia', 'em_atraso', 'renegociada', 'quitada'];
 const GOAL_TYPES: GoalType[] = ['viagem', 'imovel', 'evento', 'emergencia', 'outro'];
@@ -447,6 +450,7 @@ function buildCreateDraftPrompt(target: AICreateDraftTarget, userPrompt: string,
     'Schemas aceitos:',
     'transaction: {"description":string,"amount":number,"type":"income|expense|transfer","date":"YYYY-MM-DD","status":"confirmed|pending","category_hint":string,"account_hint":string,"notes":string,"explanation":string,"warnings":string[]}',
     'bill: {"description":string,"amount":number,"due_date":"YYYY-MM-DD","status":"pending|paid|overdue","category_hint":string,"account_hint":string,"explanation":string,"warnings":string[]}',
+    'receivable: {"description":string,"amount":number,"due_date":"YYYY-MM-DD","status":"pending|received|overdue","category_hint":string,"account_hint":string,"explanation":string,"warnings":string[]}',
     'budget: {"category_hint":string,"month":number,"year":number,"limit_amount":number,"carry_over":boolean,"explanation":string,"warnings":string[]}',
     'debt: {"description":string,"type":"emprestimo|financiamento|cartao|cheque_especial|pessoal|outro","creditor":string,"status":"em_dia|em_atraso|renegociada|quitada","original_amount":number,"outstanding_balance":number,"interest_rate":number,"installments_total":number,"installments_remaining":number,"installment_amount":number,"next_due_date":"YYYY-MM-DD","explanation":string,"warnings":string[]}',
     'goal: {"name":string,"type":"viagem|imovel|evento|emergencia|outro","target_amount":number,"current_amount":number,"target_date":"YYYY-MM-DD","account_hint":string,"description":string,"explanation":string,"warnings":string[]}',
@@ -614,6 +618,24 @@ function normalizeCreateDraft(target: AICreateDraftTarget, raw: Record<string, u
       status: asEnum(raw.status, BILL_STATUSES) ?? 'pending',
       account_id: matchAccount(raw.account_hint) ?? null,
       category_id: matchCategory(raw.category_hint ?? raw.description, 'expense') ?? null,
+    };
+    if (!draft.description) draft.warnings.push('Revise a descrição antes de salvar.');
+    if (draft.amount == null) draft.warnings.push('Informe o valor antes de salvar.');
+    if (!draft.due_date) draft.warnings.push('Informe o vencimento antes de salvar.');
+    return draft;
+  }
+
+  if (target === 'receivable') {
+    const draft: AIReceivableDraft = {
+      target,
+      explanation,
+      warnings,
+      description: asString(raw.description),
+      amount: asNumber(raw.amount),
+      due_date: asDate(raw.due_date),
+      status: asEnum(raw.status, RECEIVABLE_STATUSES) ?? 'pending',
+      account_id: matchAccount(raw.account_hint) ?? null,
+      category_id: matchCategory(raw.category_hint ?? raw.description, 'income') ?? null,
     };
     if (!draft.description) draft.warnings.push('Revise a descrição antes de salvar.');
     if (draft.amount == null) draft.warnings.push('Informe o valor antes de salvar.');

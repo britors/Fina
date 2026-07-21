@@ -1,7 +1,7 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate, getDaysUntilDue, isCreditLikeAccountType } from '../../shared/utils';
 import { createDonut, createAreaChart } from '../components/charts';
-import type { Account, Bill, TransactionWithDetails, MonthlySummary, ForecastPoint, EndOfMonthForecast, InvestmentSummary, Goal, MarketQuote, ConsolidatedBalance, CashFlowForecast } from '../../shared/types';
+import type { Account, Bill, Receivable, TransactionWithDetails, MonthlySummary, ForecastPoint, EndOfMonthForecast, InvestmentSummary, Goal, MarketQuote, ConsolidatedBalance, CashFlowForecast } from '../../shared/types';
 
 function monthLabel(month: number, year: number): string {
   return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
@@ -29,11 +29,12 @@ export async function render(el: HTMLElement): Promise<void> {
       ? monthLabel(fromMonth, fromYear)
       : `${monthLabel(fromMonth, fromYear)} – ${monthLabel(toMonth, toYear)}`;
 
-    const [accounts, summary, recent, bills, rootExpenses, forecast, endOfMonthForecast, invSummary, assetSummary, goals, debtSummary, quotes, consolidatedBalance, cashFlow] = await Promise.all([
+    const [accounts, summary, recent, bills, receivables, rootExpenses, forecast, endOfMonthForecast, invSummary, assetSummary, goals, debtSummary, quotes, consolidatedBalance, cashFlow] = await Promise.all([
       invoke<Account[]>('accounts:list'),
       invoke<MonthlySummary>('transactions:getSummaryRange', { dateFrom, dateTo }),
       invoke<TransactionWithDetails[]>('transactions:list', { dateFrom, dateTo, limit: 5 }),
       invoke<Bill[]>('bills:getUpcoming', 30),
+      invoke<Receivable[]>('receivables:getUpcoming', 30),
       invoke<{ id: string; name: string; color: string; total: number }[]>('transactions:getExpensesByCategoryRange', { dateFrom, dateTo }),
       invoke<ForecastPoint[]>('forecast:get', 30),
       invoke<EndOfMonthForecast>('forecast:endOfMonth'),
@@ -273,32 +274,57 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
     ` : ''}
 
-    <!-- Bills -->
-    <div class="card">
-      <div class="card-header">
-        <span>Contas a pagar</span>
-        <a href="#agenda" style="font-size:12px;color:var(--accent)">Ver todas</a>
-      </div>
-      <div class="card-hr"></div>
-      ${bills.length === 0
-        ? '<div class="empty" style="padding:24px"><i class="ti ti-check"></i><div class="empty-title">Nenhuma conta próxima</div></div>'
-        : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0">
-            ${bills.slice(0, 4).map((b, i, arr) => `
-              <div style="padding:14px 20px;${i < arr.length - 1 ? 'border-right:0.5px solid var(--border)' : ''}">
-                <div style="font-weight:500;margin-bottom:4px">${esc(b.description)}</div>
-                <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">Vence ${formatDate(b.due_date)}</div>
-                ${billDueBadge(b.due_date, b.status)}
-                <div style="font-size:18px;font-weight:600;margin-top:8px;color:${b.status === 'overdue' ? 'var(--danger)' : 'var(--text)'}">
-                  ${formatCurrency(b.amount)}
+    <!-- Bills & Receivables -->
+    <div class="grid-2" style="margin-bottom:20px">
+      <div class="card">
+        <div class="card-header">
+          <span>Contas a pagar</span>
+          <a href="#agenda" style="font-size:12px;color:var(--accent)">Ver todas</a>
+        </div>
+        <div class="card-hr"></div>
+        ${bills.length === 0
+          ? '<div class="empty" style="padding:24px"><i class="ti ti-check"></i><div class="empty-title">Nenhuma conta próxima</div></div>'
+          : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0">
+              ${bills.slice(0, 4).map((b, i, arr) => `
+                <div style="padding:14px 20px;${i < arr.length - 1 ? 'border-right:0.5px solid var(--border)' : ''}">
+                  <div style="font-weight:500;margin-bottom:4px">${esc(b.description)}</div>
+                  <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">Vence ${formatDate(b.due_date)}</div>
+                  ${billDueBadge(b.due_date, b.status)}
+                  <div style="font-size:18px;font-weight:600;margin-top:8px;color:${b.status === 'overdue' ? 'var(--danger)' : 'var(--text)'}">
+                    ${formatCurrency(b.amount)}
+                  </div>
                 </div>
-              </div>
-            `).join('')}
-          </div>`
-      }
+              `).join('')}
+            </div>`
+        }
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span>Contas a receber</span>
+          <a href="#contas-receber" style="font-size:12px;color:var(--accent)">Ver todas</a>
+        </div>
+        <div class="card-hr"></div>
+        ${receivables.length === 0
+          ? '<div class="empty" style="padding:24px"><i class="ti ti-check"></i><div class="empty-title">Nenhuma conta próxima</div></div>'
+          : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0">
+              ${receivables.slice(0, 4).map((r, i, arr) => `
+                <div style="padding:14px 20px;${i < arr.length - 1 ? 'border-right:0.5px solid var(--border)' : ''}">
+                  <div style="font-weight:500;margin-bottom:4px">${esc(r.description)}</div>
+                  <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">Vence ${formatDate(r.due_date)}</div>
+                  ${receivableDueBadge(r.due_date, r.status)}
+                  <div style="font-size:18px;font-weight:600;margin-top:8px;color:${r.status === 'overdue' ? 'var(--danger)' : 'var(--accent)'}">
+                    ${formatCurrency(r.amount)}
+                  </div>
+                </div>
+              `).join('')}
+            </div>`
+        }
+      </div>
     </div>
 
     <!-- Metas urgentes + Indicadores -->
-    <div class="grid-2" style="margin-top:20px">
+    <div class="grid-2">
       <!-- Metas próximas do prazo -->
       <div class="card">
         <div class="card-header">
@@ -394,6 +420,15 @@ export async function render(el: HTMLElement): Promise<void> {
 function billDueBadge(dueDate: string, status: string): string {
   if (status === 'paid')    return `<span class="badge badge-confirmed">Pago</span>`;
   if (status === 'overdue') return `<span class="badge badge-overdue">Vencido</span>`;
+  const days = getDaysUntilDue(dueDate);
+  const cls = days <= 3 ? 'badge-warn' : 'badge-ok';
+  const label = days === 0 ? 'Hoje' : days === 1 ? 'Amanhã' : `Em ${days} dias`;
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function receivableDueBadge(dueDate: string, status: string): string {
+  if (status === 'received') return `<span class="badge badge-confirmed">Recebido</span>`;
+  if (status === 'overdue')  return `<span class="badge badge-overdue">Vencido</span>`;
   const days = getDaysUntilDue(dueDate);
   const cls = days <= 3 ? 'badge-warn' : 'badge-ok';
   const label = days === 0 ? 'Hoje' : days === 1 ? 'Amanhã' : `Em ${days} dias`;

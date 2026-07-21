@@ -262,6 +262,7 @@ function mimeHeader(value: string): string {
 export function checkAndNotify(): void {
   const db = getDb();
   const notifBills        = getSetting('notif_bills')        !== 'false';
+  const notifReceivables  = getSetting('notif_receivables')  !== 'false';
   const notifBudget       = getSetting('notif_budget')       !== 'false';
   const notifSubscription = getSetting('notif_subscription') !== 'false';
 
@@ -295,6 +296,39 @@ export function checkAndNotify(): void {
       if (alreadySent('bill_overdue', b.id)) continue;
       notify('Conta vencida', `${b.description} está vencida — R$ ${b.amount.toFixed(2).replace('.', ',')}`);
       logSent('bill_overdue', b.id);
+    }
+  }
+
+  if (notifReceivables) {
+    // Recebimentos a vencer em até 3 dias
+    const upcoming = db.prepare(`
+      SELECT id, description, amount, due_date
+      FROM receivables
+      WHERE status = 'pending'
+        AND due_date >= date('now')
+        AND due_date <= date('now', '+3 days')
+    `).all() as { id: string; description: string; amount: number; due_date: string }[];
+
+    for (const r of upcoming) {
+      if (alreadySent('receivable_due', r.id)) continue;
+      const days = Math.ceil((new Date(r.due_date).getTime() - Date.now()) / 86400_000);
+      const when  = days === 0 ? 'hoje' : days === 1 ? 'amanhã' : `em ${days} dias`;
+      notify(
+        'Conta a receber',
+        `${r.description} vence ${when} — R$ ${r.amount.toFixed(2).replace('.', ',')}`,
+      );
+      logSent('receivable_due', r.id);
+    }
+
+    // Recebimentos vencidos
+    const overdue = db.prepare(`
+      SELECT id, description, amount FROM receivables WHERE status = 'overdue'
+    `).all() as { id: string; description: string; amount: number }[];
+
+    for (const r of overdue) {
+      if (alreadySent('receivable_overdue', r.id)) continue;
+      notify('Conta a receber vencida', `${r.description} está vencida — R$ ${r.amount.toFixed(2).replace('.', ',')}`);
+      logSent('receivable_overdue', r.id);
     }
   }
 
@@ -356,6 +390,32 @@ export function checkAndNotify(): void {
         `${inc.description} subiu de R$ ${inc.previous_amount.toFixed(2).replace('.', ',')} para R$ ${inc.new_amount.toFixed(2).replace('.', ',')}`,
       );
       logSent('subscription_price_increase', refId);
+    }
+
+    const receivableIncreases = db.prepare(`
+      SELECT r.id as receivable_id, r.description, prev.amount as previous_amount, last.amount as new_amount, last.changed_at
+      FROM receivables r
+      JOIN (
+        SELECT receivable_id, amount, changed_at,
+               ROW_NUMBER() OVER (PARTITION BY receivable_id ORDER BY changed_at DESC, rowid DESC) as rn
+        FROM receivable_price_history
+      ) last ON last.receivable_id = r.id AND last.rn = 1
+      JOIN (
+        SELECT receivable_id, amount, changed_at,
+               ROW_NUMBER() OVER (PARTITION BY receivable_id ORDER BY changed_at DESC, rowid DESC) as rn
+        FROM receivable_price_history
+      ) prev ON prev.receivable_id = r.id AND prev.rn = 2
+      WHERE r.recurring = 1 AND last.amount > prev.amount
+    `).all() as { receivable_id: string; description: string; previous_amount: number; new_amount: number; changed_at: string }[];
+
+    for (const inc of receivableIncreases) {
+      const refId = `${inc.receivable_id}:${inc.changed_at}`;
+      if (alreadySentEver('receivable_price_increase', refId)) continue;
+      notify(
+        'Recebimento fixo aumentou de valor',
+        `${inc.description} subiu de R$ ${inc.previous_amount.toFixed(2).replace('.', ',')} para R$ ${inc.new_amount.toFixed(2).replace('.', ',')}`,
+      );
+      logSent('receivable_price_increase', refId);
     }
   }
 }

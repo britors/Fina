@@ -386,6 +386,13 @@ function getCashFlowForecast(weeksAhead = 8): CashFlowForecast {
       AND account_id IN (${placeholders})
   `).all(horizonDays, ...linkedIds) as { date: string; description: string; amount: number; recurring: number }[];
 
+  const futureReceivables = db.prepare(`
+    SELECT due_date as date, description, amount, recurring
+    FROM receivables
+    WHERE status != 'received' AND due_date >= date('now') AND due_date <= date('now', '+' || ? || ' days')
+      AND account_id IN (${placeholders})
+  `).all(horizonDays, ...linkedIds) as { date: string; description: string; amount: number; recurring: number }[];
+
   const flow = new Map<string, number>();
   const factors: CashFlowFactor[] = [];
 
@@ -397,6 +404,10 @@ function getCashFlowForecast(weeksAhead = 8): CashFlowForecast {
   for (const bill of futureBills) {
     flow.set(bill.date, (flow.get(bill.date) ?? 0) - bill.amount);
     factors.push({ label: bill.description, date: bill.date, amount: -bill.amount, type: 'expense', recurring: !!bill.recurring });
+  }
+  for (const receivable of futureReceivables) {
+    flow.set(receivable.date, (flow.get(receivable.date) ?? 0) + receivable.amount);
+    factors.push({ label: receivable.description, date: receivable.date, amount: receivable.amount, type: 'income', recurring: !!receivable.recurring });
   }
 
   const weeks: CashFlowWeek[] = [];

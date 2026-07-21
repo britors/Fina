@@ -29,6 +29,16 @@ export function registerForecastHandlers(): void {
       GROUP BY due_date
     `).all(days) as { date: string; amount: number }[];
 
+    // Contas a receber pendentes dentro do horizonte
+    const futureReceivables = db.prepare(`
+      SELECT due_date AS date, SUM(amount) AS amount
+      FROM receivables
+      WHERE status != 'received'
+        AND due_date >= date('now')
+        AND due_date <= date('now', '+' || ? || ' days')
+      GROUP BY due_date
+    `).all(days) as { date: string; amount: number }[];
+
     // Montar mapa de fluxo por data
     const flow = new Map<string, number>();
 
@@ -39,6 +49,10 @@ export function registerForecastHandlers(): void {
 
     for (const bill of futureBills) {
       flow.set(bill.date, (flow.get(bill.date) ?? 0) - bill.amount);
+    }
+
+    for (const receivable of futureReceivables) {
+      flow.set(receivable.date, (flow.get(receivable.date) ?? 0) + receivable.amount);
     }
 
     // Gerar série diária
@@ -77,6 +91,12 @@ export function registerForecastHandlers(): void {
       WHERE status != 'paid' AND due_date >= date('now') AND due_date <= ?
     `).all(endIso) as { date: string; description: string; amount: number }[];
 
+    const futureReceivables = db.prepare(`
+      SELECT due_date AS date, description, amount
+      FROM receivables
+      WHERE status != 'received' AND due_date >= date('now') AND due_date <= ?
+    `).all(endIso) as { date: string; description: string; amount: number }[];
+
     const flow = new Map<string, number>();
     const factors: ForecastFactor[] = [];
 
@@ -89,6 +109,11 @@ export function registerForecastHandlers(): void {
     for (const bill of futureBills) {
       flow.set(bill.date, (flow.get(bill.date) ?? 0) - bill.amount);
       factors.push({ label: bill.description, date: bill.date, amount: -bill.amount, type: 'expense' });
+    }
+
+    for (const receivable of futureReceivables) {
+      flow.set(receivable.date, (flow.get(receivable.date) ?? 0) + receivable.amount);
+      factors.push({ label: receivable.description, date: receivable.date, amount: receivable.amount, type: 'income' });
     }
 
     const points: ForecastPoint[] = [];

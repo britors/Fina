@@ -9,6 +9,7 @@ import { registerTransactionHandlers } from './ipc/transactions';
 import { registerCategoryHandlers } from './ipc/categories';
 import { registerBudgetHandlers } from './ipc/budgets';
 import { registerBillHandlers } from './ipc/bills';
+import { registerReceivableHandlers } from './ipc/receivables';
 import { registerInvoiceHandlers } from './ipc/invoices';
 import { registerSettingsHandlers } from './ipc/settings';
 import { registerAssetHandlers } from './ipc/assets';
@@ -131,6 +132,7 @@ function registerHandlers(): void {
   registerCategoryHandlers();
   registerBudgetHandlers();
   registerBillHandlers();
+  registerReceivableHandlers();
   registerInvoiceHandlers();
   registerRecurrenceDetectionHandlers();
   registerAnomalyDetectionHandlers();
@@ -268,8 +270,8 @@ app.whenReady().then(async () => {
     if (!splash.isDestroyed()) splash.destroy();
     if (unlockWin && !unlockWin.isDestroyed()) unlockWin.close();
     const rec = generateRecurrences();
-    if (rec.transactions + rec.bills > 0) {
-      console.log(`[Recorrências] ${rec.transactions} transações, ${rec.bills} contas geradas`);
+    if (rec.transactions + rec.bills + rec.receivables > 0) {
+      console.log(`[Recorrências] ${rec.transactions} transações, ${rec.bills} contas a pagar, ${rec.receivables} contas a receber geradas`);
     }
     startNotificationScheduler();
     startAutoBackupScheduler();
