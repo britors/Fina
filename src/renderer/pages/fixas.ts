@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency, formatDate } from '../../shared/utils';
+import { formatCurrency, formatDate, isPixEligibleAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
@@ -178,6 +178,9 @@ function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => vo
             <option value="">— Sem meio —</option>
             ${accounts.map(a => `<option value="${a.id}" ${bill?.account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
           </select>
+          <label id="f-account-pix-label" style="display:${isPixEligibleAccountType(accounts.find(a => a.id === bill?.account_id)?.type ?? '') ? 'flex' : 'none'};align-items:center;gap:4px;font-size:11px;color:var(--text-2);margin-top:6px" title="Pago via Pix">
+            <input type="checkbox" id="f-account-pix" ${bill?.payments?.[0]?.is_pix ? 'checked' : ''}> Pix
+          </label>
         </div>
         <div class="form-group">
           <label class="form-label">Categoria</label>
@@ -208,6 +211,9 @@ function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => vo
         return false;
       }
 
+      const isPix = isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '')
+        && (document.getElementById('f-account-pix') as HTMLInputElement).checked;
+
       const payload = {
         description,
         amount,
@@ -217,7 +223,7 @@ function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => vo
         category_id: categoryId || null,
         recurring: 1 as const,
         recurrence_interval: interval,
-        payments: accountId ? [{ account_id: accountId, amount }] : [],
+        payments: accountId ? [{ account_id: accountId, amount, is_pix: (isPix ? 1 : 0) as 0 | 1 }] : [],
       };
 
       if (bill?.id) await invoke('bills:update', { id: bill.id, ...payload });
@@ -226,6 +232,14 @@ function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => vo
     },
   });
   attachMoneyMask(overlay.querySelector('#f-amount'));
+  overlay.querySelector<HTMLSelectElement>('#f-account')?.addEventListener('change', event => {
+    const accountId = (event.target as HTMLSelectElement).value;
+    const pixEligible = isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '');
+    const label = overlay.querySelector<HTMLElement>('#f-account-pix-label')!;
+    const checkbox = overlay.querySelector<HTMLInputElement>('#f-account-pix')!;
+    label.style.display = pixEligible ? 'flex' : 'none';
+    if (!pixEligible) checkbox.checked = false;
+  });
 }
 
 function detectionToPrefill(d: DetectedRecurrence): Partial<BillWithCategory> {

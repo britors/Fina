@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency, formatDate, calculateMonthlySummary } from '../../shared/utils';
+import { formatCurrency, formatDate, calculateMonthlySummary, isPixEligibleAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
@@ -821,7 +821,7 @@ function esc(s?: string): string {
 }
 
 function initialPaymentSplits(payments: PaymentSplitWithAccount[] | undefined, accountId: string | undefined, amount: number | undefined): PaymentSplit[] {
-  if (payments?.length) return payments.map(p => ({ account_id: p.account_id, amount: p.amount }));
+  if (payments?.length) return payments.map(p => ({ account_id: p.account_id, amount: p.amount, is_pix: p.is_pix }));
   return [{ account_id: accountId ?? accounts[0]?.id ?? '', amount: amount ?? 0 }];
 }
 
@@ -830,20 +830,33 @@ function isCreditCardAccount(accountId: string | undefined): boolean {
 }
 
 function paymentRowsHtml(payments: PaymentSplit[]): string {
-  return payments.map(payment => paymentRowHtml(payment.account_id, payment.amount)).join('');
+  return payments.map(payment => paymentRowHtml(payment.account_id, payment.amount, !!payment.is_pix)).join('');
 }
 
-function paymentRowHtml(accountId: string, amount: number): string {
+function paymentRowHtml(accountId: string, amount: number, isPix = false): string {
+  const pixEligible = accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
   return `
-    <div class="payment-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 34px;gap:8px;align-items:center">
+    <div class="payment-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 64px 34px;gap:8px;align-items:center">
       <select class="form-ctrl payment-account">
         <option value="">— Selecione —</option>
         ${accounts.map(a => `<option value="${a.id}" ${accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
       </select>
       <input class="form-ctrl payment-amount" type="text" inputmode="decimal" value="${amount ? formatMoneyValue(amount) : ''}" placeholder="Valor">
+      <label class="payment-pix-label" style="display:${pixEligible ? 'flex' : 'none'};align-items:center;gap:4px;font-size:11px;color:var(--text-2)" title="Pago via Pix">
+        <input type="checkbox" class="payment-pix" ${isPix ? 'checked' : ''}> Pix
+      </label>
       <button class="btn btn-ghost btn-sm payment-remove" type="button" title="Remover"><i class="ti ti-x"></i></button>
     </div>
   `;
+}
+
+function updatePaymentPixVisibility(row: HTMLElement): void {
+  const accountId = row.querySelector<HTMLSelectElement>('.payment-account')!.value;
+  const pixEligible = accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
+  const label = row.querySelector<HTMLElement>('.payment-pix-label')!;
+  const checkbox = row.querySelector<HTMLInputElement>('.payment-pix')!;
+  label.style.display = pixEligible ? 'flex' : 'none';
+  if (!pixEligible) checkbox.checked = false;
 }
 
 function bindPaymentRows(overlay: HTMLElement, editing = false): void {
@@ -851,6 +864,7 @@ function bindPaymentRows(overlay: HTMLElement, editing = false): void {
     if (row.dataset.bound === 'true') return;
     row.dataset.bound = 'true';
     attachMoneyMask(row.querySelector<HTMLInputElement>('.payment-amount'));
+    row.querySelector<HTMLSelectElement>('.payment-account')?.addEventListener('change', () => updatePaymentPixVisibility(row));
     row.querySelectorAll('input, select').forEach(ctrl => {
       ctrl.addEventListener('input', () => {
         if ((ctrl as HTMLElement).classList.contains('payment-amount')) {
@@ -887,6 +901,7 @@ function collectPayments(overlay: HTMLElement, total: number): PaymentSplit[] | 
   const payments = rows.map(row => ({
     account_id: row.querySelector<HTMLSelectElement>('.payment-account')!.value,
     amount: moneyInputValue(row.querySelector<HTMLInputElement>('.payment-amount')),
+    is_pix: (row.querySelector<HTMLInputElement>('.payment-pix')?.checked ? 1 : 0) as 0 | 1,
   }));
   const seen = new Set<string>();
   let sum = 0;

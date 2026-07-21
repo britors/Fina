@@ -2,7 +2,7 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import type { PaymentSplit, PaymentSplitWithAccount, Transaction, TransactionFilters, TransactionType } from '../../shared/types';
-import { isCreditLikeAccountType } from '../../shared/utils';
+import { isCreditLikeAccountType, isPixEligibleAccountType } from '../../shared/utils';
 import { attachToInvoice, adjustInvoiceAmount } from '../invoices';
 import { buildExpenseAnalyticsWhere, categoryOrChildPredicate, EXPENSES_BY_ROOT_MONTH_SQL, EXPENSES_BY_ROOT_RANGE_SQL, EXPENSE_CATEGORY_DETAILS_SQL, EXPENSE_MONTHLY_ROOT_SERIES_SQL, EXPENSE_MONTHLY_SUBCATEGORY_SERIES_SQL, EXPENSE_SUBCATEGORY_BREAKDOWN_SQL } from '../categoryHierarchyQueries';
 import type { ExpenseAnalyticsFilters } from '../categoryHierarchyQueries';
@@ -88,13 +88,22 @@ function normalizePayments(data: { type: TransactionType; account_id: string; am
     if (seen.has(payment.account_id)) throw new Error('Não repita o mesmo meio de pagamento no lançamento.');
     seen.add(payment.account_id);
     total += payment.amount;
+    assertPixEligible(payment);
   }
 
   if (Math.abs(total - data.amount) > 0.005) {
     throw new Error('A soma dos meios de pagamento deve ser igual ao valor total.');
   }
 
-  return payments.map(payment => ({ account_id: payment.account_id, amount: roundMoney(payment.amount) }));
+  return payments.map(payment => ({ account_id: payment.account_id, amount: roundMoney(payment.amount), is_pix: payment.is_pix ? 1 : 0 }));
+}
+
+function assertPixEligible(payment: PaymentSplit): void {
+  if (!payment.is_pix) return;
+  const account = getDb().prepare('SELECT type FROM accounts WHERE id = ?').get(payment.account_id) as { type: string } | undefined;
+  if (!account || !isPixEligibleAccountType(account.type)) {
+    throw new Error('Pix só está disponível para pagamentos em conta corrente ou cartão de crédito.');
+  }
 }
 
 function roundMoney(value: number): number {
@@ -104,9 +113,9 @@ function roundMoney(value: number): number {
 function replaceTransactionPayments(transactionId: string, payments: PaymentSplit[]): void {
   const db = getDb();
   db.prepare('DELETE FROM transaction_payments WHERE transaction_id = ?').run(transactionId);
-  const stmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount) VALUES (?,?,?,?)');
+  const stmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
   for (const payment of payments) {
-    stmt.run(randomUUID(), transactionId, payment.account_id, payment.amount);
+    stmt.run(randomUUID(), transactionId, payment.account_id, payment.amount, payment.is_pix ? 1 : 0);
   }
 }
 
@@ -150,7 +159,7 @@ function assertCanInstall(data: InstallmentTransactionInput, payments: PaymentSp
 
 function getTransactionPayments(transactionId: string): PaymentSplitWithAccount[] {
   return getDb().prepare(`
-    SELECT p.account_id, p.amount, p.invoice_id, a.name as account_name
+    SELECT p.account_id, p.amount, p.invoice_id, p.is_pix, a.name as account_name
     FROM transaction_payments p
     JOIN accounts a ON a.id = p.account_id
     WHERE p.transaction_id = ?
@@ -250,6 +259,14 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
     GROUP BY a.id,a.name ORDER BY total DESC
   `).all(...filtered.params);
 
+  const paymentMethodBreakdown = db.prepare(`
+    SELECT CASE WHEN p.is_pix THEN 'pix' ELSE 'outros' END AS method, SUM(p.amount) AS total, COUNT(*) AS transaction_count
+    FROM transactions t
+    JOIN transaction_payments p ON p.transaction_id=t.id
+    WHERE ${filtered.sql}
+    GROUP BY method ORDER BY total DESC
+  `).all(...filtered.params);
+
   const ownerBreakdown = db.prepare(`
     SELECT COALESCE(NULLIF(TRIM(t.owner), ''), 'Sem responsável') AS owner,
       SUM(t.amount) AS total, COUNT(*) AS transaction_count
@@ -268,7 +285,7 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
 
   return {
     availableRoots, categories, monthlySeries, topTransactions, kindBreakdown,
-    weekdayBreakdown, accountBreakdown, ownerBreakdown, destinationBreakdown,
+    weekdayBreakdown, accountBreakdown, paymentMethodBreakdown, ownerBreakdown, destinationBreakdown,
   };
 }
 

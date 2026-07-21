@@ -63,6 +63,7 @@ export interface Transaction {
 export interface PaymentSplit {
   account_id: string;
   amount: number;
+  is_pix?: 0 | 1;
 }
 
 export interface PaymentSplitWithAccount extends PaymentSplit {

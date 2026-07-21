@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency, formatDate, getDaysUntilDue } from '../../shared/utils';
+import { formatCurrency, formatDate, getDaysUntilDue, isPixEligibleAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
@@ -445,27 +445,40 @@ function esc(s?: string | null): string {
 }
 
 function initialPaymentSplits(payments: PaymentSplitWithAccount[] | undefined, accountId: string | undefined, amount: number | undefined): PaymentSplit[] {
-  if (payments?.length) return payments.map(p => ({ account_id: p.account_id, amount: p.amount }));
+  if (payments?.length) return payments.map(p => ({ account_id: p.account_id, amount: p.amount, is_pix: p.is_pix }));
   return accountId ? [{ account_id: accountId, amount: amount ?? 0 }] : [];
 }
 
 function paymentRowsHtml(payments: PaymentSplit[], prefix = 'bill'): string {
   return payments.length
-    ? payments.map(payment => paymentRowHtml(payment.account_id, payment.amount, prefix)).join('')
+    ? payments.map(payment => paymentRowHtml(payment.account_id, payment.amount, prefix, !!payment.is_pix)).join('')
     : paymentRowHtml('', 0, prefix);
 }
 
-function paymentRowHtml(accountId: string, amount: number, prefix = 'bill'): string {
+function paymentRowHtml(accountId: string, amount: number, prefix = 'bill', isPix = false): string {
+  const pixEligible = accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
   return `
-    <div class="${prefix}-payment-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 34px;gap:8px;align-items:center">
+    <div class="${prefix}-payment-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 64px 34px;gap:8px;align-items:center">
       <select class="form-ctrl ${prefix}-payment-account">
         <option value="">— Selecione —</option>
         ${accounts.map(a => `<option value="${a.id}" ${accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
       </select>
       <input class="form-ctrl ${prefix}-payment-amount" type="text" inputmode="decimal" value="${amount ? formatMoneyValue(amount) : ''}" placeholder="Valor">
+      <label class="${prefix}-payment-pix-label" style="display:${pixEligible ? 'flex' : 'none'};align-items:center;gap:4px;font-size:11px;color:var(--text-2)" title="Pago via Pix">
+        <input type="checkbox" class="${prefix}-payment-pix" ${isPix ? 'checked' : ''}> Pix
+      </label>
       <button class="btn btn-ghost btn-sm ${prefix}-payment-remove" type="button" title="Remover"><i class="ti ti-x"></i></button>
     </div>
   `;
+}
+
+function updatePaymentPixVisibility(row: HTMLElement, prefix: string): void {
+  const accountId = row.querySelector<HTMLSelectElement>(`.${prefix}-payment-account`)!.value;
+  const pixEligible = accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
+  const label = row.querySelector<HTMLElement>(`.${prefix}-payment-pix-label`)!;
+  const checkbox = row.querySelector<HTMLInputElement>(`.${prefix}-payment-pix`)!;
+  label.style.display = pixEligible ? 'flex' : 'none';
+  if (!pixEligible) checkbox.checked = false;
 }
 
 function bindPaymentRows(overlay: HTMLElement, prefix: string): void {
@@ -473,6 +486,7 @@ function bindPaymentRows(overlay: HTMLElement, prefix: string): void {
     if (row.dataset.bound === 'true') return;
     row.dataset.bound = 'true';
     attachMoneyMask(row.querySelector<HTMLInputElement>(`.${prefix}-payment-amount`));
+    row.querySelector<HTMLSelectElement>(`.${prefix}-payment-account`)?.addEventListener('change', () => updatePaymentPixVisibility(row, prefix));
     row.querySelectorAll('input, select').forEach(ctrl => {
       ctrl.addEventListener('input', () => {
         if ((ctrl as HTMLElement).classList.contains(`${prefix}-payment-amount`)) {
@@ -506,6 +520,7 @@ function collectPayments(prefix: string, total: number, allowEmpty: boolean): Pa
     .map(row => ({
       account_id: row.querySelector<HTMLSelectElement>(`.${prefix}-payment-account`)!.value,
       amount: moneyInputValue(row.querySelector<HTMLInputElement>(`.${prefix}-payment-amount`)),
+      is_pix: (row.querySelector<HTMLInputElement>(`.${prefix}-payment-pix`)?.checked ? 1 : 0) as 0 | 1,
     }))
     .filter(payment => payment.account_id || Number.isFinite(payment.amount));
 

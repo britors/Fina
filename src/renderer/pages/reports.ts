@@ -20,6 +20,7 @@ type ExpenseAnalytics = {
   kindBreakdown: { kind: 'essential' | 'variable'; total: number }[];
   weekdayBreakdown: { weekday: number; total: number; transaction_count: number }[];
   accountBreakdown: { id: string; name: string; total: number }[];
+  paymentMethodBreakdown: { method: 'pix' | 'outros'; total: number; transaction_count: number }[];
   ownerBreakdown: { owner: string; total: number; transaction_count: number }[];
   destinationBreakdown: { key: string; description: string; total: number; transaction_count: number; average_amount: number }[];
 };
@@ -167,6 +168,9 @@ export async function render(el: HTMLElement): Promise<void> {
     const essentialTotal = analytics.kindBreakdown.find(row => row.kind === 'essential')?.total ?? 0;
     const variableTotal = analytics.kindBreakdown.find(row => row.kind === 'variable')?.total ?? 0;
     const kindTotal = essentialTotal + variableTotal;
+    const pixTotal = analytics.paymentMethodBreakdown.find(row => row.method === 'pix')?.total ?? 0;
+    const paymentMethodTotal = analytics.paymentMethodBreakdown.reduce((sum, row) => sum + row.total, 0);
+    const pixPct = paymentMethodTotal > 0 ? pixTotal / paymentMethodTotal * 100 : 0;
     const weekdayLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
     function goToFilteredTransactions(opts: {
@@ -318,7 +322,10 @@ export async function render(el: HTMLElement): Promise<void> {
 
       <div class="grid-2" style="grid-template-columns:${owners.length ? '1.3fr 1fr' : '1fr'};margin-bottom:20px">
         <div class="card">
-          <div class="card-header">Despesas por meio de pagamento</div><div class="card-hr"></div>
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Despesas por meio de pagamento</span>
+            ${paymentMethodTotal > 0 ? `<span style="font-size:11px;color:var(--text-2)" title="${formatCurrency(pixTotal)} pagos via Pix">${pixPct.toFixed(1)}% via Pix</span>` : ''}
+          </div><div class="card-hr"></div>
           <div class="card-body">
             ${analytics.accountBreakdown.length === 0 ? '<div class="empty"><div class="empty-title">Sem despesas no recorte</div></div>' : analytics.accountBreakdown.map(account => {
               const max = Math.max(...analytics.accountBreakdown.map(item => item.total), 1);

@@ -5,6 +5,7 @@ import { adjustBalance } from './transactions';
 import { attachToInvoice } from '../invoices';
 import type { Bill, BillInterval, BillPriceIncrease, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOrChildPredicate } from '../categoryHierarchyQueries';
+import { isPixEligibleAccountType } from '../../shared/utils';
 
 type BillInput = Omit<Bill, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[] };
 type BillUpdateInput = Partial<Bill> & { id: string; payments?: PaymentSplit[] };
@@ -63,27 +64,36 @@ function normalizePayments(data: { amount: number; account_id?: string | null; p
     if (seen.has(payment.account_id)) throw new Error('Não repita o mesmo meio de pagamento.');
     seen.add(payment.account_id);
     total += payment.amount;
+    assertPixEligible(payment);
   }
 
   if (Math.abs(total - data.amount) > 0.005) {
     throw new Error('A soma dos meios de pagamento deve ser igual ao valor total.');
   }
 
-  return payments.map(payment => ({ account_id: payment.account_id, amount: roundMoney(payment.amount) }));
+  return payments.map(payment => ({ account_id: payment.account_id, amount: roundMoney(payment.amount), is_pix: payment.is_pix ? 1 : 0 }));
+}
+
+function assertPixEligible(payment: PaymentSplit): void {
+  if (!payment.is_pix) return;
+  const account = getDb().prepare('SELECT type FROM accounts WHERE id = ?').get(payment.account_id) as { type: string } | undefined;
+  if (!account || !isPixEligibleAccountType(account.type)) {
+    throw new Error('Pix só está disponível para pagamentos em conta corrente ou cartão de crédito.');
+  }
 }
 
 function replaceBillPayments(billId: string, payments: PaymentSplit[]): void {
   const db = getDb();
   db.prepare('DELETE FROM bill_payments WHERE bill_id = ?').run(billId);
-  const stmt = db.prepare('INSERT INTO bill_payments (id, bill_id, account_id, amount) VALUES (?,?,?,?)');
+  const stmt = db.prepare('INSERT INTO bill_payments (id, bill_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
   for (const payment of payments) {
-    stmt.run(randomUUID(), billId, payment.account_id, payment.amount);
+    stmt.run(randomUUID(), billId, payment.account_id, payment.amount, payment.is_pix ? 1 : 0);
   }
 }
 
 function getBillPayments(billId: string): PaymentSplitWithAccount[] {
   return getDb().prepare(`
-    SELECT p.account_id, p.amount, a.name as account_name
+    SELECT p.account_id, p.amount, p.is_pix, a.name as account_name
     FROM bill_payments p
     JOIN accounts a ON a.id = p.account_id
     WHERE p.bill_id = ?
@@ -268,11 +278,11 @@ export function registerBillHandlers(): void {
       db.prepare(
         'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,0)'
       ).run(txId, payments[0].account_id, finalCategoryId, bill.description, bill.amount, 'expense', paidAt, 'confirmed', null);
-      const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount) VALUES (?,?,?,?)');
+      const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
       const invoiceLinkStmt = db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?');
       for (const payment of payments) {
         const paymentId = randomUUID();
-        txPaymentStmt.run(paymentId, txId, payment.account_id, payment.amount);
+        txPaymentStmt.run(paymentId, txId, payment.account_id, payment.amount, payment.is_pix ? 1 : 0);
         const signedDelta = adjustBalance(payment.account_id, -payment.amount);
         const invoiceId = attachToInvoice(payment.account_id, paidAt, signedDelta);
         if (invoiceId) invoiceLinkStmt.run(invoiceId, paymentId);

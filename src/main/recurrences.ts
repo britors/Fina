@@ -34,8 +34,8 @@ export function generateRecurrences(): RecurrenceResult {
     INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring)
     VALUES (?,?,?,?,?,?,?,?,?,0)
   `);
-  const txPayments = db.prepare(`SELECT account_id, amount FROM transaction_payments WHERE transaction_id=?`);
-  const insertTxPayment = db.prepare(`INSERT INTO transaction_payments (id, transaction_id, account_id, amount) VALUES (?,?,?,?)`);
+  const txPayments = db.prepare(`SELECT account_id, amount, is_pix FROM transaction_payments WHERE transaction_id=?`);
+  const insertTxPayment = db.prepare(`INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
 
   const newDate = `${year}-${String(month).padStart(2, '0')}-01`;
 
@@ -45,8 +45,8 @@ export function generateRecurrences(): RecurrenceResult {
     const newId = randomUUID();
     insertTx.run(newId, tx.account_id, tx.category_id, tx.description,
                  tx.amount, tx.type, newDate, tx.status, tx.notes);
-    for (const payment of txPayments.all(tx.id) as { account_id: string; amount: number }[]) {
-      insertTxPayment.run(randomUUID(), newId, payment.account_id, payment.amount);
+    for (const payment of txPayments.all(tx.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[]) {
+      insertTxPayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
     }
     insertTxLog.run(tx.id, 'transaction', newDate);
     result.transactions++;
@@ -70,8 +70,8 @@ export function generateRecurrences(): RecurrenceResult {
     INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring)
     VALUES (?,?,?,?,?,?,?,0)
   `);
-  const billPayments = db.prepare(`SELECT account_id, amount FROM bill_payments WHERE bill_id=?`);
-  const insertBillPayment = db.prepare(`INSERT INTO bill_payments (id, bill_id, account_id, amount) VALUES (?,?,?,?)`);
+  const billPayments = db.prepare(`SELECT account_id, amount, is_pix FROM bill_payments WHERE bill_id=?`);
+  const insertBillPayment = db.prepare(`INSERT INTO bill_payments (id, bill_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
   const advanceBillDue = db.prepare(`UPDATE bills SET due_date=?, updated_at=datetime('now') WHERE id=?`);
 
   for (const bill of recurringBills) {
@@ -79,8 +79,8 @@ export function generateRecurrences(): RecurrenceResult {
 
     const newId = randomUUID();
     insertBill.run(newId, bill.description, bill.amount, bill.due_date, 'pending', bill.account_id, bill.category_id);
-    for (const payment of billPayments.all(bill.id) as { account_id: string; amount: number }[]) {
-      insertBillPayment.run(randomUUID(), newId, payment.account_id, payment.amount);
+    for (const payment of billPayments.all(bill.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[]) {
+      insertBillPayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
     }
     insertBillLog.run(bill.id, 'bill', bill.due_date);
     result.bills++;
