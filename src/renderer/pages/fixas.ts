@@ -173,9 +173,9 @@ function openFixedModal(bill: Partial<BillWithCategory> | null, onDone: () => vo
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Meio de pagamento</label>
+          <label class="form-label">Conta ou cartão</label>
           <select class="form-ctrl" id="f-account">
-            <option value="">— Sem meio —</option>
+            <option value="">— Sem conta —</option>
             ${accounts.map(a => `<option value="${a.id}" ${bill?.account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
           </select>
           <label id="f-account-pix-label" style="display:${isPixEligibleAccountType(accounts.find(a => a.id === bill?.account_id)?.type ?? '') ? 'flex' : 'none'};align-items:center;gap:4px;font-size:11px;color:var(--text-2);margin-top:6px" title="Pago via Pix">
@@ -275,7 +275,7 @@ function detectionCard(d: DetectedRecurrence): string {
 function paymentLabel(bill: BillWithCategory): string {
   if (bill.payments?.length) return bill.payments.map(p => p.account_name).join(' + ');
   const account = accounts.find(a => a.id === bill.account_id);
-  return account?.name ?? 'Sem meio definido';
+  return account?.name ?? 'Sem conta definida';
 }
 
 function alpha(hex: string, a: number): string {

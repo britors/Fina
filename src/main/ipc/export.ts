@@ -72,7 +72,7 @@ export function registerExportHandlers(): void {
     const typeLabel = (t: string) => t === 'income' ? 'Receita' : t === 'expense' ? 'Despesa' : 'Transferência';
     const statusLabel = (s: string) => s === 'confirmed' ? 'Confirmado' : 'Pendente';
 
-    const header = 'Data,Descrição,Categoria,Subcategoria,Meio de pagamento,Tipo,Valor,Status,Observações';
+    const header = 'Data,Descrição,Categoria,Subcategoria,Conta,Tipo,Valor,Status,Observações';
     const lines = rows.map(r => [
       r.date, `"${String(r.description).replace(/"/g, '""')}"`,
       `"${String(r.category).replace(/"/g, '""')}"`,
@@ -183,7 +183,7 @@ export function registerExportHandlers(): void {
   </div>
 </div>
 <table>
-  <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Meio de pagamento</th><th>Valor</th></tr></thead>
+  <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta</th><th>Valor</th></tr></thead>
   <tbody>
     ${txs.map(t => `<tr>
       <td>${new Date(t.date + 'T12:00').toLocaleDateString('pt-BR')}</td>

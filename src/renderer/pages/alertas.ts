@@ -151,7 +151,7 @@ function buildAlerts(
     alerts.push({
       level: 'warning',
       title: 'Reserva de emergência baixa',
-      body: `O saldo em meios de pagamento cobre cerca de ${reserveMonths.toFixed(1)} mês de despesas.`,
+      body: `O saldo em contas cobre cerca de ${reserveMonths.toFixed(1)} mês de despesas.`,
       action: 'Use a tela Reserva para definir uma contribuição mensal.',
       icon: 'ti-shield',
     });

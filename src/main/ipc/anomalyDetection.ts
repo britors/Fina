@@ -69,7 +69,7 @@ function detectDuplicates(recent: RecentTx[], dismissed: Set<string>): SpendingA
         date: a.date,
         accountName: a.account_name,
         type: 'duplicate',
-        reason: `Lançamento igual (mesmo valor, descrição e meio de pagamento) em ${b.date}.`,
+        reason: `Lançamento igual (mesmo valor, descrição e conta) em ${b.date}.`,
       });
       break;
     }

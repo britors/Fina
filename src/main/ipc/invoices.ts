@@ -36,7 +36,7 @@ export function registerInvoiceHandlers(): void {
   ipcMain.handle('invoices:getCardState', (_e, accountId: string) => getCardState(accountId));
 
   // Estado de todos os cartões com fatura ativada, em uma única chamada —
-  // evita N+1 round-trips ao renderizar a lista de meios de pagamento.
+  // evita N+1 round-trips ao renderizar a lista de contas.
   ipcMain.handle('invoices:getCardStates', () => {
     const result: Record<string, CreditCardInvoiceCardState> = {};
     for (const account of creditCardAccountsWithCycle()) {

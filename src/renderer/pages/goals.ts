@@ -232,7 +232,7 @@ export async function render(el: HTMLElement): Promise<void> {
               <input class="form-ctrl" id="f-date" type="date" value="${goal?.target_date ?? draft?.target_date ?? ''}">
             </div>
             <div class="form-group">
-              <label class="form-label">Meio de pagamento vinculado</label>
+              <label class="form-label">Conta ou cartão vinculado</label>
               <select class="form-ctrl" id="f-account">
                 <option value="">— Nenhuma —</option>
                 ${accounts.map(a => `<option value="${a.id}" ${(goal?.account_id ?? draft?.account_id) === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}

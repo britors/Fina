@@ -340,8 +340,9 @@ export function checkAndNotify(): void {
     const budgets = db.prepare(`
       SELECT b.id, c.name, b.limit_amount,
              COALESCE((
-               SELECT SUM(t.amount) FROM transactions t
-               WHERE t.category_id = b.category_id
+               SELECT SUM(tc.amount) FROM transaction_categories tc
+               JOIN transactions t ON t.id = tc.transaction_id
+               WHERE tc.category_id = b.category_id
                  AND t.type = 'expense'
                  AND t.status = 'confirmed'
                  AND strftime('%m', t.date) = printf('%02d', b.month)

@@ -37,6 +37,8 @@ export function generateRecurrences(): RecurrenceResult {
   `);
   const txPayments = db.prepare(`SELECT account_id, amount, is_pix FROM transaction_payments WHERE transaction_id=?`);
   const insertTxPayment = db.prepare(`INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
+  const txCategories = db.prepare(`SELECT category_id, amount FROM transaction_categories WHERE transaction_id=?`);
+  const insertTxCategory = db.prepare(`INSERT INTO transaction_categories (id, transaction_id, category_id, amount) VALUES (?,?,?,?)`);
 
   const newDate = `${year}-${String(month).padStart(2, '0')}-01`;
 
@@ -48,6 +50,9 @@ export function generateRecurrences(): RecurrenceResult {
                  tx.amount, tx.type, newDate, tx.status, tx.notes);
     for (const payment of txPayments.all(tx.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[]) {
       insertTxPayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
+    }
+    for (const category of txCategories.all(tx.id) as { category_id: string; amount: number }[]) {
+      insertTxCategory.run(randomUUID(), newId, category.category_id, category.amount);
     }
     insertTxLog.run(tx.id, 'transaction', newDate);
     result.transactions++;
@@ -73,6 +78,8 @@ export function generateRecurrences(): RecurrenceResult {
   `);
   const billPayments = db.prepare(`SELECT account_id, amount, is_pix FROM bill_payments WHERE bill_id=?`);
   const insertBillPayment = db.prepare(`INSERT INTO bill_payments (id, bill_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
+  const billCategories = db.prepare(`SELECT category_id, amount FROM bill_categories WHERE bill_id=?`);
+  const insertBillCategory = db.prepare(`INSERT INTO bill_categories (id, bill_id, category_id, amount) VALUES (?,?,?,?)`);
   const advanceBillDue = db.prepare(`UPDATE bills SET due_date=?, updated_at=datetime('now') WHERE id=?`);
 
   for (const bill of recurringBills) {
@@ -82,6 +89,9 @@ export function generateRecurrences(): RecurrenceResult {
     insertBill.run(newId, bill.description, bill.amount, bill.due_date, 'pending', bill.account_id, bill.category_id);
     for (const payment of billPayments.all(bill.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[]) {
       insertBillPayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
+    }
+    for (const category of billCategories.all(bill.id) as { category_id: string; amount: number }[]) {
+      insertBillCategory.run(randomUUID(), newId, category.category_id, category.amount);
     }
     insertBillLog.run(bill.id, 'bill', bill.due_date);
     result.bills++;
@@ -108,6 +118,8 @@ export function generateRecurrences(): RecurrenceResult {
   `);
   const receivablePayments = db.prepare(`SELECT account_id, amount, is_pix FROM receivable_payments WHERE receivable_id=?`);
   const insertReceivablePayment = db.prepare(`INSERT INTO receivable_payments (id, receivable_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
+  const receivableCategories = db.prepare(`SELECT category_id, amount FROM receivable_categories WHERE receivable_id=?`);
+  const insertReceivableCategory = db.prepare(`INSERT INTO receivable_categories (id, receivable_id, category_id, amount) VALUES (?,?,?,?)`);
   const advanceReceivableDue = db.prepare(`UPDATE receivables SET due_date=?, updated_at=datetime('now') WHERE id=?`);
 
   for (const receivable of recurringReceivables) {
@@ -117,6 +129,9 @@ export function generateRecurrences(): RecurrenceResult {
     insertReceivable.run(newId, receivable.description, receivable.amount, receivable.due_date, 'pending', receivable.account_id, receivable.category_id);
     for (const payment of receivablePayments.all(receivable.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[]) {
       insertReceivablePayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
+    }
+    for (const category of receivableCategories.all(receivable.id) as { category_id: string; amount: number }[]) {
+      insertReceivableCategory.run(randomUUID(), newId, category.category_id, category.amount);
     }
     insertReceivableLog.run(receivable.id, 'receivable', receivable.due_date);
     result.receivables++;

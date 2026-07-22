@@ -4,12 +4,12 @@ import { getDb } from '../database';
 import { adjustBalance } from './transactions';
 import { attachToInvoice } from '../invoices';
 import { addInterval } from './bills';
-import type { Receivable, ReceivableInterval, ReceivablePriceIncrease, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
+import type { CategorySplit, CategorySplitWithCategory, Receivable, ReceivableInterval, ReceivablePriceIncrease, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOrChildPredicate } from '../categoryHierarchyQueries';
 import { isPixEligibleAccountType } from '../../shared/utils';
 
-type ReceivableInput = Omit<Receivable, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[] };
-type ReceivableUpdateInput = Partial<Receivable> & { id: string; payments?: PaymentSplit[] };
+type ReceivableInput = Omit<Receivable, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[]; categories?: CategorySplit[] };
+type ReceivableUpdateInput = Partial<Receivable> & { id: string; payments?: PaymentSplit[]; categories?: CategorySplit[] };
 
 function autoMarkOverdue(): void {
   getDb().prepare(
@@ -29,21 +29,21 @@ function normalizePayments(data: { amount: number; account_id?: string | null; p
       : [];
 
   if (allowEmpty && payments.length === 0) return [];
-  if (payments.length === 0) throw new Error('Defina pelo menos um meio de recebimento.');
+  if (payments.length === 0) throw new Error('Defina pelo menos uma conta.');
 
   const seen = new Set<string>();
   let total = 0;
   for (const payment of payments) {
-    if (!payment.account_id) throw new Error('Selecione todos os meios de recebimento.');
-    if (!Number.isFinite(payment.amount) || payment.amount <= 0) throw new Error('Informe valores válidos para os meios de recebimento.');
-    if (seen.has(payment.account_id)) throw new Error('Não repita o mesmo meio de recebimento.');
+    if (!payment.account_id) throw new Error('Selecione todas as contas.');
+    if (!Number.isFinite(payment.amount) || payment.amount <= 0) throw new Error('Informe valores válidos para as contas.');
+    if (seen.has(payment.account_id)) throw new Error('Não repita a mesma conta.');
     seen.add(payment.account_id);
     total += payment.amount;
     assertPixEligible(payment);
   }
 
   if (Math.abs(total - data.amount) > 0.005) {
-    throw new Error('A soma dos meios de recebimento deve ser igual ao valor total.');
+    throw new Error('A soma das contas deve ser igual ao valor total.');
   }
 
   return payments.map(payment => ({ account_id: payment.account_id, amount: roundMoney(payment.amount), is_pix: payment.is_pix ? 1 : 0 }));
@@ -54,6 +54,41 @@ function assertPixEligible(payment: PaymentSplit): void {
   const account = getDb().prepare('SELECT type FROM accounts WHERE id = ?').get(payment.account_id) as { type: string } | undefined;
   if (!account || !isPixEligibleAccountType(account.type)) {
     throw new Error('Pix só está disponível para recebimentos em conta corrente ou cartão de crédito.');
+  }
+}
+
+function normalizeCategories(data: { amount: number; category_id?: string | null; categories?: CategorySplit[] }, allowEmpty: boolean): CategorySplit[] {
+  const categories = data.categories?.length
+    ? data.categories
+    : data.category_id
+      ? [{ category_id: data.category_id, amount: data.amount }]
+      : [];
+
+  if (allowEmpty && categories.length === 0) return [];
+  if (categories.length === 0) throw new Error('Defina pelo menos uma categoria.');
+
+  const seen = new Set<string>();
+  let total = 0;
+  for (const category of categories) {
+    if (!category.category_id) throw new Error('Selecione todas as categorias.');
+    if (!Number.isFinite(category.amount) || category.amount <= 0) throw new Error('Informe valores válidos para as categorias.');
+    if (seen.has(category.category_id)) throw new Error('Não repita a mesma categoria.');
+    seen.add(category.category_id);
+    total += category.amount;
+    assertIncomeCategory(category.category_id);
+  }
+
+  if (Math.abs(total - data.amount) > 0.005) {
+    throw new Error('A soma das categorias deve ser igual ao valor total.');
+  }
+
+  return categories.map(category => ({ category_id: category.category_id, amount: roundMoney(category.amount) }));
+}
+
+function assertIncomeCategory(categoryId: string): void {
+  const category = getDb().prepare('SELECT type FROM categories WHERE id = ?').get(categoryId) as { type: string } | undefined;
+  if (!category || category.type !== 'income') {
+    throw new Error('Selecione uma categoria de receita válida.');
   }
 }
 
@@ -76,12 +111,31 @@ function getReceivablePayments(receivableId: string): PaymentSplitWithAccount[] 
   `).all(receivableId) as PaymentSplitWithAccount[];
 }
 
-function enrichReceivable<T extends Receivable>(receivable: T | undefined | null): (T & { payments: PaymentSplitWithAccount[] }) | null {
-  if (!receivable) return null;
-  return { ...receivable, payments: getReceivablePayments(receivable.id) };
+function replaceReceivableCategories(receivableId: string, categories: CategorySplit[]): void {
+  const db = getDb();
+  db.prepare('DELETE FROM receivable_categories WHERE receivable_id = ?').run(receivableId);
+  const stmt = db.prepare('INSERT INTO receivable_categories (id, receivable_id, category_id, amount) VALUES (?,?,?,?)');
+  for (const category of categories) {
+    stmt.run(randomUUID(), receivableId, category.category_id, category.amount);
+  }
 }
 
-function enrichReceivables<T extends Receivable>(receivables: T[]): (T & { payments: PaymentSplitWithAccount[] })[] {
+function getReceivableCategories(receivableId: string): CategorySplitWithCategory[] {
+  return getDb().prepare(`
+    SELECT rc.category_id, rc.amount, c.name as category_name, c.icon as category_icon, c.color as category_color
+    FROM receivable_categories rc
+    JOIN categories c ON c.id = rc.category_id
+    WHERE rc.receivable_id = ?
+    ORDER BY rc.created_at, rc.id
+  `).all(receivableId) as CategorySplitWithCategory[];
+}
+
+function enrichReceivable<T extends Receivable>(receivable: T | undefined | null): (T & { payments: PaymentSplitWithAccount[]; categories: CategorySplitWithCategory[] }) | null {
+  if (!receivable) return null;
+  return { ...receivable, payments: getReceivablePayments(receivable.id), categories: getReceivableCategories(receivable.id) };
+}
+
+function enrichReceivables<T extends Receivable>(receivables: T[]): (T & { payments: PaymentSplitWithAccount[]; categories: CategorySplitWithCategory[] })[] {
   return receivables.map(receivable => enrichReceivable(receivable)!);
 }
 
@@ -138,14 +192,17 @@ export function registerReceivableHandlers(): void {
 
   ipcMain.handle('receivables:create', (_e, data: ReceivableInput) => {
     const payments = normalizePayments(data, true);
+    const categories = normalizeCategories(data, true);
     const primaryAccountId = payments[0]?.account_id ?? data.account_id ?? null;
+    const primaryCategoryId = categories[0]?.category_id ?? data.category_id ?? null;
     const id = randomUUID();
     const db = getDb();
     db.transaction(() => {
       db.prepare(
         'INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring, recurrence_interval) VALUES (?,?,?,?,?,?,?,?,?)'
-      ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', primaryAccountId, data.category_id ?? null, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly');
+      ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly');
       replaceReceivablePayments(id, payments);
+      if (categories.length) replaceReceivableCategories(id, categories);
       if (data.recurring) trackPriceHistory(id, data.amount);
     })();
     return enrichReceivable(db.prepare('SELECT * FROM receivables WHERE id = ?').get(id) as Receivable | undefined);
@@ -169,6 +226,7 @@ export function registerReceivableHandlers(): void {
           'INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring) VALUES (?,?,?,?,?,?,?,0)'
         ).run(newId, receivable.description, receivable.amount, newDue, 'pending', receivable.account_id, receivable.category_id);
         replaceReceivablePayments(newId, getReceivablePayments(receivable.id));
+        replaceReceivableCategories(newId, getReceivableCategories(receivable.id));
         createdIds.push(newId);
       }
     })();
@@ -178,13 +236,16 @@ export function registerReceivableHandlers(): void {
 
   ipcMain.handle('receivables:update', (_e, { id, ...data }: ReceivableUpdateInput) => {
     const payments = normalizePayments(data as ReceivableInput, true);
+    const categories = normalizeCategories(data as ReceivableInput, true);
     const primaryAccountId = payments[0]?.account_id ?? data.account_id ?? null;
+    const primaryCategoryId = categories[0]?.category_id ?? data.category_id ?? null;
     const db = getDb();
     db.transaction(() => {
       db.prepare(
         `UPDATE receivables SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, recurrence_interval=?, updated_at=datetime('now') WHERE id=?`
-      ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, data.category_id ?? null, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
+      ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
       replaceReceivablePayments(id, payments);
+      if (categories.length) replaceReceivableCategories(id, categories);
       if (data.recurring && data.amount != null) trackPriceHistory(id, data.amount);
     })();
     return enrichReceivable(db.prepare('SELECT * FROM receivables WHERE id = ?').get(id) as Receivable | undefined);
@@ -224,16 +285,21 @@ export function registerReceivableHandlers(): void {
   // próximas ocorrências, então continuam existindo (apenas com
   // status='received') em vez de serem apagadas, senão a recorrência para
   // de funcionar.
-  ipcMain.handle('receivables:markAsReceived', (_e, { id, category_id, date, payments: inputPayments }: { id: string; category_id?: string; date?: string; payments?: PaymentSplit[] }) => {
+  ipcMain.handle('receivables:markAsReceived', (_e, { id, category_id, categories: inputCategories, date, payments: inputPayments }: { id: string; category_id?: string; categories?: CategorySplit[]; date?: string; payments?: PaymentSplit[] }) => {
     const db = getDb();
     const receivable = db.prepare('SELECT * FROM receivables WHERE id = ?').get(id) as Receivable | undefined;
     if (!receivable) return null;
     if (receivable.status === 'received') return receivable;
     const payments = normalizePayments({ amount: receivable.amount, account_id: receivable.account_id, payments: inputPayments?.length ? inputPayments : getReceivablePayments(id) }, false);
-    const finalCategoryId = category_id || receivable.category_id;
-    if (!finalCategoryId) {
+    const resolvedCategories = inputCategories?.length
+      ? inputCategories
+      : category_id
+        ? [{ category_id, amount: receivable.amount }]
+        : getReceivableCategories(id);
+    if (!receivable.category_id && !category_id && resolvedCategories.length === 0) {
       throw new Error('Selecione uma categoria para o lançamento.');
     }
+    const categories = normalizeCategories({ amount: receivable.amount, category_id: category_id || receivable.category_id, categories: resolvedCategories }, false);
 
     const receivedAt = date ?? new Date().toISOString().slice(0, 10);
 
@@ -245,13 +311,14 @@ export function registerReceivableHandlers(): void {
         }
         db.prepare(`UPDATE receivables SET status='received', updated_at=datetime('now') WHERE id=?`).run(id);
         replaceReceivablePayments(id, payments);
+        replaceReceivableCategories(id, categories);
         return;
       }
 
       const txId = randomUUID();
       db.prepare(
         'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,0)'
-      ).run(txId, payments[0].account_id, finalCategoryId, receivable.description, receivable.amount, 'income', receivedAt, 'confirmed', null);
+      ).run(txId, payments[0].account_id, categories[0].category_id, receivable.description, receivable.amount, 'income', receivedAt, 'confirmed', null);
       const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
       const invoiceLinkStmt = db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?');
       for (const payment of payments) {
@@ -260,6 +327,10 @@ export function registerReceivableHandlers(): void {
         const signedDelta = adjustBalance(payment.account_id, payment.amount);
         const invoiceId = attachToInvoice(payment.account_id, receivedAt, signedDelta);
         if (invoiceId) invoiceLinkStmt.run(invoiceId, paymentId);
+      }
+      const txCategoryStmt = db.prepare('INSERT INTO transaction_categories (id, transaction_id, category_id, amount) VALUES (?,?,?,?)');
+      for (const category of categories) {
+        txCategoryStmt.run(randomUUID(), txId, category.category_id, category.amount);
       }
       db.prepare('DELETE FROM receivables WHERE id = ?').run(id);
     })();

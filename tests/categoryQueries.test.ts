@@ -35,6 +35,7 @@ beforeEach(() => {
       status TEXT NOT NULL DEFAULT 'confirmed'
     );
     CREATE TABLE transaction_payments (transaction_id TEXT NOT NULL, account_id TEXT NOT NULL);
+    CREATE TABLE transaction_categories (transaction_id TEXT NOT NULL, category_id TEXT NOT NULL, amount REAL NOT NULL);
     INSERT INTO categories VALUES
       ('food', 'Alimentação', '#f00', NULL),
       ('market', 'Mercado', '#f10', 'food'),
@@ -50,6 +51,8 @@ beforeEach(() => {
     UPDATE transactions SET owner='Ana' WHERE id IN ('market-1','restaurant-1');
     UPDATE transactions SET status='pending' WHERE id='restaurant-1';
     INSERT INTO transaction_payments VALUES ('market-1','account-b');
+    INSERT INTO transaction_categories (transaction_id, category_id, amount)
+      SELECT id, category_id, amount FROM transactions;
   `);
 });
 

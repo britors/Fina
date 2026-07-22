@@ -79,7 +79,7 @@ export function isCreditLikeAccountType(type: string): boolean {
 }
 
 // Pix só se aplica a pagamentos feitos por conta corrente ou fatura de cartão
-// de crédito — os demais meios (vale, poupança, carteira) não têm essa opção.
+// de crédito — as demais contas (vale, poupança, carteira) não têm essa opção.
 export function isPixEligibleAccountType(type: string): boolean {
   return type === 'checking' || type === 'credit_card';
 }

@@ -76,9 +76,9 @@ export async function render(el: HTMLElement): Promise<void> {
     <!-- Stat cards -->
     <div class="grid-3" style="margin-bottom:20px">
       <div class="stat-card">
-        <div class="stat-label">Saldo em meios de pagamento</div>
+        <div class="stat-label">Saldo em contas e cartões</div>
         <div class="stat-value">${formatCurrency(totalBalance)}</div>
-        <div class="stat-sub">${accounts.length} meio${accounts.length !== 1 ? 's' : ''} · patrimônio líquido: <strong>${formatCurrency(netWorth)}</strong></div>
+        <div class="stat-sub">${accounts.length} conta${accounts.length !== 1 ? 's' : ''} · patrimônio líquido: <strong>${formatCurrency(netWorth)}</strong></div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Receitas (${periodLabel})</div>

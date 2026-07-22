@@ -5,7 +5,7 @@ import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../component
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
-import type { Account, AITransactionBatchDraft, AITransactionDraft, Category, CategorySuggestion, CreditCardInvoice, PaymentSplit, PaymentSplitWithAccount, TransactionStatus, TransactionWithDetails, TransactionType } from '../../shared/types';
+import type { Account, AITransactionBatchDraft, AITransactionDraft, Category, CategorySplit, CategorySplitWithCategory, CategorySuggestion, CreditCardInvoice, PaymentSplit, PaymentSplitWithAccount, TransactionStatus, TransactionWithDetails, TransactionType } from '../../shared/types';
 import { categoryOptions } from '../components/categorySelect';
 import { consumePendingTransactionFilter } from '../navigation';
 
@@ -152,7 +152,7 @@ export async function render(el: HTMLElement): Promise<void> {
           ${categoryOptions(categories, categoryFilter, { emptyLabel: 'Todas categorias' })}
         </select>
         <select class="form-ctrl" id="tx-account-filter" style="width:auto;max-width:170px">
-          <option value="">Todos meios</option>
+          <option value="">Todas as contas</option>
           ${accounts.map(a => `<option value="${a.id}" ${accountFilter === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
         </select>
         <select class="form-ctrl" id="tx-status-filter" style="width:auto">
@@ -345,6 +345,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
   const today = new Date().toISOString().split('T')[0];
   const initialPayments = initialPaymentSplits(tx?.payments, tx?.account_id ?? draft?.account_id, tx?.amount ?? draft?.amount);
   const initialType = tx ? tx.type : (draft?.type ?? 'expense');
+  const initialCategories = initialCategorySplits(tx?.categories, tx?.category_id ?? draft?.category_id, tx?.amount ?? draft?.amount);
   const showInitialInstallments = !tx && initialType === 'expense' && initialPayments.length === 1 && isCreditCardAccount(initialPayments[0].account_id);
   const overlay = openModal({
     title: tx ? 'Editar transação' : draft?.toAccountId ? 'Pagar fatura' : 'Nova transação',
@@ -368,29 +369,31 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
           </select>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group" id="single-account-group" style="display:${initialType === 'transfer' ? '' : 'none'}">
-          <label class="form-label">Meio de pagamento origem</label>
-          <select class="form-ctrl" id="f-account">
-            ${accounts.map(a => `<option value="${a.id}" ${(tx?.account_id ?? draft?.account_id) === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Categoria</label>
-          <select class="form-ctrl" id="f-category">
-            ${categoryOptions(categories, tx?.category_id ?? draft?.category_id, { type: initialType === 'income' ? 'income' : 'expense' })}
-          </select>
-        </div>
+      <div class="form-group" id="single-account-group" style="display:${initialType === 'transfer' ? '' : 'none'}">
+        <label class="form-label">Conta ou cartão de origem</label>
+        <select class="form-ctrl" id="f-account">
+          ${accounts.map(a => `<option value="${a.id}" ${(tx?.account_id ?? draft?.account_id) === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+        </select>
       </div>
       <div id="f-category-hint"></div>
       <div class="form-group" id="payment-splits-group" style="display:${initialType === 'transfer' ? 'none' : ''}">
-        <label class="form-label">Meios de pagamento</label>
+        <label class="form-label" id="payment-splits-label">Conta${initialType === 'income' ? '' : ' ou cartão'}</label>
         <div id="payment-splits" style="display:flex;flex-direction:column;gap:8px">
-          ${paymentRowsHtml(initialPayments)}
+          ${paymentRowsHtml(initialPayments, initialType === 'income')}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-payment"><i class="ti ti-plus"></i> Adicionar meio</button>
+          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-payment"><i class="ti ti-plus"></i> Adicionar conta</button>
           <div id="payment-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
+        </div>
+      </div>
+      <div class="form-group" id="category-splits-group" style="display:${initialType === 'transfer' ? 'none' : ''}">
+        <label class="form-label">Categorias</label>
+        <div id="category-splits" style="display:flex;flex-direction:column;gap:8px">
+          ${categoryRowsHtml(initialCategories, initialType === 'income' ? 'income' : 'expense')}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-category"><i class="ti ti-plus"></i> Adicionar categoria</button>
+          <div id="category-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
         </div>
       </div>
       <div class="form-group" id="installments-group" style="display:${showInitialInstallments ? '' : 'none'}">
@@ -398,7 +401,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         <input class="form-ctrl" id="f-installments" type="number" min="1" max="60" step="1" value="1">
       </div>
       <div class="form-group" id="f-to-account-group" style="display:${initialType === 'transfer' ? '' : 'none'}">
-        <label class="form-label">Meio de pagamento destino</label>
+        <label class="form-label">Conta ou cartão de destino</label>
         <select class="form-ctrl" id="f-to-account">
           <option value="">— Selecione —</option>
           ${accounts.map(a => `<option value="${a.id}" ${(tx?.to_account_id ?? draft?.toAccountId) === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
@@ -437,19 +440,18 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
       const type      = (document.getElementById('f-type')     as HTMLSelectElement).value;
       const account   = (document.getElementById('f-account')  as HTMLSelectElement).value;
       const toAccount = (document.getElementById('f-to-account') as HTMLSelectElement | null)?.value ?? '';
-      const category  = (document.getElementById('f-category') as HTMLSelectElement).value;
       const date      = (document.getElementById('f-date')     as HTMLInputElement).value;
       const status    = (document.getElementById('f-status')   as HTMLSelectElement).value;
       const notes     = (document.getElementById('f-notes')    as HTMLTextAreaElement).value.trim();
       const owner     = (document.getElementById('f-owner') as HTMLSelectElement | null)?.value || null;
       const installments = parseInt((document.getElementById('f-installments') as HTMLInputElement | null)?.value ?? '1', 10) || 1;
 
-      if (!desc || isNaN(amount) || !date || !account || !category) {
+      if (!desc || isNaN(amount) || !date || !account) {
         showAlert('Preencha todos os campos obrigatórios.');
         return false;
       }
       if (type === 'transfer' && (!toAccount || toAccount === account)) {
-        showAlert('Selecione um meio de pagamento de destino diferente do meio de origem.');
+        showAlert('Selecione uma conta ou cartão de destino diferente da conta ou cartão de origem.');
         return false;
       }
       if (installments > 1 && (tx || type !== 'expense')) {
@@ -458,15 +460,23 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
       }
       const payments = type === 'transfer' ? [] : collectPayments(overlay, amount);
       if (type !== 'transfer' && !payments) return false;
+      const txCategories = type === 'transfer' ? [] : collectCategories(overlay, amount);
+      if (type !== 'transfer' && !txCategories) return false;
       if (installments > 1 && (!payments || payments.length !== 1 || !isCreditCardAccount(payments[0].account_id))) {
-        showAlert('Parcelas estão disponíveis apenas para um único meio de pagamento do tipo cartão de crédito.');
+        showAlert('Parcelas estão disponíveis apenas para uma única conta do tipo cartão de crédito.');
+        return false;
+      }
+      if (installments > 1 && (!txCategories || txCategories.length !== 1)) {
+        showAlert('Parcelas estão disponíveis apenas para uma única categoria.');
         return false;
       }
 
+      const transferCategoryId = tx?.category_id ?? categories.find(c => c.type === 'expense')?.id ?? categories[0]?.id ?? '';
       const payload = {
         description: desc, amount, type, account_id: type === 'transfer' ? account : payments![0].account_id,
         to_account_id: type === 'transfer' ? toAccount : null,
-        category_id: category, date, status, notes: notes || null, recurring: 0, payments, owner,
+        category_id: type === 'transfer' ? transferCategoryId : txCategories![0].category_id,
+        date, status, notes: notes || null, recurring: 0, payments, categories: txCategories, owner,
       };
       if (tx) { await invoke('transactions:update', { id: tx.id, ...payload }); }
       else if (installments > 1) { await invoke('transactions:createInstallments', { ...payload, installments }); }
@@ -475,6 +485,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
     },
   });
   overlay.dataset.syncFirstPaymentAmount = tx ? 'false' : 'true';
+  overlay.dataset.syncFirstCategoryAmount = tx ? 'false' : 'true';
   attachMoneyMask(overlay.querySelector('#f-amount'));
 
   overlay.querySelector('#f-type')?.addEventListener('change', e => {
@@ -483,30 +494,46 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
     (overlay.querySelector('#f-to-account-group') as HTMLElement).style.display = isTransfer ? '' : 'none';
     (overlay.querySelector('#single-account-group') as HTMLElement).style.display = isTransfer ? '' : 'none';
     (overlay.querySelector('#payment-splits-group') as HTMLElement).style.display = isTransfer ? 'none' : '';
+    (overlay.querySelector('#payment-splits-label') as HTMLElement).textContent = `Conta${selectedType === 'income' ? '' : ' ou cartão'}`;
+    (overlay.querySelector('#category-splits-group') as HTMLElement).style.display = isTransfer ? 'none' : '';
+    updatePaymentAccountOptions(overlay, selectedType === 'income');
     updatePaymentSummary(overlay);
     updateInstallmentsVisibility(overlay, !!tx);
-    const categorySelect = overlay.querySelector<HTMLSelectElement>('#f-category');
-    if (categorySelect && !isTransfer) {
-      const previous = categorySelect.value;
-      categorySelect.innerHTML = categoryOptions(categories, previous, { type: selectedType });
+    if (!isTransfer) {
+      updateCategorySelectOptions(overlay, selectedType === 'income' ? 'income' : 'expense');
+      updateCategorySummary(overlay);
     }
   });
   overlay.querySelector('#f-amount')?.addEventListener('input', () => {
     syncFirstPaymentAmount(overlay);
     updatePaymentSummary(overlay);
+    syncFirstCategoryAmount(overlay);
+    updateCategorySummary(overlay);
   });
   overlay.querySelector('#btn-add-payment')?.addEventListener('click', () => {
     overlay.dataset.syncFirstPaymentAmount = 'false';
     const list = overlay.querySelector<HTMLElement>('#payment-splits')!;
-    list.insertAdjacentHTML('beforeend', paymentRowHtml('', remainingAmount(overlay)));
+    const currentType = (overlay.querySelector('#f-type') as HTMLSelectElement).value;
+    list.insertAdjacentHTML('beforeend', paymentRowHtml('', remainingAmount(overlay), false, currentType === 'income'));
     bindPaymentRows(overlay, !!tx);
     updatePaymentSummary(overlay);
     updateInstallmentsVisibility(overlay, !!tx);
+  });
+  overlay.querySelector('#btn-add-category')?.addEventListener('click', () => {
+    overlay.dataset.syncFirstCategoryAmount = 'false';
+    const list = overlay.querySelector<HTMLElement>('#category-splits')!;
+    const currentType = (overlay.querySelector('#f-type') as HTMLSelectElement).value;
+    list.insertAdjacentHTML('beforeend', categoryRowHtml('', remainingCategoryAmount(overlay), currentType === 'income' ? 'income' : 'expense'));
+    bindCategoryRows(overlay);
+    updateCategorySummary(overlay);
   });
   bindPaymentRows(overlay, !!tx);
   syncFirstPaymentAmount(overlay);
   updatePaymentSummary(overlay);
   updateInstallmentsVisibility(overlay, !!tx);
+  bindCategoryRows(overlay);
+  syncFirstCategoryAmount(overlay);
+  updateCategorySummary(overlay);
 
   if (!tx) {
     let suggestionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -592,7 +619,7 @@ function openBatchReviewModal(batch: AITransactionBatchDraft, onDone: () => void
               <th>Tipo</th>
               <th>Data</th>
               <th>Categoria</th>
-              <th>Meio</th>
+              <th>Conta</th>
             </tr>
           </thead>
           <tbody>
@@ -616,7 +643,7 @@ function openBatchReviewModal(batch: AITransactionBatchDraft, onDone: () => void
                 </td>
                 <td>
                   <select class="form-ctrl ai-batch-account" style="min-width:150px">
-                    ${accounts.map(a => `<option value="${a.id}" ${draft.account_id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+                    ${paymentAccountOptionsHtml(draft.account_id ?? '', draft.type === 'income')}
                   </select>
                 </td>
               </tr>
@@ -642,7 +669,7 @@ function openBatchReviewModal(batch: AITransactionBatchDraft, onDone: () => void
         const category_id = row.querySelector<HTMLSelectElement>('.ai-batch-category')!.value;
         const account_id = row.querySelector<HTMLSelectElement>('.ai-batch-account')!.value;
         if (!description || !Number.isFinite(amount) || amount <= 0 || !date || !category_id || !account_id) {
-          showAlert('Revise descrição, valor, data, categoria e meio de pagamento dos itens selecionados.');
+          showAlert('Revise descrição, valor, data, categoria e conta dos itens selecionados.');
           return false;
         }
         await invoke('transactions:create', {
@@ -673,6 +700,11 @@ function openBatchReviewModal(batch: AITransactionBatchDraft, onDone: () => void
       if (!categorySelect) return;
       const previous = categorySelect.value;
       categorySelect.innerHTML = categoryOptions(categories, previous, { type: select.value as 'income' | 'expense' });
+      const accountSelect = row?.querySelector<HTMLSelectElement>('.ai-batch-account');
+      if (accountSelect) {
+        const previousAccount = accountSelect.value;
+        accountSelect.innerHTML = paymentAccountOptionsHtml(previousAccount, select.value === 'income');
+      }
     });
   });
 }
@@ -695,7 +727,8 @@ async function checkCategorySuggestion(overlay: HTMLElement): Promise<void> {
     </div>
   `;
   hintEl.querySelector('#btn-apply-category-suggestion')?.addEventListener('click', () => {
-    overlay.querySelector<HTMLSelectElement>('#f-category')!.value = suggestion.categoryId;
+    const firstCategorySelect = overlay.querySelector<HTMLSelectElement>('.category-select');
+    if (firstCategorySelect) firstCategorySelect.value = suggestion.categoryId;
     hintEl.innerHTML = '';
   });
 }
@@ -719,7 +752,7 @@ function openImportModal(): void {
           <input class="form-ctrl" id="imp-file" type="file" accept=".csv,.ofx,.qfx">
         </div>
         <div class="form-group">
-          <label class="form-label">Meio de pagamento de destino *</label>
+          <label class="form-label">Conta ou cartão de destino *</label>
           <select class="form-ctrl" id="imp-account">
             <option value="">— Selecione —</option>
             ${accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
@@ -797,7 +830,7 @@ function openImportModal(): void {
     const accountId  = (overlay.querySelector<HTMLSelectElement>('#imp-account')!).value;
     const categoryId = (overlay.querySelector<HTMLSelectElement>('#imp-category')!).value;
     const useSuggestions = overlay.querySelector<HTMLInputElement>('#imp-use-suggestions')!.checked;
-    if (!accountId || !categoryId) { showAlert('Selecione o meio de pagamento e a categoria de destino.'); return; }
+    if (!accountId || !categoryId) { showAlert('Selecione a conta e a categoria de destino.'); return; }
 
     const result = await invoke<{ imported: number; skipped: number }>('import:confirm', {
       rows: previewedRows,
@@ -829,17 +862,23 @@ function isCreditCardAccount(accountId: string | undefined): boolean {
   return accounts.find(account => account.id === accountId)?.type === 'credit_card';
 }
 
-function paymentRowsHtml(payments: PaymentSplit[]): string {
-  return payments.map(payment => paymentRowHtml(payment.account_id, payment.amount, !!payment.is_pix)).join('');
+function paymentRowsHtml(payments: PaymentSplit[], excludeCreditCard = false): string {
+  return payments.map(payment => paymentRowHtml(payment.account_id, payment.amount, !!payment.is_pix, excludeCreditCard)).join('');
 }
 
-function paymentRowHtml(accountId: string, amount: number, isPix = false): string {
+function paymentAccountOptionsHtml(accountId: string, excludeCreditCard: boolean): string {
+  return accounts
+    .filter(a => !excludeCreditCard || a.type !== 'credit_card' || a.id === accountId)
+    .map(a => `<option value="${a.id}" ${accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
+}
+
+function paymentRowHtml(accountId: string, amount: number, isPix = false, excludeCreditCard = false): string {
   const pixEligible = accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
   return `
     <div class="payment-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 64px 34px;gap:8px;align-items:center">
       <select class="form-ctrl payment-account">
         <option value="">— Selecione —</option>
-        ${accounts.map(a => `<option value="${a.id}" ${accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+        ${paymentAccountOptionsHtml(accountId, excludeCreditCard)}
       </select>
       <input class="form-ctrl payment-amount" type="text" inputmode="decimal" value="${amount ? formatMoneyValue(amount) : ''}" placeholder="Valor">
       <label class="payment-pix-label" style="display:${pixEligible ? 'flex' : 'none'};align-items:center;gap:4px;font-size:11px;color:var(--text-2)" title="Pago via Pix">
@@ -848,6 +887,13 @@ function paymentRowHtml(accountId: string, amount: number, isPix = false): strin
       <button class="btn btn-ghost btn-sm payment-remove" type="button" title="Remover"><i class="ti ti-x"></i></button>
     </div>
   `;
+}
+
+function updatePaymentAccountOptions(overlay: HTMLElement, excludeCreditCard: boolean): void {
+  overlay.querySelectorAll<HTMLSelectElement>('.payment-account').forEach(select => {
+    const accountId = select.value;
+    select.innerHTML = `<option value="">— Selecione —</option>${paymentAccountOptionsHtml(accountId, excludeCreditCard)}`;
+  });
 }
 
 function updatePaymentPixVisibility(row: HTMLElement): void {
@@ -907,18 +953,18 @@ function collectPayments(overlay: HTMLElement, total: number): PaymentSplit[] | 
   let sum = 0;
   for (const payment of payments) {
     if (!payment.account_id || !Number.isFinite(payment.amount) || payment.amount <= 0) {
-      showAlert('Preencha todos os meios de pagamento com valores válidos.');
+      showAlert('Preencha todas as contas com valores válidos.');
       return null;
     }
     if (seen.has(payment.account_id)) {
-      showAlert('Não repita o mesmo meio de pagamento no lançamento.');
+      showAlert('Não repita a mesma conta no lançamento.');
       return null;
     }
     seen.add(payment.account_id);
     sum += payment.amount;
   }
   if (Math.abs(sum - total) > 0.005) {
-    showAlert('A soma dos meios de pagamento deve ser igual ao valor total.');
+    showAlert('A soma das contas deve ser igual ao valor total.');
     return null;
   }
   return payments;
@@ -936,6 +982,110 @@ function updatePaymentSummary(overlay: HTMLElement): void {
   if (!summary) return;
   const total = moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-amount')) || 0;
   const used = [...overlay.querySelectorAll<HTMLInputElement>('.payment-amount')]
+    .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
+  const rest = Math.round((total - used) * 100) / 100;
+  summary.innerHTML = `Total: <strong>${formatCurrency(total)}</strong> · Distribuído: <strong>${formatCurrency(used)}</strong> · Restante: <strong style="color:${Math.abs(rest) < 0.005 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(rest)}</strong>`;
+}
+
+function initialCategorySplits(categorySplits: CategorySplitWithCategory[] | undefined, categoryId: string | undefined, amount: number | undefined): CategorySplit[] {
+  if (categorySplits?.length) return categorySplits.map(c => ({ category_id: c.category_id, amount: c.amount }));
+  return [{ category_id: categoryId ?? '', amount: amount ?? 0 }];
+}
+
+function categoryRowsHtml(categorySplits: CategorySplit[], type: 'income' | 'expense'): string {
+  return categorySplits.map(c => categoryRowHtml(c.category_id, c.amount, type)).join('');
+}
+
+function categoryRowHtml(categoryId: string, amount: number, type: 'income' | 'expense'): string {
+  return `
+    <div class="category-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 34px;gap:8px;align-items:center">
+      <select class="form-ctrl category-select">
+        ${categoryOptions(categories, categoryId, { type })}
+      </select>
+      <input class="form-ctrl category-amount" type="text" inputmode="decimal" value="${amount ? formatMoneyValue(amount) : ''}" placeholder="Valor">
+      <button class="btn btn-ghost btn-sm category-remove" type="button" title="Remover"><i class="ti ti-x"></i></button>
+    </div>
+  `;
+}
+
+function updateCategorySelectOptions(overlay: HTMLElement, type: 'income' | 'expense'): void {
+  overlay.querySelectorAll<HTMLSelectElement>('.category-select').forEach(select => {
+    const categoryId = select.value;
+    select.innerHTML = categoryOptions(categories, categoryId, { type });
+  });
+}
+
+function bindCategoryRows(overlay: HTMLElement): void {
+  overlay.querySelectorAll<HTMLElement>('.category-row').forEach(row => {
+    if (row.dataset.bound === 'true') return;
+    row.dataset.bound = 'true';
+    attachMoneyMask(row.querySelector<HTMLInputElement>('.category-amount'));
+    row.querySelectorAll('input, select').forEach(ctrl => {
+      ctrl.addEventListener('input', () => {
+        if ((ctrl as HTMLElement).classList.contains('category-amount')) {
+          overlay.dataset.syncFirstCategoryAmount = 'false';
+        }
+        updateCategorySummary(overlay);
+      });
+      ctrl.addEventListener('change', () => updateCategorySummary(overlay));
+    });
+    row.querySelector<HTMLElement>('.category-remove')?.addEventListener('click', () => {
+      if (overlay.querySelectorAll('.category-row').length <= 1) return;
+      row.remove();
+      updateCategorySummary(overlay);
+    });
+  });
+}
+
+function syncFirstCategoryAmount(overlay: HTMLElement): void {
+  if (overlay.dataset.syncFirstCategoryAmount !== 'true') return;
+  const rows = [...overlay.querySelectorAll<HTMLElement>('.category-row')];
+  if (rows.length !== 1) return;
+  const totalInput = overlay.querySelector<HTMLInputElement>('#f-amount');
+  const firstInput = rows[0].querySelector<HTMLInputElement>('.category-amount');
+  if (!totalInput || !firstInput) return;
+  firstInput.value = totalInput.value;
+}
+
+function collectCategories(overlay: HTMLElement, total: number): CategorySplit[] | null {
+  const rows = [...overlay.querySelectorAll<HTMLElement>('.category-row')];
+  const cats = rows.map(row => ({
+    category_id: row.querySelector<HTMLSelectElement>('.category-select')!.value,
+    amount: moneyInputValue(row.querySelector<HTMLInputElement>('.category-amount')),
+  }));
+  const seen = new Set<string>();
+  let sum = 0;
+  for (const cat of cats) {
+    if (!cat.category_id || !Number.isFinite(cat.amount) || cat.amount <= 0) {
+      showAlert('Preencha todas as categorias com valores válidos.');
+      return null;
+    }
+    if (seen.has(cat.category_id)) {
+      showAlert('Não repita a mesma categoria no lançamento.');
+      return null;
+    }
+    seen.add(cat.category_id);
+    sum += cat.amount;
+  }
+  if (Math.abs(sum - total) > 0.005) {
+    showAlert('A soma das categorias deve ser igual ao valor total.');
+    return null;
+  }
+  return cats;
+}
+
+function remainingCategoryAmount(overlay: HTMLElement): number {
+  const total = moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-amount')) || 0;
+  const used = [...overlay.querySelectorAll<HTMLInputElement>('.category-amount')]
+    .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
+  return Math.max(0, Math.round((total - used) * 100) / 100);
+}
+
+function updateCategorySummary(overlay: HTMLElement): void {
+  const summary = overlay.querySelector<HTMLElement>('#category-summary');
+  if (!summary) return;
+  const total = moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-amount')) || 0;
+  const used = [...overlay.querySelectorAll<HTMLInputElement>('.category-amount')]
     .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
   const rest = Math.round((total - used) * 100) / 100;
   summary.innerHTML = `Total: <strong>${formatCurrency(total)}</strong> · Distribuído: <strong>${formatCurrency(used)}</strong> · Restante: <strong style="color:${Math.abs(rest) < 0.005 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(rest)}</strong>`;

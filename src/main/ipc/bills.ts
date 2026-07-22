@@ -3,12 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import { adjustBalance } from './transactions';
 import { attachToInvoice } from '../invoices';
-import type { Bill, BillInterval, BillPriceIncrease, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
+import type { Bill, BillInterval, BillPriceIncrease, CategorySplit, CategorySplitWithCategory, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOrChildPredicate } from '../categoryHierarchyQueries';
 import { isPixEligibleAccountType } from '../../shared/utils';
 
-type BillInput = Omit<Bill, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[] };
-type BillUpdateInput = Partial<Bill> & { id: string; payments?: PaymentSplit[] };
+type BillInput = Omit<Bill, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[]; categories?: CategorySplit[] };
+type BillUpdateInput = Partial<Bill> & { id: string; payments?: PaymentSplit[]; categories?: CategorySplit[] };
 
 function autoMarkOverdue(): void {
   getDb().prepare(
@@ -54,21 +54,21 @@ function normalizePayments(data: { amount: number; account_id?: string | null; p
       : [];
 
   if (allowEmpty && payments.length === 0) return [];
-  if (payments.length === 0) throw new Error('Defina pelo menos um meio de pagamento.');
+  if (payments.length === 0) throw new Error('Defina pelo menos uma conta ou cartão.');
 
   const seen = new Set<string>();
   let total = 0;
   for (const payment of payments) {
-    if (!payment.account_id) throw new Error('Selecione todos os meios de pagamento.');
-    if (!Number.isFinite(payment.amount) || payment.amount <= 0) throw new Error('Informe valores válidos para os meios de pagamento.');
-    if (seen.has(payment.account_id)) throw new Error('Não repita o mesmo meio de pagamento.');
+    if (!payment.account_id) throw new Error('Selecione todas as contas ou cartões.');
+    if (!Number.isFinite(payment.amount) || payment.amount <= 0) throw new Error('Informe valores válidos para as contas ou cartões.');
+    if (seen.has(payment.account_id)) throw new Error('Não repita a mesma conta ou cartão.');
     seen.add(payment.account_id);
     total += payment.amount;
     assertPixEligible(payment);
   }
 
   if (Math.abs(total - data.amount) > 0.005) {
-    throw new Error('A soma dos meios de pagamento deve ser igual ao valor total.');
+    throw new Error('A soma das contas ou cartões deve ser igual ao valor total.');
   }
 
   return payments.map(payment => ({ account_id: payment.account_id, amount: roundMoney(payment.amount), is_pix: payment.is_pix ? 1 : 0 }));
@@ -79,6 +79,41 @@ function assertPixEligible(payment: PaymentSplit): void {
   const account = getDb().prepare('SELECT type FROM accounts WHERE id = ?').get(payment.account_id) as { type: string } | undefined;
   if (!account || !isPixEligibleAccountType(account.type)) {
     throw new Error('Pix só está disponível para pagamentos em conta corrente ou cartão de crédito.');
+  }
+}
+
+function normalizeCategories(data: { amount: number; category_id?: string | null; categories?: CategorySplit[] }, allowEmpty: boolean): CategorySplit[] {
+  const categories = data.categories?.length
+    ? data.categories
+    : data.category_id
+      ? [{ category_id: data.category_id, amount: data.amount }]
+      : [];
+
+  if (allowEmpty && categories.length === 0) return [];
+  if (categories.length === 0) throw new Error('Defina pelo menos uma categoria.');
+
+  const seen = new Set<string>();
+  let total = 0;
+  for (const category of categories) {
+    if (!category.category_id) throw new Error('Selecione todas as categorias.');
+    if (!Number.isFinite(category.amount) || category.amount <= 0) throw new Error('Informe valores válidos para as categorias.');
+    if (seen.has(category.category_id)) throw new Error('Não repita a mesma categoria.');
+    seen.add(category.category_id);
+    total += category.amount;
+    assertExpenseCategory(category.category_id);
+  }
+
+  if (Math.abs(total - data.amount) > 0.005) {
+    throw new Error('A soma das categorias deve ser igual ao valor total.');
+  }
+
+  return categories.map(category => ({ category_id: category.category_id, amount: roundMoney(category.amount) }));
+}
+
+function assertExpenseCategory(categoryId: string): void {
+  const category = getDb().prepare('SELECT type FROM categories WHERE id = ?').get(categoryId) as { type: string } | undefined;
+  if (!category || category.type !== 'expense') {
+    throw new Error('Selecione uma categoria de despesa válida.');
   }
 }
 
@@ -101,12 +136,31 @@ function getBillPayments(billId: string): PaymentSplitWithAccount[] {
   `).all(billId) as PaymentSplitWithAccount[];
 }
 
-function enrichBill<T extends Bill>(bill: T | undefined | null): (T & { payments: PaymentSplitWithAccount[] }) | null {
-  if (!bill) return null;
-  return { ...bill, payments: getBillPayments(bill.id) };
+function replaceBillCategories(billId: string, categories: CategorySplit[]): void {
+  const db = getDb();
+  db.prepare('DELETE FROM bill_categories WHERE bill_id = ?').run(billId);
+  const stmt = db.prepare('INSERT INTO bill_categories (id, bill_id, category_id, amount) VALUES (?,?,?,?)');
+  for (const category of categories) {
+    stmt.run(randomUUID(), billId, category.category_id, category.amount);
+  }
 }
 
-function enrichBills<T extends Bill>(bills: T[]): (T & { payments: PaymentSplitWithAccount[] })[] {
+function getBillCategories(billId: string): CategorySplitWithCategory[] {
+  return getDb().prepare(`
+    SELECT bc.category_id, bc.amount, c.name as category_name, c.icon as category_icon, c.color as category_color
+    FROM bill_categories bc
+    JOIN categories c ON c.id = bc.category_id
+    WHERE bc.bill_id = ?
+    ORDER BY bc.created_at, bc.id
+  `).all(billId) as CategorySplitWithCategory[];
+}
+
+function enrichBill<T extends Bill>(bill: T | undefined | null): (T & { payments: PaymentSplitWithAccount[]; categories: CategorySplitWithCategory[] }) | null {
+  if (!bill) return null;
+  return { ...bill, payments: getBillPayments(bill.id), categories: getBillCategories(bill.id) };
+}
+
+function enrichBills<T extends Bill>(bills: T[]): (T & { payments: PaymentSplitWithAccount[]; categories: CategorySplitWithCategory[] })[] {
   return bills.map(bill => enrichBill(bill)!);
 }
 
@@ -162,14 +216,17 @@ export function registerBillHandlers(): void {
 
   ipcMain.handle('bills:create', (_e, data: BillInput) => {
     const payments = normalizePayments(data, true);
+    const categories = normalizeCategories(data, true);
     const primaryAccountId = payments[0]?.account_id ?? data.account_id ?? null;
+    const primaryCategoryId = categories[0]?.category_id ?? data.category_id ?? null;
     const id = randomUUID();
     const db = getDb();
     db.transaction(() => {
       db.prepare(
         'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring, recurrence_interval) VALUES (?,?,?,?,?,?,?,?,?)'
-      ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', primaryAccountId, data.category_id ?? null, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly');
+      ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly');
       replaceBillPayments(id, payments);
+      if (categories.length) replaceBillCategories(id, categories);
       if (data.recurring) trackPriceHistory(id, data.amount);
     })();
     return enrichBill(db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined);
@@ -193,6 +250,7 @@ export function registerBillHandlers(): void {
           'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring) VALUES (?,?,?,?,?,?,?,0)'
         ).run(newId, bill.description, bill.amount, newDue, 'pending', bill.account_id, bill.category_id);
         replaceBillPayments(newId, getBillPayments(bill.id));
+        replaceBillCategories(newId, getBillCategories(bill.id));
         createdIds.push(newId);
       }
     })();
@@ -202,13 +260,16 @@ export function registerBillHandlers(): void {
 
   ipcMain.handle('bills:update', (_e, { id, ...data }: BillUpdateInput) => {
     const payments = normalizePayments(data as BillInput, true);
+    const categories = normalizeCategories(data as BillInput, true);
     const primaryAccountId = payments[0]?.account_id ?? data.account_id ?? null;
+    const primaryCategoryId = categories[0]?.category_id ?? data.category_id ?? null;
     const db = getDb();
     db.transaction(() => {
       db.prepare(
         `UPDATE bills SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, recurrence_interval=?, updated_at=datetime('now') WHERE id=?`
-      ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, data.category_id ?? null, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
+      ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
       replaceBillPayments(id, payments);
+      if (categories.length) replaceBillCategories(id, categories);
       if (data.recurring && data.amount != null) trackPriceHistory(id, data.amount);
     })();
     return enrichBill(db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined);
@@ -250,16 +311,21 @@ export function registerBillHandlers(): void {
   // category_id é opcional: se a conta já tiver uma categoria definida, ela é
   // reaproveitada automaticamente no lançamento gerado; só é obrigatório
   // informar uma quando a conta não tem categoria (ex: bills mais antigas).
-  ipcMain.handle('bills:markAsPaid', (_e, { id, category_id, date, payments: inputPayments }: { id: string; category_id?: string; date?: string; payments?: PaymentSplit[] }) => {
+  ipcMain.handle('bills:markAsPaid', (_e, { id, category_id, categories: inputCategories, date, payments: inputPayments }: { id: string; category_id?: string; categories?: CategorySplit[]; date?: string; payments?: PaymentSplit[] }) => {
     const db = getDb();
     const bill = db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined;
     if (!bill) return null;
     if (bill.status === 'paid') return bill;
     const payments = normalizePayments({ amount: bill.amount, account_id: bill.account_id, payments: inputPayments?.length ? inputPayments : getBillPayments(id) }, false);
-    const finalCategoryId = category_id || bill.category_id;
-    if (!finalCategoryId) {
+    const resolvedCategories = inputCategories?.length
+      ? inputCategories
+      : category_id
+        ? [{ category_id, amount: bill.amount }]
+        : getBillCategories(id);
+    if (!bill.category_id && !category_id && resolvedCategories.length === 0) {
       throw new Error('Selecione uma categoria para o lançamento.');
     }
+    const categories = normalizeCategories({ amount: bill.amount, category_id: category_id || bill.category_id, categories: resolvedCategories }, false);
 
     const paidAt = date ?? new Date().toISOString().slice(0, 10);
 
@@ -271,13 +337,14 @@ export function registerBillHandlers(): void {
         }
         db.prepare(`UPDATE bills SET status='paid', updated_at=datetime('now') WHERE id=?`).run(id);
         replaceBillPayments(id, payments);
+        replaceBillCategories(id, categories);
         return;
       }
 
       const txId = randomUUID();
       db.prepare(
         'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,0)'
-      ).run(txId, payments[0].account_id, finalCategoryId, bill.description, bill.amount, 'expense', paidAt, 'confirmed', null);
+      ).run(txId, payments[0].account_id, categories[0].category_id, bill.description, bill.amount, 'expense', paidAt, 'confirmed', null);
       const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
       const invoiceLinkStmt = db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?');
       for (const payment of payments) {
@@ -286,6 +353,10 @@ export function registerBillHandlers(): void {
         const signedDelta = adjustBalance(payment.account_id, -payment.amount);
         const invoiceId = attachToInvoice(payment.account_id, paidAt, signedDelta);
         if (invoiceId) invoiceLinkStmt.run(invoiceId, paymentId);
+      }
+      const txCategoryStmt = db.prepare('INSERT INTO transaction_categories (id, transaction_id, category_id, amount) VALUES (?,?,?,?)');
+      for (const category of categories) {
+        txCategoryStmt.run(randomUUID(), txId, category.category_id, category.amount);
       }
       db.prepare('DELETE FROM bills WHERE id = ?').run(id);
     })();

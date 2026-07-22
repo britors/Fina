@@ -13,7 +13,7 @@ const CURRENCY_SYMBOLS: Record<AccountCurrency, string> = { BRL: 'R$', USD: 'US$
 export async function render(el: HTMLElement): Promise<void> {
   setTopbarActions(`
     <button class="btn btn-ghost" id="btn-refresh-rates"><i class="ti ti-refresh"></i> Atualizar cotações</button>
-    <button class="btn btn-primary" id="btn-new-acc"><i class="ti ti-plus"></i> Novo meio</button>
+    <button class="btn btn-primary" id="btn-new-acc"><i class="ti ti-plus"></i> Nova conta ou cartão</button>
   `);
 
   async function renderPage(): Promise<void> {
@@ -30,7 +30,7 @@ export async function render(el: HTMLElement): Promise<void> {
           <div>
             <div style="font-size:11px;color:var(--text-3);margin-bottom:4px">Patrimônio líquido</div>
             <div style="font-size:28px;font-weight:600">${formatCurrency(total)}</div>
-            <div style="font-size:11px;color:var(--text-4);margin-top:4px">Atualizado agora · ${accounts.length} meio${accounts.length !== 1 ? 's' : ''}</div>
+            <div style="font-size:11px;color:var(--text-4);margin-top:4px">Atualizado agora · ${accounts.length} conta${accounts.length !== 1 ? 's' : ''}</div>
           </div>
           <div style="display:flex;gap:40px">
             <div>
@@ -47,8 +47,8 @@ export async function render(el: HTMLElement): Promise<void> {
 
       ${accounts.length === 0
         ? `<div class="empty"><i class="ti ti-building-bank"></i>
-            <div class="empty-title">Nenhum meio de pagamento cadastrado</div>
-            <p>Clique em "Novo meio" para começar.</p></div>`
+            <div class="empty-title">Nenhuma conta ou cartão cadastrado</div>
+            <p>Clique em "Nova conta ou cartão" para começar.</p></div>`
         : `<div class="grid-2">
             ${accounts.map(a => accountCard(a, cardStates[a.id])).join('')}
           </div>`
@@ -64,7 +64,7 @@ export async function render(el: HTMLElement): Promise<void> {
     });
     el.querySelectorAll<HTMLElement>('[data-del-acc]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (!await showConfirm('Excluir este meio de pagamento? Todas as transações vinculadas serão removidas.', { danger: true, okLabel: 'Excluir' })) return;
+        if (!await showConfirm('Excluir esta conta? Todas as transações vinculadas serão removidas.', { danger: true, okLabel: 'Excluir' })) return;
         await invoke('accounts:delete', btn.dataset.delAcc);
         renderPage();
       });
@@ -167,7 +167,7 @@ function accountCard(a: Account, cardState?: CreditCardInvoiceCardState): string
       ` : ''}
       <div class="account-hr"></div>
       <div style="font-size:11px;color:var(--text-3);padding:0 2px">
-        Meio criado em ${new Date(a.created_at).toLocaleDateString('pt-BR')}
+        Conta criada em ${new Date(a.created_at).toLocaleDateString('pt-BR')}
       </div>
     </div>
   `;
@@ -176,10 +176,10 @@ function accountCard(a: Account, cardState?: CreditCardInvoiceCardState): string
 function openAccModal(acc: Account | null, onDone: () => void): void {
   const currency = acc?.currency ?? 'BRL';
   const overlay = openModal({
-    title: acc ? 'Editar meio de pagamento' : 'Novo meio de pagamento',
+    title: acc ? 'Editar conta' : 'Nova conta',
     body: `
       <div class="form-group">
-        <label class="form-label">Nome do meio de pagamento</label>
+        <label class="form-label">Nome da conta</label>
         <input class="form-ctrl" id="f-name" value="${esc(acc?.name)}" placeholder="Ex: Conta corrente">
       </div>
       <div class="form-row">
@@ -244,7 +244,7 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
       const closingDay = parseInt((document.getElementById('f-closing-day') as HTMLInputElement).value, 10);
       const dueDay     = parseInt((document.getElementById('f-due-day') as HTMLInputElement).value, 10);
 
-      if (!name) { showAlert('Informe o nome do meio de pagamento.'); return false; }
+      if (!name) { showAlert('Informe o nome da conta.'); return false; }
       if (curr !== 'BRL' && isNaN(original)) { showAlert('Informe o saldo na moeda da conta.'); return false; }
       if (type === 'credit_card') {
         const hasClosing = !isNaN(closingDay);
@@ -269,7 +269,7 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
         if (acc) { await invoke('accounts:update', { id: acc.id, ...payload }); }
         else     { await invoke('accounts:create', payload); }
       } catch (err) {
-        showAlert(err instanceof Error ? err.message : 'Não foi possível salvar o meio de pagamento.');
+        showAlert(err instanceof Error ? err.message : 'Não foi possível salvar a conta.');
         return false;
       }
       onDone();

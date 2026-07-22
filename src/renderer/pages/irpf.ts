@@ -236,7 +236,7 @@ async function openImportModal(): Promise<void> {
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">Meio de pagamento para lançar os rendimentos *</label>
+          <label class="form-label">Conta para lançar os rendimentos *</label>
           <select class="form-ctrl" id="imp-account">
             <option value="">— Selecione —</option>
             ${accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
@@ -288,7 +288,7 @@ async function openImportModal(): Promise<void> {
     if (!previewData) return;
     const accountId = (overlay.querySelector<HTMLSelectElement>('#imp-account')!).value;
     const importYear = parseInt((overlay.querySelector<HTMLInputElement>('#imp-year')!).value);
-    if (!accountId) { showAlert('Selecione o meio de pagamento de destino.'); return; }
+    if (!accountId) { showAlert('Selecione a conta de destino.'); return; }
     if (!importYear) { showAlert('Informe o ano.'); return; }
 
     const result = await invoke<{ imported: number }>('irpf:confirmImport', { preview: previewData, year: importYear, accountId });

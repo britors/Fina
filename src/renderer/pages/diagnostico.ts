@@ -89,8 +89,8 @@ export async function render(el: HTMLElement): Promise<void> {
 
     <div class="grid-3" style="margin-bottom:20px">
       ${metricCard('Comprometido com dívidas', `${debtCommitment.toFixed(0)}%`, `${formatCurrency(debtInstallments)}/mês`, 'ti-receipt', debtCommitment > 35 ? 'var(--danger)' : debtCommitment > 20 ? 'var(--warning)' : 'var(--accent)')}
-      ${metricCard('Reserva estimada', `${reserveMonths.toFixed(1)} meses`, `${formatCurrency(liquidBalance)} em meios de pagamento`, 'ti-shield', reserveMonths < 1 ? 'var(--danger)' : reserveMonths < 3 ? 'var(--warning)' : 'var(--accent)')}
-      ${metricCard('Patrimônio líquido', formatCurrency(netWorth), 'Meios de pagamento + bens + investimentos - dívidas', 'ti-building-bank', netWorth >= 0 ? 'var(--accent)' : 'var(--danger)')}
+      ${metricCard('Reserva estimada', `${reserveMonths.toFixed(1)} meses`, `${formatCurrency(liquidBalance)} em contas`, 'ti-shield', reserveMonths < 1 ? 'var(--danger)' : reserveMonths < 3 ? 'var(--warning)' : 'var(--accent)')}
+      ${metricCard('Patrimônio líquido', formatCurrency(netWorth), 'Contas + bens + investimentos - dívidas', 'ti-building-bank', netWorth >= 0 ? 'var(--accent)' : 'var(--danger)')}
     </div>
 
     <div class="grid-2" style="grid-template-columns:1.2fr .8fr">
@@ -108,7 +108,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="card-header">Resumo patrimonial</div>
         <div class="card-hr"></div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
-          ${summaryLine('Saldo em meios de pagamento', liquidBalance, 'var(--accent)')}
+          ${summaryLine('Saldo em contas', liquidBalance, 'var(--accent)')}
           ${summaryLine('Investimentos', investments.total_current, 'var(--accent)')}
           ${summaryLine('Bens', assets.total ?? 0, 'var(--accent)')}
           ${summaryLine('Dívidas', debtBalance, 'var(--danger)', true)}

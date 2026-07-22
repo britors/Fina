@@ -124,13 +124,16 @@ export function registerCategoryHandlers(): void {
     if (db.prepare('SELECT 1 FROM categories WHERE parent_id = ? LIMIT 1').get(id)) {
       throw new Error('Esta categoria possui subcategorias e não pode ser removida.');
     }
-    if (db.prepare('SELECT 1 FROM transactions WHERE category_id = ? LIMIT 1').get(id)) {
+    if (db.prepare('SELECT 1 FROM transactions WHERE category_id = ? LIMIT 1').get(id)
+      || db.prepare('SELECT 1 FROM transaction_categories WHERE category_id = ? LIMIT 1').get(id)) {
       throw new Error('Esta categoria possui transações vinculadas e não pode ser removida.');
     }
-    if (db.prepare('SELECT 1 FROM bills WHERE category_id = ? LIMIT 1').get(id)) {
+    if (db.prepare('SELECT 1 FROM bills WHERE category_id = ? LIMIT 1').get(id)
+      || db.prepare('SELECT 1 FROM bill_categories WHERE category_id = ? LIMIT 1').get(id)) {
       throw new Error('Esta categoria possui contas vinculadas e não pode ser removida.');
     }
-    if (db.prepare('SELECT 1 FROM receivables WHERE category_id = ? LIMIT 1').get(id)) {
+    if (db.prepare('SELECT 1 FROM receivables WHERE category_id = ? LIMIT 1').get(id)
+      || db.prepare('SELECT 1 FROM receivable_categories WHERE category_id = ? LIMIT 1').get(id)) {
       throw new Error('Esta categoria possui contas a receber vinculadas e não pode ser removida.');
     }
     if (db.prepare('SELECT 1 FROM budgets WHERE category_id = ? LIMIT 1').get(id)) {

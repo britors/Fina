@@ -5,7 +5,7 @@ import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../component
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
-import type { Account, AIReceivableDraft, Receivable, ReceivableInterval, ReceivableStatus, ReceivableWithCategory, Category, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
+import type { Account, AIReceivableDraft, Receivable, ReceivableInterval, ReceivableStatus, ReceivableWithCategory, Category, CategorySplit, CategorySplitWithCategory, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOptions } from '../components/categorySelect';
 
 const INTERVAL_LABELS: Record<ReceivableInterval, string> = {
@@ -190,6 +190,7 @@ function receivableSection(title: string, receivables: ReceivableWithCategory[],
 function openReceivableModal(r: Receivable | null, onDone: () => void, draft?: AIReceivableDraft): void {
   const today = new Date().toISOString().split('T')[0];
   const initialPayments = initialPaymentSplits((r as ReceivableWithCategory | null)?.payments, r?.account_id ?? draft?.account_id ?? undefined, r?.amount ?? draft?.amount);
+  const initialCategories = initialCategorySplits((r as ReceivableWithCategory | null)?.categories, r?.category_id ?? draft?.category_id, r?.amount ?? draft?.amount);
   const overlay = openModal({
     title: r ? 'Editar conta a receber' : 'Nova conta a receber',
     body: `
@@ -209,57 +210,60 @@ function openReceivableModal(r: Receivable | null, onDone: () => void, draft?: A
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Meios de recebimento</label>
+        <label class="form-label">Cartão ou conta</label>
         <div id="receivable-payments" style="display:flex;flex-direction:column;gap:8px">
           ${paymentRowsHtml(initialPayments)}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-receivable-payment"><i class="ti ti-plus"></i> Adicionar meio</button>
+          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-receivable-payment"><i class="ti ti-plus"></i> Adicionar conta</button>
           <div id="receivable-payment-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Categoria</label>
-          <select class="form-ctrl" id="f-category">
-            ${categoryOptions(incomeCategories, r?.category_id ?? draft?.category_id, { emptyLabel: '— Sem categoria —' })}
-          </select>
+      <div class="form-group">
+        <label class="form-label">Categorias</label>
+        <div id="category-splits" style="display:flex;flex-direction:column;gap:8px">
+          ${categoryRowsHtml(initialCategories)}
         </div>
-        <div class="form-group">
-          <label class="form-label">Status</label>
-          <select class="form-ctrl" id="f-status">
-            ${(['pending','received','overdue'] as ReceivableStatus[]).map(st =>
-              `<option value="${st}" ${(r?.status ?? draft?.status)===st?'selected':''}>${st==='pending'?'Pendente':st==='received'?'Recebido':'Vencido'}</option>`
-            ).join('')}
-          </select>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-category"><i class="ti ti-plus"></i> Adicionar categoria</button>
+          <div id="category-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
         </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-ctrl" id="f-status">
+          ${(['pending','received','overdue'] as ReceivableStatus[]).map(st =>
+            `<option value="${st}" ${(r?.status ?? draft?.status)===st?'selected':''}>${st==='pending'?'Pendente':st==='received'?'Recebido':'Vencido'}</option>`
+          ).join('')}
+        </select>
       </div>
     `,
     onSave: async () => {
       const desc   = (document.getElementById('f-desc')    as HTMLInputElement).value.trim();
       const amount = moneyInputValue(document.getElementById('f-amount') as HTMLInputElement);
       const due    = (document.getElementById('f-due')     as HTMLInputElement).value;
-      const cat    = (document.getElementById('f-category') as HTMLSelectElement).value;
       const status = (document.getElementById('f-status')  as HTMLSelectElement).value as ReceivableStatus;
       if (!desc || isNaN(amount) || !due) { showAlert('Preencha todos os campos.'); return false; }
       const payments = collectPayments('receivable', amount, true);
       if (!payments) return false;
+      const receivableCategories = collectCategories(amount, true);
+      if (!receivableCategories) return false;
 
       // Editar e mudar o status para "Recebido" segue o mesmo caminho do
       // botão "Receber": gera o lançamento de receita e remove a conta de
       // contas a receber (receivables:markAsReceived), em vez de só trocar
       // o campo status.
       const markingAsReceived = !!r && r.status !== 'received' && status === 'received';
-      const finalCategoryId = cat || (markingAsReceived ? r!.category_id : null) || null;
-      if (markingAsReceived && !finalCategoryId) { showAlert('Selecione uma categoria para o lançamento.'); return false; }
-      if (markingAsReceived && payments.length === 0) { showAlert('Defina pelo menos um meio de recebimento.'); return false; }
+      const finalCategories = receivableCategories.length ? receivableCategories : (markingAsReceived ? (r as ReceivableWithCategory).categories?.map(c => ({ category_id: c.category_id, amount: c.amount })) ?? [] : []);
+      if (markingAsReceived && finalCategories.length === 0) { showAlert('Selecione uma categoria para o lançamento.'); return false; }
+      if (markingAsReceived && payments.length === 0) { showAlert('Defina pelo menos uma conta.'); return false; }
 
-      const payload = { description: desc, amount, due_date: due, status: markingAsReceived ? r!.status : status, account_id: payments[0]?.account_id ?? null, category_id: cat || null, recurring: 0 as const, payments };
+      const payload = { description: desc, amount, due_date: due, status: markingAsReceived ? r!.status : status, account_id: payments[0]?.account_id ?? null, category_id: receivableCategories[0]?.category_id ?? null, recurring: 0 as const, payments, categories: receivableCategories };
       if (r) {
         await invoke('receivables:update', { id: r.id, ...payload });
         if (markingAsReceived) {
           try {
-            await invoke('receivables:markAsReceived', { id: r.id, category_id: finalCategoryId, date: due, payments });
+            await invoke('receivables:markAsReceived', { id: r.id, categories: finalCategories, date: due, payments });
           } catch (err) {
             showAlert(err instanceof Error ? err.message : 'Não foi possível marcar como recebida.');
             return false;
@@ -272,11 +276,15 @@ function openReceivableModal(r: Receivable | null, onDone: () => void, draft?: A
     },
   });
   overlay.dataset.syncFirstPaymentAmount = r ? 'false' : 'true';
+  overlay.dataset.syncFirstCategoryAmount = r ? 'false' : 'true';
   attachMoneyMask(overlay.querySelector('#f-amount'));
   bindPaymentRows(overlay, 'receivable');
+  bindCategoryRows(overlay);
   overlay.querySelector('#f-amount')?.addEventListener('input', () => {
     syncFirstPaymentAmount(overlay, 'receivable');
     updatePaymentSummary(overlay, 'receivable');
+    syncFirstCategoryAmount(overlay);
+    updateCategorySummary(overlay);
   });
   overlay.querySelector('#btn-add-receivable-payment')?.addEventListener('click', () => {
     overlay.dataset.syncFirstPaymentAmount = 'false';
@@ -284,8 +292,16 @@ function openReceivableModal(r: Receivable | null, onDone: () => void, draft?: A
     bindPaymentRows(overlay, 'receivable');
     updatePaymentSummary(overlay, 'receivable');
   });
+  overlay.querySelector('#btn-add-category')?.addEventListener('click', () => {
+    overlay.dataset.syncFirstCategoryAmount = 'false';
+    overlay.querySelector<HTMLElement>('#category-splits')!.insertAdjacentHTML('beforeend', categoryRowHtml('', remainingCategoryAmount(overlay)));
+    bindCategoryRows(overlay);
+    updateCategorySummary(overlay);
+  });
   syncFirstPaymentAmount(overlay, 'receivable');
   updatePaymentSummary(overlay, 'receivable');
+  syncFirstCategoryAmount(overlay);
+  updateCategorySummary(overlay);
 }
 
 async function openReceiveModal(r: ReceivableWithCategory, onDone: () => void): Promise<void> {
@@ -308,12 +324,12 @@ async function openReceiveModal(r: ReceivableWithCategory, onDone: () => void): 
       </p>
       <input type="hidden" id="receive-total" value="${r.amount}">
       <div class="form-group">
-        <label class="form-label">Meios de recebimento</label>
+        <label class="form-label">Cartão ou conta</label>
         <div id="receive-payments" style="display:flex;flex-direction:column;gap:8px">
           ${paymentRowsHtml(initialPayments, 'receive')}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-receive-payment"><i class="ti ti-plus"></i> Adicionar meio</button>
+          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-receive-payment"><i class="ti ti-plus"></i> Adicionar conta</button>
           <div id="receive-payment-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
         </div>
       </div>
@@ -321,7 +337,7 @@ async function openReceiveModal(r: ReceivableWithCategory, onDone: () => void): 
         ${r.category_id
           ? `<div class="form-group">
                <label class="form-label">Categoria</label>
-               <div style="padding:8px 0;color:var(--text)">${esc(r.category_name)}</div>
+               <div style="padding:8px 0;color:var(--text)">${esc((r.categories && r.categories.length > 1) ? r.categories.map(c => c.category_name).join(' + ') : r.category_name)}</div>
              </div>`
           : `<div class="form-group">
                <label class="form-label">Categoria</label>
@@ -337,12 +353,14 @@ async function openReceiveModal(r: ReceivableWithCategory, onDone: () => void): 
       </div>
     `,
     onSave: async () => {
-      const category_id = r.category_id ?? (document.getElementById('f-receive-category') as HTMLSelectElement).value;
+      const categories: CategorySplit[] = r.category_id
+        ? (r.categories ?? []).map(c => ({ category_id: c.category_id, amount: c.amount }))
+        : [{ category_id: (document.getElementById('f-receive-category') as HTMLSelectElement).value, amount: r.amount }];
       const date = (document.getElementById('f-receive-date') as HTMLInputElement).value;
       const payments = collectPayments('receive', r.amount, false);
       if (!payments) return false;
       try {
-        await invoke('receivables:markAsReceived', { id: r.id, category_id, date, payments });
+        await invoke('receivables:markAsReceived', { id: r.id, categories, date, payments });
       } catch (err) {
         showAlert(err instanceof Error ? err.message : 'Não foi possível marcar como recebida.');
         return false;
@@ -423,7 +441,7 @@ function paymentRowHtml(accountId: string, amount: number, prefix = 'receivable'
     <div class="${prefix}-payment-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 64px 34px;gap:8px;align-items:center">
       <select class="form-ctrl ${prefix}-payment-account">
         <option value="">— Selecione —</option>
-        ${accounts.map(a => `<option value="${a.id}" ${accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+        ${accounts.filter(a => a.type !== 'credit_card' || a.id === accountId).map(a => `<option value="${a.id}" ${accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
       </select>
       <input class="form-ctrl ${prefix}-payment-amount" type="text" inputmode="decimal" value="${amount ? formatMoneyValue(amount) : ''}" placeholder="Valor">
       <label class="${prefix}-payment-pix-label" style="display:${pixEligible ? 'flex' : 'none'};align-items:center;gap:4px;font-size:11px;color:var(--text-2)" title="Recebido via Pix">
@@ -491,18 +509,18 @@ function collectPayments(prefix: string, total: number, allowEmpty: boolean): Pa
   let sum = 0;
   for (const payment of payments) {
     if (!payment.account_id || !Number.isFinite(payment.amount) || payment.amount <= 0) {
-      showAlert('Preencha todos os meios de recebimento com valores válidos.');
+      showAlert('Preencha todas as contas com valores válidos.');
       return null;
     }
     if (seen.has(payment.account_id)) {
-      showAlert('Não repita o mesmo meio de recebimento.');
+      showAlert('Não repita a mesma conta.');
       return null;
     }
     seen.add(payment.account_id);
     sum += payment.amount;
   }
   if (Math.abs(sum - total) > 0.005) {
-    showAlert('A soma dos meios de recebimento deve ser igual ao valor total.');
+    showAlert('A soma das contas deve ser igual ao valor total.');
     return null;
   }
   return payments;
@@ -524,6 +542,109 @@ function updatePaymentSummary(overlay: HTMLElement, prefix: string): void {
     ? parseFloat(overlay.querySelector<HTMLInputElement>('#receive-total')?.value ?? '0') || 0
     : moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-amount')) || 0;
   const used = [...overlay.querySelectorAll<HTMLInputElement>(`.${prefix}-payment-amount`)]
+    .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
+  const rest = Math.round((total - used) * 100) / 100;
+  summary.innerHTML = `Total: <strong>${formatCurrency(total)}</strong> · Distribuído: <strong>${formatCurrency(used)}</strong> · Restante: <strong style="color:${Math.abs(rest) < 0.005 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(rest)}</strong>`;
+}
+
+function initialCategorySplits(categorySplits: CategorySplitWithCategory[] | undefined, categoryId: string | null | undefined, amount: number | undefined): CategorySplit[] {
+  if (categorySplits?.length) return categorySplits.map(c => ({ category_id: c.category_id, amount: c.amount }));
+  return categoryId ? [{ category_id: categoryId, amount: amount ?? 0 }] : [];
+}
+
+function categoryRowsHtml(categorySplits: CategorySplit[]): string {
+  return categorySplits.length
+    ? categorySplits.map(c => categoryRowHtml(c.category_id, c.amount)).join('')
+    : categoryRowHtml('', 0);
+}
+
+function categoryRowHtml(categoryId: string, amount: number): string {
+  return `
+    <div class="category-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 34px;gap:8px;align-items:center">
+      <select class="form-ctrl category-select">
+        ${categoryOptions(incomeCategories, categoryId, { emptyLabel: '— Sem categoria —' })}
+      </select>
+      <input class="form-ctrl category-amount" type="text" inputmode="decimal" value="${amount ? formatMoneyValue(amount) : ''}" placeholder="Valor">
+      <button class="btn btn-ghost btn-sm category-remove" type="button" title="Remover"><i class="ti ti-x"></i></button>
+    </div>
+  `;
+}
+
+function bindCategoryRows(overlay: HTMLElement): void {
+  overlay.querySelectorAll<HTMLElement>('.category-row').forEach(row => {
+    if (row.dataset.bound === 'true') return;
+    row.dataset.bound = 'true';
+    attachMoneyMask(row.querySelector<HTMLInputElement>('.category-amount'));
+    row.querySelectorAll('input, select').forEach(ctrl => {
+      ctrl.addEventListener('input', () => {
+        if ((ctrl as HTMLElement).classList.contains('category-amount')) {
+          overlay.dataset.syncFirstCategoryAmount = 'false';
+        }
+        updateCategorySummary(overlay);
+      });
+      ctrl.addEventListener('change', () => updateCategorySummary(overlay));
+    });
+    row.querySelector<HTMLElement>('.category-remove')?.addEventListener('click', () => {
+      if (overlay.querySelectorAll('.category-row').length <= 1) return;
+      row.remove();
+      updateCategorySummary(overlay);
+    });
+  });
+}
+
+function syncFirstCategoryAmount(overlay: HTMLElement): void {
+  if (overlay.dataset.syncFirstCategoryAmount !== 'true') return;
+  const rows = [...overlay.querySelectorAll<HTMLElement>('.category-row')];
+  if (rows.length !== 1) return;
+  const totalInput = overlay.querySelector<HTMLInputElement>('#f-amount');
+  const firstInput = rows[0].querySelector<HTMLInputElement>('.category-amount');
+  if (!totalInput || !firstInput) return;
+  firstInput.value = totalInput.value;
+}
+
+function collectCategories(total: number, allowEmpty: boolean): CategorySplit[] | null {
+  const rows = [...document.querySelectorAll<HTMLElement>('.category-row')];
+  const cats = rows
+    .map(row => ({
+      category_id: row.querySelector<HTMLSelectElement>('.category-select')!.value,
+      amount: moneyInputValue(row.querySelector<HTMLInputElement>('.category-amount')),
+    }))
+    .filter(cat => cat.category_id || Number.isFinite(cat.amount));
+
+  if (allowEmpty && cats.length === 0) return [];
+  const seen = new Set<string>();
+  let sum = 0;
+  for (const cat of cats) {
+    if (!cat.category_id || !Number.isFinite(cat.amount) || cat.amount <= 0) {
+      showAlert('Preencha todas as categorias com valores válidos.');
+      return null;
+    }
+    if (seen.has(cat.category_id)) {
+      showAlert('Não repita a mesma categoria.');
+      return null;
+    }
+    seen.add(cat.category_id);
+    sum += cat.amount;
+  }
+  if (Math.abs(sum - total) > 0.005) {
+    showAlert('A soma das categorias deve ser igual ao valor total.');
+    return null;
+  }
+  return cats;
+}
+
+function remainingCategoryAmount(overlay: HTMLElement): number {
+  const total = moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-amount')) || 0;
+  const used = [...overlay.querySelectorAll<HTMLInputElement>('.category-amount')]
+    .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
+  return Math.max(0, Math.round((total - used) * 100) / 100);
+}
+
+function updateCategorySummary(overlay: HTMLElement): void {
+  const summary = overlay.querySelector<HTMLElement>('#category-summary');
+  if (!summary) return;
+  const total = moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-amount')) || 0;
+  const used = [...overlay.querySelectorAll<HTMLInputElement>('.category-amount')]
     .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
   const rest = Math.round((total - used) * 100) / 100;
   summary.innerHTML = `Total: <strong>${formatCurrency(total)}</strong> · Distribuído: <strong>${formatCurrency(used)}</strong> · Restante: <strong style="color:${Math.abs(rest) < 0.005 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(rest)}</strong>`;

@@ -193,7 +193,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="card-body" style="padding:12px 16px;display:flex;gap:10px;align-items:end;flex-wrap:wrap">
           <div><label class="form-label">Mês de</label><input class="form-ctrl" id="report-month-from" type="month" value="${filterDateFrom.slice(0, 7)}" style="width:auto"></div>
           <div><label class="form-label">Mês até</label><input class="form-ctrl" id="report-month-to" type="month" value="${filterDateTo.slice(0, 7)}" style="width:auto"></div>
-          <div><label class="form-label">Meio de pagamento</label><select class="form-ctrl" id="report-account" style="min-width:170px"><option value="">Todos</option>${accounts.map(account => `<option value="${account.id}" ${accountId === account.id ? 'selected' : ''}>${esc(account.name)}</option>`).join('')}</select></div>
+          <div><label class="form-label">Conta</label><select class="form-ctrl" id="report-account" style="min-width:170px"><option value="">Todos</option>${accounts.map(account => `<option value="${account.id}" ${accountId === account.id ? 'selected' : ''}>${esc(account.name)}</option>`).join('')}</select></div>
           ${owners.length ? `<div><label class="form-label">Responsável</label><select class="form-ctrl" id="report-owner" style="min-width:140px"><option value="">Todos</option>${owners.map(name => `<option value="${esc(name)}" ${owner === name ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></div>` : ''}
           <div><label class="form-label">Status</label><select class="form-ctrl" id="report-status"><option value="" ${!status ? 'selected' : ''}>Todos</option><option value="confirmed" ${status === 'confirmed' ? 'selected' : ''}>Confirmados</option><option value="pending" ${status === 'pending' ? 'selected' : ''}>Pendentes</option></select></div>
           ${expenseRootId ? `<div><label class="form-label">Subcategoria</label><select class="form-ctrl" id="report-subcategory" style="min-width:160px"><option value="">Todas</option>${expenseCategories.filter(category => category.parent_id === expenseRootId).map(category => `<option value="${category.id}" ${subcategoryId === category.id ? 'selected' : ''}>${esc(category.name)}</option>`).join('')}</select></div>` : ''}
@@ -323,7 +323,7 @@ export async function render(el: HTMLElement): Promise<void> {
       <div class="grid-2" style="grid-template-columns:${owners.length ? '1.3fr 1fr' : '1fr'};margin-bottom:20px">
         <div class="card">
           <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-            <span>Despesas por meio de pagamento</span>
+            <span>Despesas por conta</span>
             ${paymentMethodTotal > 0 ? `<span style="font-size:11px;color:var(--text-2)" title="${formatCurrency(pixTotal)} pagos via Pix">${pixPct.toFixed(1)}% via Pix</span>` : ''}
           </div><div class="card-hr"></div>
           <div class="card-body">
@@ -457,7 +457,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="card-header">Maiores despesas do recorte</div>
         <div class="card-hr"></div>
         <div class="table-wrap" style="border:0">
-          <table class="table"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Meio</th><th style="text-align:right">Valor</th></tr></thead>
+          <table class="table"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta</th><th style="text-align:right">Valor</th></tr></thead>
           <tbody>${analytics.topTransactions.map(transaction => `<tr><td>${transaction.date.split('-').reverse().join('/')}</td><td>${esc(transaction.description)}</td><td>${esc(transaction.category_name)}</td><td>${esc(transaction.account_name)}</td><td style="text-align:right;font-weight:600">${formatCurrency(transaction.amount)}</td></tr>`).join('')}</tbody></table>
         </div>
       </div>
@@ -519,7 +519,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="card-header">Maiores receitas do recorte</div>
         <div class="card-hr"></div>
         <div class="table-wrap" style="border:0">
-          <table class="table"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Meio</th><th style="text-align:right">Valor</th></tr></thead>
+          <table class="table"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta</th><th style="text-align:right">Valor</th></tr></thead>
           <tbody>${incomeAnalytics.topTransactions.map(transaction => `<tr><td>${transaction.date.split('-').reverse().join('/')}</td><td>${esc(transaction.description)}</td><td>${esc(transaction.category_name)}</td><td>${esc(transaction.account_name)}</td><td style="text-align:right;font-weight:600">${formatCurrency(transaction.amount)}</td></tr>`).join('')}</tbody></table>
         </div>
       </div>

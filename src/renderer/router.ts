@@ -63,7 +63,7 @@ const ROUTES: Record<string, Route> = {
   'revisao-semanal': { title: 'Revisão semanal', subtitle: 'Checklist financeiro da semana',          render: renderRevisaoSemanal },
   decisoes:     { title: 'Decisões', subtitle: 'Prioridades financeiras sugeridas',                    render: renderDecisoes     },
   transactions: { title: 'Transações',                                  subtitle: monthLabel,     render: renderTransactions },
-  accounts:     { title: 'Meios de pagamento',                                                    render: renderAccounts     },
+  accounts:     { title: 'Contas e Cartões',                                                       render: renderAccounts     },
   budget:       { title: 'Orçamento',                                   subtitle: monthLabel,     render: renderBudget       },
   reports:      { title: 'Relatórios',    subtitle: 'Últimos 6 meses',                           render: renderReports      },
   settings:     { title: 'Configurações', subtitle: 'Personalize o Fina de acordo com suas preferências', render: renderSettings },

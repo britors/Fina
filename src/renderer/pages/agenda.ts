@@ -5,7 +5,7 @@ import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../component
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
-import type { Account, AIBillDraft, Bill, BillInterval, BillStatus, BillWithCategory, Category, CreditCardInvoiceWithAccount, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
+import type { Account, AIBillDraft, Bill, BillInterval, BillStatus, BillWithCategory, Category, CategorySplit, CategorySplitWithCategory, CreditCardInvoiceWithAccount, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOptions } from '../components/categorySelect';
 
 const INTERVAL_LABELS: Record<BillInterval, string> = {
@@ -144,7 +144,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
 // Fatura não-paga mais próxima de cada cartão com fatura ativada — só
 // leitura, sem coluna de ações (fechar/pagar acontece no card do cartão em
-// Meios de Pagamento, não aqui).
+// Contas e Cartões, não aqui).
 function invoiceSection(invoices: CreditCardInvoiceWithAccount[]): string {
   if (invoices.length === 0) return '';
   return `
@@ -229,6 +229,7 @@ function billSection(title: string, bills: BillWithCategory[], isOverdue: boolea
 function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft): void {
   const today = new Date().toISOString().split('T')[0];
   const initialPayments = initialPaymentSplits((b as BillWithCategory | null)?.payments, b?.account_id ?? draft?.account_id ?? undefined, b?.amount ?? draft?.amount);
+  const initialCategories = initialCategorySplits((b as BillWithCategory | null)?.categories, b?.category_id ?? draft?.category_id, b?.amount ?? draft?.amount);
   const overlay = openModal({
     title: b ? 'Editar conta à pagar' : 'Nova conta à pagar',
     body: `
@@ -248,56 +249,59 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Meios de pagamento</label>
+        <label class="form-label">Cartão ou conta</label>
         <div id="bill-payments" style="display:flex;flex-direction:column;gap:8px">
           ${paymentRowsHtml(initialPayments)}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-bill-payment"><i class="ti ti-plus"></i> Adicionar meio</button>
+          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-bill-payment"><i class="ti ti-plus"></i> Adicionar conta</button>
           <div id="bill-payment-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Categoria</label>
-          <select class="form-ctrl" id="f-category">
-            ${categoryOptions(expenseCategories, b?.category_id ?? draft?.category_id, { emptyLabel: '— Sem categoria —' })}
-          </select>
+      <div class="form-group">
+        <label class="form-label">Categorias</label>
+        <div id="category-splits" style="display:flex;flex-direction:column;gap:8px">
+          ${categoryRowsHtml(initialCategories)}
         </div>
-        <div class="form-group">
-          <label class="form-label">Status</label>
-          <select class="form-ctrl" id="f-status">
-            ${(['pending','paid','overdue'] as BillStatus[]).map(st =>
-              `<option value="${st}" ${(b?.status ?? draft?.status)===st?'selected':''}>${st==='pending'?'Pendente':st==='paid'?'Pago':'Vencido'}</option>`
-            ).join('')}
-          </select>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-category"><i class="ti ti-plus"></i> Adicionar categoria</button>
+          <div id="category-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
         </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-ctrl" id="f-status">
+          ${(['pending','paid','overdue'] as BillStatus[]).map(st =>
+            `<option value="${st}" ${(b?.status ?? draft?.status)===st?'selected':''}>${st==='pending'?'Pendente':st==='paid'?'Pago':'Vencido'}</option>`
+          ).join('')}
+        </select>
       </div>
     `,
     onSave: async () => {
       const desc   = (document.getElementById('f-desc')    as HTMLInputElement).value.trim();
       const amount = moneyInputValue(document.getElementById('f-amount') as HTMLInputElement);
       const due    = (document.getElementById('f-due')     as HTMLInputElement).value;
-      const cat    = (document.getElementById('f-category') as HTMLSelectElement).value;
       const status = (document.getElementById('f-status')  as HTMLSelectElement).value as BillStatus;
       if (!desc || isNaN(amount) || !due) { showAlert('Preencha todos os campos.'); return false; }
       const payments = collectPayments('bill', amount, true);
       if (!payments) return false;
+      const billCategories = collectCategories(amount, true);
+      if (!billCategories) return false;
 
       // Editar e mudar o status para "Pago" segue o mesmo caminho do botão
       // "Pagar": gera o lançamento de despesa e remove a conta de contas a
       // pagar (bills:markAsPaid), em vez de só trocar o campo status.
       const markingAsPaid = !!b && b.status !== 'paid' && status === 'paid';
-      const finalCategoryId = cat || (markingAsPaid ? b!.category_id : null) || null;
-      if (markingAsPaid && !finalCategoryId) { showAlert('Selecione uma categoria para o lançamento.'); return false; }
-      if (markingAsPaid && payments.length === 0) { showAlert('Defina pelo menos um meio de pagamento.'); return false; }
+      const finalCategories = billCategories.length ? billCategories : (markingAsPaid ? (b as BillWithCategory).categories?.map(c => ({ category_id: c.category_id, amount: c.amount })) ?? [] : []);
+      if (markingAsPaid && finalCategories.length === 0) { showAlert('Selecione uma categoria para o lançamento.'); return false; }
+      if (markingAsPaid && payments.length === 0) { showAlert('Defina pelo menos uma conta.'); return false; }
 
-      const payload = { description: desc, amount, due_date: due, status: markingAsPaid ? b!.status : status, account_id: payments[0]?.account_id ?? null, category_id: cat || null, recurring: 0 as const, payments };
+      const payload = { description: desc, amount, due_date: due, status: markingAsPaid ? b!.status : status, account_id: payments[0]?.account_id ?? null, category_id: billCategories[0]?.category_id ?? null, recurring: 0 as const, payments, categories: billCategories };
       if (b) {
         await invoke('bills:update', { id: b.id, ...payload });
         if (markingAsPaid) {
           try {
-            await invoke('bills:markAsPaid', { id: b.id, category_id: finalCategoryId, date: due, payments });
+            await invoke('bills:markAsPaid', { id: b.id, categories: finalCategories, date: due, payments });
           } catch (err) {
             showAlert(err instanceof Error ? err.message : 'Não foi possível marcar como paga.');
             return false;
@@ -310,11 +314,15 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
     },
   });
   overlay.dataset.syncFirstPaymentAmount = b ? 'false' : 'true';
+  overlay.dataset.syncFirstCategoryAmount = b ? 'false' : 'true';
   attachMoneyMask(overlay.querySelector('#f-amount'));
   bindPaymentRows(overlay, 'bill');
+  bindCategoryRows(overlay);
   overlay.querySelector('#f-amount')?.addEventListener('input', () => {
     syncFirstPaymentAmount(overlay, 'bill');
     updatePaymentSummary(overlay, 'bill');
+    syncFirstCategoryAmount(overlay);
+    updateCategorySummary(overlay);
   });
   overlay.querySelector('#btn-add-bill-payment')?.addEventListener('click', () => {
     overlay.dataset.syncFirstPaymentAmount = 'false';
@@ -322,8 +330,16 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
     bindPaymentRows(overlay, 'bill');
     updatePaymentSummary(overlay, 'bill');
   });
+  overlay.querySelector('#btn-add-category')?.addEventListener('click', () => {
+    overlay.dataset.syncFirstCategoryAmount = 'false';
+    overlay.querySelector<HTMLElement>('#category-splits')!.insertAdjacentHTML('beforeend', categoryRowHtml('', remainingCategoryAmount(overlay)));
+    bindCategoryRows(overlay);
+    updateCategorySummary(overlay);
+  });
   syncFirstPaymentAmount(overlay, 'bill');
   updatePaymentSummary(overlay, 'bill');
+  syncFirstCategoryAmount(overlay);
+  updateCategorySummary(overlay);
 }
 
 async function openPayBillModal(b: BillWithCategory, onDone: () => void): Promise<void> {
@@ -346,12 +362,12 @@ async function openPayBillModal(b: BillWithCategory, onDone: () => void): Promis
       </p>
       <input type="hidden" id="pay-total" value="${b.amount}">
       <div class="form-group">
-        <label class="form-label">Meios de pagamento</label>
+        <label class="form-label">Cartão ou conta</label>
         <div id="pay-payments" style="display:flex;flex-direction:column;gap:8px">
           ${paymentRowsHtml(initialPayments, 'pay')}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-pay-payment"><i class="ti ti-plus"></i> Adicionar meio</button>
+          <button class="btn btn-secondary btn-sm" type="button" id="btn-add-pay-payment"><i class="ti ti-plus"></i> Adicionar conta</button>
           <div id="pay-payment-summary" style="font-size:0.78rem;color:var(--text-3)"></div>
         </div>
       </div>
@@ -359,7 +375,7 @@ async function openPayBillModal(b: BillWithCategory, onDone: () => void): Promis
         ${b.category_id
           ? `<div class="form-group">
                <label class="form-label">Categoria</label>
-               <div style="padding:8px 0;color:var(--text)">${esc(b.category_name)}</div>
+               <div style="padding:8px 0;color:var(--text)">${esc((b.categories && b.categories.length > 1) ? b.categories.map(c => c.category_name).join(' + ') : b.category_name)}</div>
              </div>`
           : `<div class="form-group">
                <label class="form-label">Categoria</label>
@@ -375,12 +391,14 @@ async function openPayBillModal(b: BillWithCategory, onDone: () => void): Promis
       </div>
     `,
     onSave: async () => {
-      const category_id = b.category_id ?? (document.getElementById('f-pay-category') as HTMLSelectElement).value;
+      const categories: CategorySplit[] = b.category_id
+        ? (b.categories ?? []).map(c => ({ category_id: c.category_id, amount: c.amount }))
+        : [{ category_id: (document.getElementById('f-pay-category') as HTMLSelectElement).value, amount: b.amount }];
       const date = (document.getElementById('f-pay-date') as HTMLInputElement).value;
       const payments = collectPayments('pay', b.amount, false);
       if (!payments) return false;
       try {
-        await invoke('bills:markAsPaid', { id: b.id, category_id, date, payments });
+        await invoke('bills:markAsPaid', { id: b.id, categories, date, payments });
       } catch (err) {
         showAlert(err instanceof Error ? err.message : 'Não foi possível marcar como paga.');
         return false;
@@ -529,18 +547,18 @@ function collectPayments(prefix: string, total: number, allowEmpty: boolean): Pa
   let sum = 0;
   for (const payment of payments) {
     if (!payment.account_id || !Number.isFinite(payment.amount) || payment.amount <= 0) {
-      showAlert('Preencha todos os meios de pagamento com valores válidos.');
+      showAlert('Preencha todas as contas com valores válidos.');
       return null;
     }
     if (seen.has(payment.account_id)) {
-      showAlert('Não repita o mesmo meio de pagamento.');
+      showAlert('Não repita a mesma conta.');
       return null;
     }
     seen.add(payment.account_id);
     sum += payment.amount;
   }
   if (Math.abs(sum - total) > 0.005) {
-    showAlert('A soma dos meios de pagamento deve ser igual ao valor total.');
+    showAlert('A soma das contas deve ser igual ao valor total.');
     return null;
   }
   return payments;
@@ -553,6 +571,109 @@ function remainingAmount(overlay: HTMLElement, prefix: string): number {
   const used = [...overlay.querySelectorAll<HTMLInputElement>(`.${prefix}-payment-amount`)]
     .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
   return Math.max(0, Math.round((total - used) * 100) / 100);
+}
+
+function initialCategorySplits(categorySplits: CategorySplitWithCategory[] | undefined, categoryId: string | null | undefined, amount: number | undefined): CategorySplit[] {
+  if (categorySplits?.length) return categorySplits.map(c => ({ category_id: c.category_id, amount: c.amount }));
+  return categoryId ? [{ category_id: categoryId, amount: amount ?? 0 }] : [];
+}
+
+function categoryRowsHtml(categorySplits: CategorySplit[]): string {
+  return categorySplits.length
+    ? categorySplits.map(c => categoryRowHtml(c.category_id, c.amount)).join('')
+    : categoryRowHtml('', 0);
+}
+
+function categoryRowHtml(categoryId: string, amount: number): string {
+  return `
+    <div class="category-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 34px;gap:8px;align-items:center">
+      <select class="form-ctrl category-select">
+        ${categoryOptions(expenseCategories, categoryId, { emptyLabel: '— Sem categoria —' })}
+      </select>
+      <input class="form-ctrl category-amount" type="text" inputmode="decimal" value="${amount ? formatMoneyValue(amount) : ''}" placeholder="Valor">
+      <button class="btn btn-ghost btn-sm category-remove" type="button" title="Remover"><i class="ti ti-x"></i></button>
+    </div>
+  `;
+}
+
+function bindCategoryRows(overlay: HTMLElement): void {
+  overlay.querySelectorAll<HTMLElement>('.category-row').forEach(row => {
+    if (row.dataset.bound === 'true') return;
+    row.dataset.bound = 'true';
+    attachMoneyMask(row.querySelector<HTMLInputElement>('.category-amount'));
+    row.querySelectorAll('input, select').forEach(ctrl => {
+      ctrl.addEventListener('input', () => {
+        if ((ctrl as HTMLElement).classList.contains('category-amount')) {
+          overlay.dataset.syncFirstCategoryAmount = 'false';
+        }
+        updateCategorySummary(overlay);
+      });
+      ctrl.addEventListener('change', () => updateCategorySummary(overlay));
+    });
+    row.querySelector<HTMLElement>('.category-remove')?.addEventListener('click', () => {
+      if (overlay.querySelectorAll('.category-row').length <= 1) return;
+      row.remove();
+      updateCategorySummary(overlay);
+    });
+  });
+}
+
+function syncFirstCategoryAmount(overlay: HTMLElement): void {
+  if (overlay.dataset.syncFirstCategoryAmount !== 'true') return;
+  const rows = [...overlay.querySelectorAll<HTMLElement>('.category-row')];
+  if (rows.length !== 1) return;
+  const totalInput = overlay.querySelector<HTMLInputElement>('#f-amount');
+  const firstInput = rows[0].querySelector<HTMLInputElement>('.category-amount');
+  if (!totalInput || !firstInput) return;
+  firstInput.value = totalInput.value;
+}
+
+function collectCategories(total: number, allowEmpty: boolean): CategorySplit[] | null {
+  const rows = [...document.querySelectorAll<HTMLElement>('.category-row')];
+  const cats = rows
+    .map(row => ({
+      category_id: row.querySelector<HTMLSelectElement>('.category-select')!.value,
+      amount: moneyInputValue(row.querySelector<HTMLInputElement>('.category-amount')),
+    }))
+    .filter(cat => cat.category_id || Number.isFinite(cat.amount));
+
+  if (allowEmpty && cats.length === 0) return [];
+  const seen = new Set<string>();
+  let sum = 0;
+  for (const cat of cats) {
+    if (!cat.category_id || !Number.isFinite(cat.amount) || cat.amount <= 0) {
+      showAlert('Preencha todas as categorias com valores válidos.');
+      return null;
+    }
+    if (seen.has(cat.category_id)) {
+      showAlert('Não repita a mesma categoria.');
+      return null;
+    }
+    seen.add(cat.category_id);
+    sum += cat.amount;
+  }
+  if (Math.abs(sum - total) > 0.005) {
+    showAlert('A soma das categorias deve ser igual ao valor total.');
+    return null;
+  }
+  return cats;
+}
+
+function remainingCategoryAmount(overlay: HTMLElement): number {
+  const total = moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-amount')) || 0;
+  const used = [...overlay.querySelectorAll<HTMLInputElement>('.category-amount')]
+    .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
+  return Math.max(0, Math.round((total - used) * 100) / 100);
+}
+
+function updateCategorySummary(overlay: HTMLElement): void {
+  const summary = overlay.querySelector<HTMLElement>('#category-summary');
+  if (!summary) return;
+  const total = moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-amount')) || 0;
+  const used = [...overlay.querySelectorAll<HTMLInputElement>('.category-amount')]
+    .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
+  const rest = Math.round((total - used) * 100) / 100;
+  summary.innerHTML = `Total: <strong>${formatCurrency(total)}</strong> · Distribuído: <strong>${formatCurrency(used)}</strong> · Restante: <strong style="color:${Math.abs(rest) < 0.005 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(rest)}</strong>`;
 }
 
 function updatePaymentSummary(overlay: HTMLElement, prefix: string): void {

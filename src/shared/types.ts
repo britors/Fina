@@ -73,12 +73,24 @@ export interface PaymentSplitWithAccount extends PaymentSplit {
   invoice_id?: string | null;
 }
 
+export interface CategorySplit {
+  category_id: string;
+  amount: number;
+}
+
+export interface CategorySplitWithCategory extends CategorySplit {
+  category_name: string;
+  category_icon?: string | null;
+  category_color?: string | null;
+}
+
 export interface TransactionWithDetails extends Transaction {
   account_name: string;
   category_name: string;
   category_icon: string;
   category_color: string;
   payments?: PaymentSplitWithAccount[];
+  categories?: CategorySplitWithCategory[];
 }
 
 export interface Budget {
@@ -120,6 +132,7 @@ export interface BillWithCategory extends Bill {
   category_icon: string | null;
   category_color: string | null;
   payments?: PaymentSplitWithAccount[];
+  categories?: CategorySplitWithCategory[];
 }
 
 export interface Receivable {
@@ -141,6 +154,7 @@ export interface ReceivableWithCategory extends Receivable {
   category_icon: string | null;
   category_color: string | null;
   payments?: PaymentSplitWithAccount[];
+  categories?: CategorySplitWithCategory[];
 }
 
 export interface ReceivablePriceHistory {
