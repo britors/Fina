@@ -50,6 +50,15 @@ jobs:
       - name: Package (deb + rpm)
         run: npx electron-builder --linux deb rpm --publish never
 
+      - name: Copy .rpm to a fixed-name alias
+        # O pacote do openSUSE Build Service (home:rodrigosbrito:fina) usa
+        # o alias .../releases/latest/download/fina-latest.x86_64.rpm do
+        # GitHub como Source0 do fina.spec, pra sempre pegar a release mais
+        # nova sem precisar saber o número da versão de antemão. Esse
+        # alias só funciona porque o nome do asset é fixo — o .rpm
+        # "normal" (fina-<versão>.x86_64.rpm) muda de nome a cada release.
+        run: cp dist/fina-*.x86_64.rpm dist/fina-latest.x86_64.rpm
+
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
@@ -57,6 +66,16 @@ jobs:
             dist/*.deb
             dist/*.rpm
           generate_release_notes: true
+
+      - name: Trigger OBS rebuild (home:rodrigosbrito:fina)
+        # Dispara o _service (download_files, modo manual) do pacote fina
+        # no OBS, que baixa de novo o alias fina-latest.x86_64.rpm (agora
+        # apontando pra essa release) e reconstrói. Token criado com
+        # `osc token --create --operation runservice home:rodrigosbrito:fina fina`.
+        run: |
+          curl -f -X POST \
+            -H "Authorization: Token ${{ secrets.OBS_TOKEN_FINA }}" \
+            "https://api.opensuse.org/trigger/runservice?project=home:rodrigosbrito:fina&package=fina"
 
   release-windows:
     name: Windows (.exe)
