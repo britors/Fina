@@ -126,6 +126,39 @@ Compatível com Windows 10/11 (x64).
 
 ---
 
+## Desinstalação
+
+### Linux — Arch / Manjaro (AUR)
+
+```bash
+sudo pacman -Rns fina
+```
+
+### Linux — openSUSE Leap, Fedora e Ubuntu/Debian
+
+O script `scripts/uninstall.sh` é a contraparte do instalador: detecta a
+distro e remove o pacote com o gerenciador certo (`zypper`, `dnf` ou
+`apt-get`), além de desativar o timer systemd `--user` do recurso "executar
+em segundo plano", se estiver ativo:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/britors/Fina/main/scripts/uninstall.sh | sudo bash
+```
+
+Por padrão os seus dados (`~/.config/Fina`: banco de dados, segredos de
+IA/Open Finance etc.) são preservados. Para apagá-los também, use `--purge`:
+
+```bash
+sudo bash uninstall.sh --purge
+```
+
+### Windows
+
+Use "Adicionar ou remover programas" do Windows, ou rode o
+`Uninstall Fina.exe` gerado na pasta de instalação.
+
+---
+
 ## Releases
 
 Os pacotes são gerados automaticamente pelo GitHub Actions a cada tag `v*`.  
