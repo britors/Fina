@@ -55,6 +55,8 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
     </div>
 
+    ${renderDecisionSimulator({ available, reserveMonths, avgExpense, activeDebts, openGoals })}
+
     ${decisions.length === 0 ? `
       <div class="empty">
         <i class="ti ti-circle-check"></i>
@@ -79,6 +81,58 @@ export async function render(el: HTMLElement): Promise<void> {
       });
     });
   });
+
+  const simulator = el.querySelector<HTMLElement>('[data-decision-simulator]');
+  const amountInput = simulator?.querySelector<HTMLInputElement>('[data-simulator-amount]');
+  const refreshSimulation = (): void => {
+    if (!simulator || !amountInput) return;
+    const amount = Math.max(0, Number(amountInput.value) || 0);
+    const selected = simulator.querySelector<HTMLInputElement>('input[name="decision-scenario"]:checked')?.value ?? 'reserve';
+    const result = scenarioResult({ reserveMonths, avgExpense, activeDebts, openGoals }, amount, selected);
+    const output = simulator.querySelector<HTMLElement>('[data-simulator-result]');
+    if (output) output.innerHTML = `<strong>${result.title}</strong><div style="margin-top:4px;color:var(--text-2)">${result.body}</div>`;
+  };
+  amountInput?.addEventListener('input', refreshSimulation);
+  simulator?.querySelectorAll('input[name="decision-scenario"]').forEach(input => input.addEventListener('change', refreshSimulation));
+  refreshSimulation();
+}
+
+function renderDecisionSimulator(data: { available: number; reserveMonths: number; avgExpense: number; activeDebts: Debt[]; openGoals: Goal[] }): string {
+  const suggested = Math.max(0, Math.round(data.available * 100) / 100);
+  return `<div class="card" data-decision-simulator style="margin-bottom:20px">
+    <div class="card-header"><i class="ti ti-git-compare"></i> Simulador de decisões</div>
+    <div class="card-hr"></div>
+    <div class="card-body">
+      <p style="font-size:0.82rem;color:var(--text-3);margin:0 0 14px">Compare o efeito de direcionar uma sobra mensal. A simulação não altera seus dados.</p>
+      <div style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+        <label style="min-width:190px;flex:1">Valor mensal
+          <input class="form-ctrl" type="number" min="0" step="0.01" value="${suggested.toFixed(2)}" data-simulator-amount>
+        </label>
+        <label class="radio-label"><input type="radio" name="decision-scenario" value="reserve" checked> Reserva</label>
+        <label class="radio-label"><input type="radio" name="decision-scenario" value="debt"> Dívidas</label>
+        <label class="radio-label"><input type="radio" name="decision-scenario" value="goal"> Metas</label>
+      </div>
+      <div data-simulator-result style="margin-top:16px;padding:12px;border-radius:8px;background:var(--surface-2);font-size:0.86rem"></div>
+    </div>
+  </div>`;
+}
+
+function scenarioResult(data: { reserveMonths: number; avgExpense: number; activeDebts: Debt[]; openGoals: Goal[] }, amount: number, scenario: string): { title: string; body: string } {
+  if (scenario === 'debt') {
+    const debt = [...data.activeDebts].sort((a, b) => b.interest_rate - a.interest_rate)[0];
+    if (!debt) return { title: 'Sem dívidas ativas', body: 'Direcione esse valor para reserva ou metas.' };
+    const months = debt.installment_amount + amount > 0 ? Math.ceil(debt.outstanding_balance / (debt.installment_amount + amount)) : 0;
+    return { title: `Priorizar ${debt.description}`, body: `${formatCurrency(amount)} extras por mês reduzem o saldo de ${formatCurrency(debt.outstanding_balance)} em aproximadamente ${months} meses, antes dos juros.` };
+  }
+  if (scenario === 'goal') {
+    const goal = [...data.openGoals].sort((a, b) => (a.target_date ?? '9999').localeCompare(b.target_date ?? '9999'))[0];
+    if (!goal) return { title: 'Nenhuma meta aberta', body: 'Crie uma meta para simular seu próximo objetivo.' };
+    const remaining = Math.max(0, goal.target_amount - goal.current_amount);
+    const months = amount > 0 ? Math.ceil(remaining / amount) : 0;
+    return { title: `Acelerar ${goal.name}`, body: `${formatCurrency(amount)} por mês completa ${formatCurrency(remaining)} restantes em aproximadamente ${months || '—'} meses.` };
+  }
+  const addedMonths = data.avgExpense > 0 ? amount / data.avgExpense : 0;
+  return { title: 'Fortalecer a reserva', body: `${formatCurrency(amount)} mensais adicionam ${addedMonths.toFixed(1)} mês de despesas por aporte e levam a reserva estimada para ${(data.reserveMonths + addedMonths).toFixed(1)} meses após um ano.` };
 }
 
 function buildDecisions(data: {
