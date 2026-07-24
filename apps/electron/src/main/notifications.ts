@@ -261,6 +261,7 @@ function mimeHeader(value: string): string {
 
 export function checkAndNotify(): void {
   const db = getDb();
+  sendWeeklySummaryIfDue();
   const notifBills        = getSetting('notif_bills')        !== 'false';
   const notifReceivables  = getSetting('notif_receivables')  !== 'false';
   const notifBudget       = getSetting('notif_budget')       !== 'false';
@@ -419,6 +420,34 @@ export function checkAndNotify(): void {
       logSent('receivable_price_increase', refId);
     }
   }
+}
+
+function sendWeeklySummaryIfDue(): void {
+  if (getSetting('notif_summary', 'false') !== 'true') return;
+  const today = new Date();
+  // Segunda-feira é o início do resumo. A chave semanal evita repetir a
+  // notificação nas demais execuções do scheduler durante o dia.
+  if (today.getDay() !== 1) return;
+  const weekKey = today.toISOString().slice(0, 10);
+  if (alreadySentEver('weekly_summary', weekKey)) return;
+  const db = getDb();
+  const tx = db.prepare(`
+    SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income,
+           COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense,
+           COUNT(*) AS count
+    FROM transactions WHERE status = 'confirmed' AND date >= date('now', '-7 days') AND date < date('now')
+  `).get() as { income: number; expense: number; count: number };
+  const bills = db.prepare(`
+    SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS count FROM bills
+    WHERE status != 'paid' AND due_date >= date('now') AND due_date <= date('now', '+7 days')
+  `).get() as { total: number; count: number };
+  const balance = tx.income - tx.expense;
+  const sign = balance >= 0 ? '+' : '';
+  notify(
+    'Resumo financeiro da semana',
+    `${tx.count} lançamentos · saldo ${sign}R$ ${balance.toFixed(2).replace('.', ',')} · ${bills.count} conta${bills.count === 1 ? '' : 's'} vencendo (${`R$ ${bills.total.toFixed(2).replace('.', ',')}`}).`,
+  );
+  logSent('weekly_summary', weekKey);
 }
 
 export function startNotificationScheduler(): void {
