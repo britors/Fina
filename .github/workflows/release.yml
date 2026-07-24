@@ -48,6 +48,7 @@ jobs:
         run: npm run build
 
       - name: Package (deb + rpm)
+        working-directory: apps/electron
         run: npx electron-builder --linux deb rpm --publish never
 
       - name: Copy .rpm to a fixed-name alias
@@ -57,14 +58,14 @@ jobs:
         # nova sem precisar saber o número da versão de antemão. Esse
         # alias só funciona porque o nome do asset é fixo — o .rpm
         # "normal" (fina-<versão>.x86_64.rpm) muda de nome a cada release.
-        run: cp dist/fina-*.x86_64.rpm dist/fina-latest.x86_64.rpm
+        run: cp apps/electron/dist/fina-*.x86_64.rpm apps/electron/dist/fina-latest.x86_64.rpm
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/*.deb
-            dist/*.rpm
+            apps/electron/dist/*.deb
+            apps/electron/dist/*.rpm
           generate_release_notes: true
 
       - name: Trigger OBS rebuild (home:rodrigosbrito:fina)
@@ -98,6 +99,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # O lockfile raiz foi gerado em Linux e pode não conter o pacote
+      # opcional específico do Windows. Instale-o explicitamente antes de
+      # gerar o ícone para evitar falha do binding nativo do resvg.
+      - name: Install Windows resvg binding
+        run: npm install --no-save --package-lock=false --ignore-scripts @resvg/resvg-js-win32-x64-msvc@2.6.2
+
       - name: Generate icons
         run: npm run generate-icons
 
@@ -105,21 +112,22 @@ jobs:
         run: npm run build
 
       - name: Package (NSIS installer)
+        working-directory: apps/electron
         run: npx electron-builder --win nsis --publish never
 
       - name: Validate updater metadata matches the built installer
         shell: bash
         run: |
           set -euo pipefail
-          expected="$(sed -n 's/^path: //p' dist/latest.yml | head -n1 | tr -d '\r')"
+          expected="$(sed -n 's/^path: //p' apps/electron/dist/latest.yml | head -n1 | tr -d '\r')"
           if [ -z "$expected" ]; then
             echo "Erro: não foi possível ler o campo 'path' em dist/latest.yml"
             exit 1
           fi
-          if [ ! -f "dist/$expected" ]; then
+          if [ ! -f "apps/electron/dist/$expected" ]; then
             echo "Erro: latest.yml aponta para '$expected', mas o arquivo não foi gerado em dist/."
             echo "Artefatos gerados:"
-            ls -1 dist
+            ls -1 apps/electron/dist
             exit 1
           fi
           echo "OK: latest.yml e o instalador estão alinhados ($expected)."
@@ -128,6 +136,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/*.exe
-            dist/latest.yml
-            dist/*.blockmap
+            apps/electron/dist/*.exe
+            apps/electron/dist/latest.yml
+            apps/electron/dist/*.blockmap
