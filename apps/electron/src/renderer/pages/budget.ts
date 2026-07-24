@@ -6,7 +6,7 @@ import { showAlert, showConfirm } from '../components/alertDialog';
 import { openCategoryModal } from '../components/categoryModal';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
-import type { AIBudgetDraft, BudgetWithProgress, Category } from '../../shared/types';
+import type { AIBudgetDraft, BudgetWithProgress, Category, TransactionWithDetails } from '../../shared/types';
 import { categoryOptions } from '../components/categorySelect';
 
 export async function render(el: HTMLElement): Promise<void> {
@@ -21,7 +21,11 @@ export async function render(el: HTMLElement): Promise<void> {
   `);
 
   async function renderPage(): Promise<void> {
-    const budgets = await invoke<BudgetWithProgress[]>('budgets:list', showAll ? undefined : { month, year });
+    const [budgets, settings, transactions] = await Promise.all([
+      invoke<BudgetWithProgress[]>('budgets:list', showAll ? undefined : { month, year }),
+      invoke<Record<string, string>>('settings:getAll'),
+      showAll ? Promise.resolve([] as TransactionWithDetails[]) : invoke<TransactionWithDetails[]>('transactions:list', { dateFrom: `${year}-${String(month).padStart(2, '0')}-01`, dateTo: `${year}-${String(month).padStart(2, '0')}-31`, type: 'expense', limit: 5000 }),
+    ]);
     const periodLabel = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
     const totalCarried = budgets.reduce((s, b) => s + b.carried_in, 0);
@@ -80,6 +84,8 @@ export async function render(el: HTMLElement): Promise<void> {
             </div>
           </div>
         ` : ''}
+
+      ${!showAll && settings.family_mode === 'true' ? familyBudgetCard(transactions) : ''}
       ` : ''}
 
       <!-- Budget rows -->
@@ -145,6 +151,16 @@ export async function render(el: HTMLElement): Promise<void> {
     });
   });
   await renderPage();
+}
+
+function familyBudgetCard(transactions: TransactionWithDetails[]): string {
+  const totals = new Map<string, number>();
+  for (const tx of transactions) {
+    const owner = tx.owner?.trim() || 'Compartilhado';
+    totals.set(owner, (totals.get(owner) ?? 0) + tx.amount);
+  }
+  const rows = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+  return `<div class="card" style="margin-bottom:16px"><div class="card-header"><i class="ti ti-users"></i> Visão compartilhada por responsável</div><div class="card-hr"></div><div class="card-body"><p style="font-size:.8rem;color:var(--text-3);margin:0 0 10px">Despesas do mês agrupadas sem alterar os saldos das contas.</p>${rows.length ? rows.map(([owner, total]) => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:.5px solid var(--border)"><span>${esc(owner)}</span><strong>${formatCurrency(total)}</strong></div>`).join('') : '<span style="color:var(--text-3)">Nenhuma despesa lançada no mês.</span>'}</div></div>`;
 }
 
 function budgetRow(b: BudgetWithProgress, showPeriod = false): string {
