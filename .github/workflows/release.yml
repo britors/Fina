@@ -44,8 +44,14 @@ jobs:
       - name: Generate icons
         run: npm run generate-icons
 
+      - name: Rebuild native dependencies
+        run: npx electron-rebuild -f -w better-sqlite3-multiple-ciphers
+
       - name: Build app
         run: npm run build
+
+      - name: Fix electron-builder executable permission
+        run: chmod +x node_modules/app-builder-bin/linux/x64/app-builder
 
       - name: Package (deb + rpm)
         working-directory: apps/electron
@@ -107,6 +113,9 @@ jobs:
 
       - name: Generate icons
         run: npm run generate-icons
+
+      - name: Rebuild native dependencies
+        run: npx electron-rebuild -f -w better-sqlite3-multiple-ciphers
 
       - name: Build app
         run: npm run build

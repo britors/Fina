@@ -18,7 +18,6 @@
     "typecheck": "tsc --noEmit",
     "build:tests": "node esbuild.config.js --tests",
     "test": "node esbuild.config.js --tests && node --test out/tests/accounts.test.js out/tests/transactions.test.js out/tests/invoices.test.js out/tests/klavi.test.js out/tests/belvo.test.js out/tests/categories.test.js out/tests/categoryQueries.test.js out/tests/migrations.test.js",
-    "postinstall": "electron-rebuild -f -w better-sqlite3-multiple-ciphers",
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:win": "npm run build && electron-builder --win",

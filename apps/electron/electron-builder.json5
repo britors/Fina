@@ -19,7 +19,7 @@
   ],
 
   // Rebuild de módulos nativos (better-sqlite3-multiple-ciphers) para o Electron alvo
-  npmRebuild: true,
+  npmRebuild: false,
 
   // Feed do electron-updater (usado apenas no Windows — ver src/main/updater.ts)
   publish: {
