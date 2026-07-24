@@ -31,6 +31,7 @@ import { render as renderMarket       } from './pages/market';
 import { render as renderOpenFinance  } from './pages/openFinance';
 import { render as renderIRPF         } from './pages/irpf';
 import { render as renderManual       } from './pages/manual';
+import { render as renderDocumentos   } from './pages/documentos';
 import { setActiveRoute               } from './components/sidebar';
 import { setTopbar, setTopbarActions  } from './components/topbar';
 
@@ -87,6 +88,7 @@ const ROUTES: Record<string, Route> = {
   openfinance:  { title: 'Open Finance',  subtitle: 'Instituições, contas e conexões ativas',        render: renderOpenFinance  },
   irpf:         { title: 'IRPF',          subtitle: 'Informe de rendimentos para declaração',        render: renderIRPF         },
   manual:       { title: 'Manual',        subtitle: 'Guia de uso do Fina',                           render: renderManual       },
+  documentos:   { title: 'Documentos',    subtitle: 'Comprovantes e arquivos financeiros locais',  render: renderDocumentos   },
 };
 
 export function initRouter(content: HTMLElement): void {

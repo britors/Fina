@@ -32,6 +32,7 @@ import { registerOpenFinanceHandlers } from './ipc/openFinance';
 import { registerPixHandlers } from './ipc/pix';
 import { registerOCRHandlers } from './ipc/ocr';
 import { registerRadarHandlers } from './ipc/radar';
+import { registerDocumentHandlers } from './ipc/documents';
 import { initUpdater } from './updater';
 import { startNotificationScheduler } from './notifications';
 import { generateRecurrences } from './recurrences';
@@ -154,6 +155,7 @@ function registerHandlers(): void {
     registerPixHandlers();
   registerOCRHandlers();
   registerRadarHandlers();
+  registerDocumentHandlers();
   registerSecurityHandlers();
   registerBackgroundServiceHandlers();
   registerSyncHandlers();
@@ -209,6 +211,12 @@ function registerHandlers(): void {
     dialog.showOpenDialog({
       filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] }],
       properties: ['openFile'],
+    })
+  );
+  ipcMain.handle('dialog:openDocument', () =>
+    dialog.showOpenDialog({
+      filters: [{ name: 'Documentos financeiros', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'csv'] }],
+      properties: ['openFile', 'multiSelections'],
     })
   );
 

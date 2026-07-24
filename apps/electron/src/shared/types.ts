@@ -41,6 +41,16 @@ export interface Account {
   updated_at: string;
 }
 
+export interface FinancialDocument {
+  id: string;
+  filename: string;
+  stored_path: string;
+  mime_type: string | null;
+  size_bytes: number;
+  sha256: string;
+  created_at: string;
+}
+
 export interface Category {
   id: string;
   name: string;

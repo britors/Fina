@@ -80,6 +80,7 @@ const NAV: NavGroup[] = [
       { route: 'market',  label: 'Mercado',    icon: 'ti-chart-line'   },
       { route: 'openfinance', label: 'Open Finance', icon: 'ti-plug-connected' },
       { route: 'irpf',    label: 'IRPF',       icon: 'ti-file-invoice' },
+      { route: 'documentos', label: 'Documentos', icon: 'ti-folder' },
     ],
   },
   {
