@@ -31,6 +31,7 @@ import { registerCategorySuggestionHandlers } from './ipc/categorySuggestion';
 import { registerOpenFinanceHandlers } from './ipc/openFinance';
 import { registerPixHandlers } from './ipc/pix';
 import { registerOCRHandlers } from './ipc/ocr';
+import { registerRadarHandlers } from './ipc/radar';
 import { initUpdater } from './updater';
 import { startNotificationScheduler } from './notifications';
 import { generateRecurrences } from './recurrences';
@@ -151,7 +152,8 @@ function registerHandlers(): void {
   registerAIHandlers();
     registerOpenFinanceHandlers();
     registerPixHandlers();
-    registerOCRHandlers();
+  registerOCRHandlers();
+  registerRadarHandlers();
   registerSecurityHandlers();
   registerBackgroundServiceHandlers();
   registerSyncHandlers();

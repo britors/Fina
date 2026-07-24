@@ -9,6 +9,18 @@ export type ReceivableStatus = 'pending' | 'received' | 'overdue';
 export type ReceivableInterval = BillInterval;
 export type CreditCardInvoiceStatus = 'open' | 'closed' | 'paid';
 
+export type RadarSeverity = 'danger' | 'warning' | 'info';
+
+export interface RadarSignal {
+  key: string;
+  severity: RadarSeverity;
+  icon: string;
+  title: string;
+  body: string;
+  action: string;
+  route: string;
+}
+
 export type AccountCurrency = 'BRL' | 'USD' | 'EUR';
 
 export interface Account {

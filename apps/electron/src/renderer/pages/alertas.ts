@@ -1,6 +1,6 @@
 import { invoke } from '../api';
 import { formatCurrency, formatDate, getCurrentYearMonth, isCreditLikeAccountType } from '../../shared/utils';
-import type { Account, AnomalyType, BalanceDropAlert, BillPriceIncrease, ReceivablePriceIncrease, BudgetWithProgress, Debt, SpendingAnomaly } from '../../shared/types';
+import type { Account, AnomalyType, BalanceDropAlert, BillPriceIncrease, ReceivablePriceIncrease, BudgetWithProgress, Debt, SpendingAnomaly, RadarSignal } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
 type CategoryExpense = { name: string; color: string; total: number };
@@ -21,7 +21,7 @@ export async function render(el: HTMLElement): Promise<void> {
   const prevDate = new Date(now.year, now.month - 2, 1);
   const prev = { month: prevDate.getMonth() + 1, year: prevDate.getFullYear() };
 
-  const [history, debts, accounts, budgets, currentCats, prevCats, priceIncreases, receivablePriceIncreases, anomalies, balanceDrops] = await Promise.all([
+  const [history, debts, accounts, budgets, currentCats, prevCats, priceIncreases, receivablePriceIncreases, anomalies, balanceDrops, radar] = await Promise.all([
     invoke<MonthRow[]>('transactions:getMonthlyHistory', 3),
     invoke<Debt[]>('debts:list'),
     invoke<Account[]>('accounts:list'),
@@ -32,6 +32,7 @@ export async function render(el: HTMLElement): Promise<void> {
     invoke<ReceivablePriceIncrease[]>('receivables:getPriceIncreases'),
     invoke<SpendingAnomaly[]>('anomalies:list'),
     invoke<BalanceDropAlert[]>('openFinance:getBalanceDropAlerts'),
+    invoke<RadarSignal[]>('radar:list'),
   ]);
 
   const alerts = buildAlerts(history, debts, accounts, budgets, currentCats, prevCats, priceIncreases, receivablePriceIncreases);
@@ -42,6 +43,16 @@ export async function render(el: HTMLElement): Promise<void> {
   };
 
   el.innerHTML = `
+    ${radar.length > 0 ? `
+      <div class="card" style="margin-bottom:20px;border-color:var(--accent)66">
+        <div class="card-header"><i class="ti ti-radar"></i> Radar Financeiro</div>
+        <div class="card-hr"></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+          <p style="font-size:0.8rem;color:var(--text-3);margin:0 0 4px">Sinais proativos calculados localmente para ajudar você a agir antes do problema.</p>
+          ${radar.map(radarCard).join('')}
+        </div>
+      </div>
+    ` : ''}
     <div class="grid-3" style="margin-bottom:20px">
       ${metricCard('Críticos', String(counts.danger), 'Exigem ação imediata', 'ti-alert-triangle', 'var(--danger)')}
       ${metricCard('Atenção', String(counts.warning), 'Riscos para acompanhar', 'ti-alert-circle', 'var(--warning)')}
@@ -97,6 +108,21 @@ export async function render(el: HTMLElement): Promise<void> {
       render(el);
     });
   });
+  el.querySelectorAll<HTMLElement>('[data-dismiss-radar]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await invoke('radar:dismiss', btn.dataset.dismissRadar);
+      render(el);
+    });
+  });
+}
+
+function radarCard(signal: RadarSignal): string {
+  const color = signal.severity === 'danger' ? 'var(--danger)' : signal.severity === 'warning' ? 'var(--warning)' : 'var(--accent)';
+  return `<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border)">
+    <i class="ti ${signal.icon}" style="color:${color};font-size:1.15rem;margin-top:2px"></i>
+    <div style="flex:1"><strong>${esc(signal.title)}</strong><div style="font-size:0.82rem;color:var(--text-2);margin-top:3px">${esc(signal.body)}</div><div style="font-size:0.78rem;color:var(--text-3);margin-top:5px"><strong>Ação:</strong> ${esc(signal.action)}</div></div>
+    <button class="btn btn-ghost btn-sm" data-dismiss-radar="${esc(signal.key)}">Dispensar</button>
+  </div>`;
 }
 
 function buildAlerts(
