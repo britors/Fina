@@ -74,18 +74,6 @@ jobs:
             apps/electron/dist/*.rpm
           generate_release_notes: true
 
-      - name: Trigger OBS rebuild (home:rodrigosbrito:fina)
-        # Dispara o _service (download_files, modo manual) do pacote fina
-        # no OBS, que baixa de novo o alias fina-latest.x86_64.rpm (agora
-        # apontando pra essa release) e reconstrói. Token criado com
-        # Token escopado ao pacote, criado com
-        # `osc token --create --operation runservice home:rodrigosbrito:fina fina`.
-        # Tokens escopados não recebem project/package na URL.
-        run: |
-          curl -f -X POST \
-            -H "Authorization: Token ${{ secrets.OBS_TOKEN_FINA }}" \
-            "https://api.opensuse.org/trigger/runservice"
-
   release-windows:
     name: Windows (.exe)
     runs-on: windows-latest
