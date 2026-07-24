@@ -29,6 +29,7 @@
   },
 
   linux: {
+    packageName: "fina",
     target: ["deb", "rpm"],
     category: "Office",
     synopsis: "Gerenciador de finanças pessoais",
