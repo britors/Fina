@@ -1,0 +1,42 @@
+{
+  "name": "@fina/electron",
+  "version": "17.8.0",
+  "description": "Gerenciador de finanças pessoais",
+  "author": {
+    "name": "Rodrigo Brito",
+    "email": "rodrigo@w3ti.com.br"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/britors/Fina.git"
+  },
+  "main": "out/main/index.js",
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "watch": "node esbuild.config.js --watch",
+    "start": "electron .",
+    "typecheck": "tsc --noEmit",
+    "build:tests": "node esbuild.config.js --tests",
+    "test": "node esbuild.config.js --tests && node --test out/tests/accounts.test.js out/tests/transactions.test.js out/tests/invoices.test.js out/tests/klavi.test.js out/tests/belvo.test.js out/tests/categories.test.js out/tests/categoryQueries.test.js out/tests/migrations.test.js",
+    "postinstall": "electron-rebuild -f -w better-sqlite3-multiple-ciphers",
+    "dist": "npm run build && electron-builder",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:win": "npm run build && electron-builder --win",
+    "generate-icons": "node build/generate-icons.js"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^25.9.1",
+    "electron": "^34.5.8",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.28.0",
+    "png-to-ico": "^2.1.8",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "better-sqlite3-multiple-ciphers": "^12.11.1",
+    "electron-updater": "^6.8.9",
+    "tesseract.js": "^7.0.0"
+  }
+}

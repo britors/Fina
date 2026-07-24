@@ -2,11 +2,12 @@
 node_modules/
 out/
 dist/
+target/
 
 # Ícones gerados (build/generate-icons.js)
-build/icon.png
-build/icon.ico
-build/icons/
+apps/electron/build/icon.png
+apps/electron/build/icon.ico
+apps/electron/build/icons/
 
 # AUR — arquivos gerados pelo makepkg
 aur/.SRCINFO

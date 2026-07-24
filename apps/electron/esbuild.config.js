@@ -24,7 +24,7 @@ function copyAssets() {
   cp('src/renderer/splash.html', 'out/renderer/splash.html');
   cp('src/renderer/unlock.html', 'out/renderer/unlock.html');
   cp('src/assets/splash-fino.jpg', 'out/renderer/assets/splash-fino.jpg');
-  cp('MANUAL_USUARIO.md', 'out/MANUAL_USUARIO.md');
+  cp('../../MANUAL_USUARIO.md', 'out/MANUAL_USUARIO.md');
 
   fs.mkdirSync('out/main/migrations', { recursive: true });
   for (const f of fs.readdirSync('src/main/migrations')) {
