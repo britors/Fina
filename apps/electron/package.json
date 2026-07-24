@@ -1,5 +1,5 @@
 {
-  "name": "@fina/electron",
+  "name": "fina",
   "version": "17.9.4",
   "description": "Gerenciador de finanças pessoais",
   "author": {

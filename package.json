@@ -8,15 +8,15 @@
   ],
   "scripts": {
     "build": "npm run build:electron",
-    "build:electron": "npm --workspace @fina/electron run build",
+    "build:electron": "npm --workspace fina run build",
     "start": "npm run start:electron",
-    "start:electron": "npm --workspace @fina/electron run start",
+    "start:electron": "npm --workspace fina run start",
     "test": "npm run test:electron",
-    "test:electron": "npm --workspace @fina/electron run test",
-    "typecheck": "npm --workspace @fina/electron run typecheck",
-    "dist": "npm --workspace @fina/electron run dist",
-    "dist:linux": "npm --workspace @fina/electron run dist:linux",
-    "dist:win": "npm --workspace @fina/electron run dist:win",
-    "generate-icons": "npm --workspace @fina/electron run generate-icons"
+    "test:electron": "npm --workspace fina run test",
+    "typecheck": "npm --workspace fina run typecheck",
+    "dist": "npm --workspace fina run dist",
+    "dist:linux": "npm --workspace fina run dist:linux",
+    "dist:win": "npm --workspace fina run dist:win",
+    "generate-icons": "npm --workspace fina run generate-icons"
   }
 }
