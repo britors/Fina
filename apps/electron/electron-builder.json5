@@ -3,6 +3,10 @@
   productName: "Fina",
   copyright: "Copyright © 2026 Rodrigo Brito",
 
+  // O Electron é hoisted pelo npm workspace; declarar a versão evita que
+  // o electron-builder dependa de encontrá-lo em apps/electron/node_modules.
+  electronVersion: "34.5.8",
+
   directories: {
     output: "dist",
     buildResources: "build"
