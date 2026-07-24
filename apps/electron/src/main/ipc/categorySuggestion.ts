@@ -15,6 +15,17 @@ export function suggestCategoryFromHistory(description: string, type: Transactio
   if (!key || type === 'transfer') return null;
 
   const db = getDb();
+  const rule = db.prepare(`
+    SELECT r.category_id,
+      CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END as category_name
+    FROM import_category_rules r JOIN categories c ON c.id = r.category_id
+    LEFT JOIN categories parent ON parent.id = c.parent_id
+    WHERE r.description_key = ? AND r.transaction_type = ?
+  `).get(key, type) as { category_id: string; category_name: string } | undefined;
+  if (rule) return {
+    categoryId: rule.category_id, categoryName: rule.category_name, occurrences: 1, totalOccurrences: 1,
+    reason: `Regra aprendida: descrições como "${description.trim()}" usam ${rule.category_name}.`,
+  };
   const rows = db.prepare(`
     SELECT t.category_id,
       CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END as category_name,
@@ -45,6 +56,16 @@ export function suggestCategoryFromHistory(description: string, type: Transactio
     totalOccurrences: total,
     reason: `Você categorizou "${description.trim()}" como ${top.name} ${top.count} de ${total} ${total === 1 ? 'vez' : 'vezes'}.`,
   };
+}
+
+export function learnCategoryRule(description: string, type: TransactionType, categoryId: string): void {
+  const key = normalizeKey(description);
+  if (!key || type === 'transfer' || !categoryId) return;
+  getDb().prepare(`
+    INSERT INTO import_category_rules (description_key, transaction_type, category_id)
+    VALUES (?, ?, ?)
+    ON CONFLICT(description_key, transaction_type) DO UPDATE SET category_id=excluded.category_id, updated_at=datetime('now')
+  `).run(key, type, categoryId);
 }
 
 export function registerCategorySuggestionHandlers(): void {

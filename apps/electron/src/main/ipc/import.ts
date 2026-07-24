@@ -6,7 +6,7 @@ import { parseOFX } from '../import/ofx-parser';
 import { parseCSV } from '../import/csv-parser';
 import { adjustBalance, balanceDelta } from './transactions';
 import { attachToInvoice } from '../invoices';
-import { suggestCategoryFromHistory } from './categorySuggestion';
+import { suggestCategoryFromHistory, learnCategoryRule } from './categorySuggestion';
 import type { ImportPreview, ImportPreviewRow, TransactionType } from '../../shared/types';
 
 function txHash(date: string, amount: number, description: string): string {
@@ -119,6 +119,7 @@ export function registerImportHandlers(): void {
         const notes = row.fitid ? `FITID:${row.fitid}|HASH:${hash}` : `HASH:${hash}`;
         const id = randomUUID();
         const categoryId = payload.useSuggestions && row.suggested_category_id ? row.suggested_category_id : payload.categoryId;
+        learnCategoryRule(row.description, row.type as TransactionType, categoryId);
         insert.run(id, payload.accountId, categoryId,
                    row.description, row.amount, row.type as TransactionType,
                    row.date, notes);
