@@ -14,7 +14,7 @@ export interface ReceiptData {
 // baixado uma vez — fora do diretório de instalação do app, que pode não
 // ser gravável. Nada relacionado à imagem em si é enviado pra fora: o
 // reconhecimento roda inteiramente local.
-function cacheDir(): string {
+export function cacheDir(): string {
   return path.join(app.getPath('userData'), 'ocr-cache');
 }
 

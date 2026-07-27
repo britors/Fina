@@ -1,4 +1,4 @@
-import type { Account, Transaction, MonthlySummary, AccountType, TransactionType } from './types';
+import type { Account, Transaction, MonthlySummary, AccountType, TransactionType, CapitalGainsMonth, CapitalGainsReport, InvestmentType, FamilySettlementTransfer } from './types';
 
 export function formatCurrency(amount: number, locale = 'pt-BR', currency = 'BRL'): string {
   const normalized = Object.is(amount, -0) || Math.abs(amount) < 0.005 ? 0 : amount;
@@ -111,6 +111,176 @@ export function invoicePeriodClosingDate(closingDay: number, date: string): stri
 // nesse mês, senão mês seguinte — replica o ciclo real fatura/vencimento.
 export function invoiceDueDate(closingDate: string, closingDay: number, dueDay: number): string {
   return dueDay > closingDay ? addMonthsClamped(closingDate, 0, dueDay) : addMonthsClamped(closingDate, 1, dueDay);
+}
+
+export interface DebtPayoffResult {
+  monthsToPay: number;
+  totalPaid: number;
+  totalInterest: number;
+}
+
+// Simula a quitação de uma única dívida com juros compostos mensais dado um
+// pagamento mensal fixo. Reaproveitada pelo simulador de dívidas e pelo
+// comparador "quitar antecipado vs. investir".
+export function simulateDebtPayoff(balance: number, monthlyRatePct: number, payment: number): DebtPayoffResult {
+  const monthlyRate = monthlyRatePct / 100;
+  let remaining = balance;
+  let months = 0;
+  let totalPaid = 0;
+
+  while (remaining > 0.01 && months < 600) {
+    const interest = remaining * monthlyRate;
+    const owed = remaining + interest;
+    const actualPayment = Math.min(payment, owed);
+    remaining = owed - actualPayment;
+    if (remaining < 0) remaining = 0;
+    totalPaid += actualPayment;
+    months++;
+  }
+
+  return { monthsToPay: months, totalPaid, totalInterest: totalPaid - balance };
+}
+
+// ── Família/casal: simplificação de dívidas (quem deve quem) ─────────────────
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+// Algoritmo guloso de simplificação de dívidas: casa repetidamente o maior
+// credor com o maior devedor até zerar os saldos — minimiza o número de
+// transferências necessárias para acertar as contas do grupo.
+export function simplifyDebts(balances: { member_id: string; member_name: string; net: number }[]): FamilySettlementTransfer[] {
+  const creditors = balances.filter(b => b.net > 0.005).map(b => ({ ...b })).sort((a, b) => b.net - a.net);
+  const debtors = balances.filter(b => b.net < -0.005).map(b => ({ ...b, net: -b.net })).sort((a, b) => b.net - a.net);
+  const transfers: FamilySettlementTransfer[] = [];
+
+  let i = 0;
+  let j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const amount = round2(Math.min(debtors[i].net, creditors[j].net));
+    if (amount > 0.005) {
+      transfers.push({
+        from_member_id: debtors[i].member_id,
+        from_member_name: debtors[i].member_name,
+        to_member_id: creditors[j].member_id,
+        to_member_name: creditors[j].member_name,
+        amount,
+      });
+    }
+    debtors[i].net = round2(debtors[i].net - amount);
+    creditors[j].net = round2(creditors[j].net - amount);
+    if (debtors[i].net <= 0.005) i++;
+    if (creditors[j].net <= 0.005) j++;
+  }
+  return transfers;
+}
+
+// ── Ganho de capital em investimentos (cálculo auxiliar de IRPF) ─────────────
+//
+// Isenções mensais de venda (não de ganho) previstas na legislação vigente:
+// ações negociadas em bolsa até R$20.000/mês; criptomoedas até R$35.000/mês
+// (soma de todas as exchanges/corretoras). Fora disso, alíquota de 15% sobre
+// o ganho apurado pelo custo médio ponderado. Isto NÃO substitui a apuração
+// oficial (GCAP/programa da Receita) — é só um auxílio de planejamento.
+export const CAPITAL_GAINS_EXEMPTION_ACOES = 20000;
+export const CAPITAL_GAINS_EXEMPTION_CRIPTO = 35000;
+export const CAPITAL_GAINS_RATE = 0.15;
+
+export interface CapitalGainsOperation {
+  investment_id: string;
+  investment_type: InvestmentType;
+  type: 'compra' | 'venda';
+  quantity: number;
+  unit_price: number;
+  fees: number;
+  date: string;
+}
+
+// Recebe as operações de compra/venda já com o tipo do investimento anexado
+// (join feito por quem chama) — não depende de banco de dados, só de dados
+// em memória, pra poder ser testada isoladamente.
+export function computeCapitalGains(operations: CapitalGainsOperation[], year: number): CapitalGainsReport {
+  const byInvestment = new Map<string, CapitalGainsOperation[]>();
+  for (const op of operations) {
+    const list = byInvestment.get(op.investment_id) ?? [];
+    list.push(op);
+    byInvestment.set(op.investment_id, list);
+  }
+
+  const monthly = new Map<string, { investment_type: InvestmentType; total_sold: number; cost_basis: number; gain: number }>();
+
+  for (const ops of byInvestment.values()) {
+    const sorted = [...ops].sort((a, b) => a.date.localeCompare(b.date));
+    let qty = 0;
+    let costBasis = 0;
+
+    for (const op of sorted) {
+      if (op.type === 'compra') {
+        qty += op.quantity;
+        costBasis += op.quantity * op.unit_price + op.fees;
+        continue;
+      }
+
+      const avgCost = qty > 0 ? costBasis / qty : 0;
+      const soldQty = Math.min(op.quantity, qty);
+      const proceeds = soldQty * op.unit_price - op.fees;
+      const cost = soldQty * avgCost;
+      qty -= soldQty;
+      costBasis -= cost;
+
+      if (op.date.slice(0, 4) !== String(year)) continue;
+
+      const month = op.date.slice(0, 7);
+      const key = `${month}|${op.investment_type}`;
+      const entry = monthly.get(key) ?? { investment_type: op.investment_type, total_sold: 0, cost_basis: 0, gain: 0 };
+      entry.total_sold += proceeds;
+      entry.cost_basis += cost;
+      entry.gain += proceeds - cost;
+      monthly.set(key, entry);
+    }
+  }
+
+  const months: CapitalGainsMonth[] = [...monthly.entries()]
+    .map(([key, v]) => {
+      const [month] = key.split('|');
+      const exemptionLimit = v.investment_type === 'cripto' ? CAPITAL_GAINS_EXEMPTION_CRIPTO : CAPITAL_GAINS_EXEMPTION_ACOES;
+      const exempt = v.total_sold <= exemptionLimit;
+      const suggestedDarf = !exempt && v.gain > 0 ? v.gain * CAPITAL_GAINS_RATE : 0;
+      return {
+        month,
+        investment_type: v.investment_type,
+        total_sold: v.total_sold,
+        cost_basis: v.cost_basis,
+        gain: v.gain,
+        exempt,
+        exemption_limit: exemptionLimit,
+        suggested_darf: suggestedDarf,
+      };
+    })
+    .sort((a, b) => a.month.localeCompare(b.month) || a.investment_type.localeCompare(b.investment_type));
+
+  return {
+    year,
+    months,
+    total_gain: months.reduce((s, m) => s + m.gain, 0),
+    total_suggested_darf: months.reduce((s, m) => s + m.suggested_darf, 0),
+  };
+}
+
+// Projeta o valor mês a mês com aporte mensal fixo e taxa anual equivalente
+// convertida para mensal. Retorna `months + 1` valores (índice 0 = inicial).
+// Reaproveitada pelo simulador de patrimônio e pelo comparador "quitar
+// antecipado vs. investir".
+export function projectCompoundGrowth(initial: number, monthlyContribution: number, annualRatePct: number, months: number): number[] {
+  const monthlyRate = Math.pow(1 + annualRatePct / 100, 1 / 12) - 1;
+  const values = [initial];
+  let value = initial;
+  for (let i = 1; i <= months; i++) {
+    value = value * (1 + monthlyRate) + monthlyContribution;
+    values.push(value);
+  }
+  return values;
 }
 
 // --- Open Finance: normalização de dados remotos (Pluggy, Klavi, ...) ---

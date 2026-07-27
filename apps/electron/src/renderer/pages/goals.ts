@@ -4,7 +4,7 @@ import { setTopbarActions } from '../components/topbar';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
-import type { Account, AIGoalDraft, Debt, Goal, GoalType } from '../../shared/types';
+import type { Account, AIGoalDraft, Debt, FamilyMember, Goal, GoalContributionWithMember, GoalType } from '../../shared/types';
 
 const TYPE_META: Record<GoalType, { label: string; icon: string; color: string }> = {
   viagem:      { label: 'Viagem',              icon: 'ti-plane',       color: '#3B82F6' },
@@ -18,17 +18,21 @@ export async function render(el: HTMLElement): Promise<void> {
   let goals: Goal[] = [];
   let accounts: Account[] = [];
   let suggestions: SuggestedGoal[] = [];
+  let familyMembers: FamilyMember[] = [];
 
   async function load(): Promise<void> {
-    const [loadedGoals, loadedAccounts, history, debts] = await Promise.all([
+    const settings = await invoke<Record<string, string>>('settings:getAll');
+    const [loadedGoals, loadedAccounts, history, debts, members] = await Promise.all([
       invoke<Goal[]>('goals:list'),
       invoke<Account[]>('accounts:list'),
       invoke<{ income: number; expense: number }[]>('transactions:getMonthlyHistory', 3),
       invoke<Debt[]>('debts:list'),
+      settings.family_mode === 'true' ? invoke<FamilyMember[]>('familyMembers:list') : Promise.resolve([]),
     ]);
     goals = loadedGoals;
     accounts = loadedAccounts;
     suggestions = buildSuggestions(goals, accounts, history, debts);
+    familyMembers = members;
   }
 
   setTopbarActions(`
@@ -145,8 +149,11 @@ export async function render(el: HTMLElement): Promise<void> {
               </div>
 
               <div style="display:flex;gap:6px">
-                <button class="btn btn-sm btn-secondary btn-edit-goal" data-id="${g.id}" style="flex:1">
-                  <i class="ti ti-pencil"></i> Editar
+                <button class="btn btn-sm btn-secondary btn-contrib-goal" data-id="${g.id}" style="flex:1">
+                  <i class="ti ti-piggy-bank"></i> Aportes
+                </button>
+                <button class="btn btn-sm btn-secondary btn-edit-goal" data-id="${g.id}">
+                  <i class="ti ti-pencil"></i>
                 </button>
                 <button class="btn btn-sm btn-danger btn-del-goal" data-id="${g.id}">
                   <i class="ti ti-trash"></i>
@@ -176,6 +183,12 @@ export async function render(el: HTMLElement): Promise<void> {
         await renderPage();
       });
     });
+    el.querySelectorAll<HTMLElement>('.btn-contrib-goal').forEach(btn =>
+      btn.addEventListener('click', () => {
+        const g = goals.find(x => x.id === btn.dataset.id);
+        if (g) void openContributionsModal(g);
+      })
+    );
     el.querySelectorAll<HTMLElement>('.btn-edit-goal').forEach(btn =>
       btn.addEventListener('click', () => openModal(goals.find(g => g.id === btn.dataset.id) ?? null))
     );
@@ -279,6 +292,98 @@ export async function render(el: HTMLElement): Promise<void> {
       await load();
       await renderPage();
     });
+  }
+
+  async function openContributionsModal(goal: Goal): Promise<void> {
+    let contributions = await invoke<GoalContributionWithMember[]>('goals:listContributions', goal.id);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    document.body.appendChild(overlay);
+
+    function renderModal(): void {
+      overlay.innerHTML = `
+        <div class="modal" style="max-width:520px">
+          <div class="modal-header">
+            <span class="modal-title">Aportes — ${esc(goal.name)}</span>
+            <button class="btn btn-ghost btn-sm modal-close"><i class="ti ti-x"></i></button>
+          </div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+            <table class="table">
+              <thead><tr><th>DATA</th><th>PESSOA</th><th style="text-align:right">VALOR</th><th></th></tr></thead>
+              <tbody>
+                ${contributions.length === 0
+                  ? `<tr><td colspan="4" style="color:var(--text-3);padding:10px 0">Nenhum aporte registrado</td></tr>`
+                  : contributions.map(c => `<tr>
+                      <td>${c.date}</td>
+                      <td>${esc(c.member_name ?? '—')}</td>
+                      <td style="text-align:right">${formatCurrency(c.amount)}</td>
+                      <td style="text-align:right"><button class="btn btn-ghost btn-sm btn-del-contrib" data-id="${c.id}" style="color:var(--danger)"><i class="ti ti-trash"></i></button></td>
+                    </tr>`).join('')}
+              </tbody>
+            </table>
+            <div class="card" style="padding:12px 14px">
+              <div class="form-row">
+                ${familyMembers.length > 0 ? `
+                  <div class="form-group" style="flex:0 0 160px">
+                    <label class="form-label">Pessoa</label>
+                    <select class="form-ctrl" id="contrib-member">
+                      <option value="">— Não informar —</option>
+                      ${familyMembers.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}
+                    </select>
+                  </div>
+                ` : ''}
+                <div class="form-group" style="flex:0 0 130px">
+                  <label class="form-label">Data</label>
+                  <input class="form-ctrl" id="contrib-date" type="date" value="${new Date().toISOString().slice(0, 10)}">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Valor</label>
+                  <input class="form-ctrl" id="contrib-amount" type="text" inputmode="decimal" value="${formatMoneyValue(0)}">
+                </div>
+              </div>
+              <button class="btn btn-primary" id="btn-add-contrib" style="width:100%;justify-content:center">
+                <i class="ti ti-plus"></i> Registrar aporte
+              </button>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary modal-close">Fechar</button>
+          </div>
+        </div>`;
+
+      attachMoneyMask(overlay.querySelector('#contrib-amount'));
+      overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', async () => {
+        overlay.remove();
+        await load();
+        await renderPage();
+      }));
+
+      overlay.querySelectorAll<HTMLElement>('.btn-del-contrib').forEach(btn =>
+        btn.addEventListener('click', async () => {
+          if (!await showConfirm('Excluir este aporte?', { danger: true, okLabel: 'Excluir' })) return;
+          await invoke('goals:deleteContribution', btn.dataset.id);
+          contributions = await invoke('goals:listContributions', goal.id);
+          renderModal();
+        })
+      );
+
+      overlay.querySelector('#btn-add-contrib')?.addEventListener('click', async () => {
+        const amount = moneyInputValue(overlay.querySelector<HTMLInputElement>('#contrib-amount'));
+        if (!amount || amount <= 0) { showAlert('Informe um valor de aporte válido.'); return; }
+        await invoke('goals:addContribution', {
+          goal_id: goal.id,
+          member_id: (overlay.querySelector<HTMLSelectElement>('#contrib-member')?.value) || null,
+          amount,
+          date: (overlay.querySelector<HTMLInputElement>('#contrib-date')!).value,
+          note: null,
+        });
+        contributions = await invoke('goals:listContributions', goal.id);
+        renderModal();
+      });
+    }
+
+    renderModal();
   }
 
   await load();

@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { getDb } from './database';
 import { performBackup, backupFileName, cleanupOldBackups } from './ipc/backup';
+import { exportIncrementalBackup, getLastIncrementalBackupAt, incrementalBackupFileName, setLastIncrementalBackupAt, sqliteNow } from './incrementalBackup';
 
 type AutoBackupEvent = 'on_open' | 'on_close' | 'scheduled';
 
@@ -23,12 +24,31 @@ function isScheduleDue(trigger: string, lastIso: string | null): boolean {
   return false;
 }
 
-function doBackup(folder: string): void {
+function doBackup(folder: string, lastKey = 'autobackup_last'): void {
   const filePath = path.join(folder, backupFileName());
   performBackup(filePath);
   cleanupOldBackups(folder);
-  setSetting('autobackup_last', new Date().toISOString());
+  setSetting(lastKey, new Date().toISOString());
   console.log(`[AutoBackup] Backup automático salvo em: ${filePath}`);
+}
+
+function isIncrementalDue(lastIso: string | null): boolean {
+  if (!lastIso) return true;
+  return (Date.now() - new Date(lastIso).getTime()) / 3_600_000 >= 1;
+}
+
+// Complementa o backup incremental de hora em hora: o patch não captura
+// exclusões, então um backup completo semanal reconcilia o estado real.
+function doIncrementalBackup(folder: string): void {
+  const filePath = path.join(folder, incrementalBackupFileName());
+  exportIncrementalBackup(getLastIncrementalBackupAt(), filePath);
+  setLastIncrementalBackupAt(sqliteNow());
+  setSetting('autobackup_last', new Date().toISOString());
+  console.log(`[AutoBackup] Backup incremental salvo em: ${filePath}`);
+
+  if (isScheduleDue('weekly', getSetting('autobackup_last_full'))) {
+    doBackup(folder, 'autobackup_last_full');
+  }
 }
 
 export function runAutoBackup(event: AutoBackupEvent): void {
@@ -41,6 +61,9 @@ export function runAutoBackup(event: AutoBackupEvent): void {
     if (event === 'on_close' && trigger === 'on_close') { doBackup(folder); return; }
     if (event === 'scheduled' && (trigger === 'daily' || trigger === 'weekly' || trigger === 'monthly')) {
       if (isScheduleDue(trigger, getSetting('autobackup_last'))) doBackup(folder);
+    }
+    if (event === 'scheduled' && trigger === 'incremental_hourly' && isIncrementalDue(getSetting('autobackup_last'))) {
+      doIncrementalBackup(folder);
     }
   } catch (err) {
     console.error('[AutoBackup] Falha ao gerar backup automático:', err);

@@ -1,8 +1,9 @@
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
-import type { BillWithCategory, ReceivableWithCategory, TransactionWithDetails } from '../../shared/types';
+import type { BillWithCategory, ReceivableWithCategory, TransactionWithDetails, WeeklyReviewState, WeeklyReviewStreak } from '../../shared/types';
 
 const STORAGE_KEY = 'fina.weeklyReview.completed';
+const MIGRATED_KEY = 'fina.weeklyReview.migratedToSqlite';
 
 const ITEMS = [
   { id: 'transactions', label: 'Conferir lançamentos da semana', route: 'transactions' },
@@ -14,18 +15,22 @@ const ITEMS = [
 ];
 
 export async function render(el: HTMLElement): Promise<void> {
+  await migrateLegacyIfNeeded();
+
   const today = new Date();
   const from = new Date();
   from.setDate(today.getDate() - 6);
   const dateFrom = from.toISOString().slice(0, 10);
   const dateTo = today.toISOString().slice(0, 10);
-  const [txs, bills, receivables] = await Promise.all([
+  const [txs, bills, receivables, state, streak] = await Promise.all([
     invoke<TransactionWithDetails[]>('transactions:list', { dateFrom, dateTo, limit: 500 }),
     invoke<BillWithCategory[]>('bills:list', { dateFrom, dateTo }),
     invoke<ReceivableWithCategory[]>('receivables:list', { dateFrom, dateTo }),
+    invoke<WeeklyReviewState>('weeklyReview:getState', weekKey()),
+    invoke<WeeklyReviewStreak>('weeklyReview:getStreak'),
   ]);
 
-  const completed = readCompleted();
+  const completed = new Set(state.completed_items);
   const income = txs.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
   const expense = txs.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
   const pendingBills = bills.filter(b => b.status !== 'paid').reduce((sum, b) => sum + b.amount, 0);
@@ -68,6 +73,12 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="prog-track" style="height:10px">
           <div class="prog-fill" style="width:${((doneCount / ITEMS.length) * 100).toFixed(0)}%"></div>
         </div>
+        ${streak.current_streak > 0 || streak.best_streak > 0 ? `
+          <div style="margin-top:10px;font-size:0.8rem;color:var(--text-3);display:flex;gap:16px">
+            <span><i class="ti ti-flame" style="color:var(--warning)"></i> Sequência atual: <strong style="color:var(--text-2)">${streak.current_streak} semana${streak.current_streak !== 1 ? 's' : ''}</strong></span>
+            <span><i class="ti ti-trophy" style="color:var(--accent)"></i> Recorde: <strong style="color:var(--text-2)">${streak.best_streak} semana${streak.best_streak !== 1 ? 's' : ''}</strong></span>
+          </div>
+        ` : ''}
       </div>
     </div>
 
@@ -83,10 +94,15 @@ export async function render(el: HTMLElement): Promise<void> {
   `;
 
   el.querySelectorAll<HTMLInputElement>('[data-item]').forEach(input => {
-    input.addEventListener('change', () => {
+    input.addEventListener('change', async () => {
       if (input.checked) completed.add(input.dataset.item!);
       else completed.delete(input.dataset.item!);
-      writeCompleted(completed);
+      const items = [...completed];
+      await invoke('weeklyReview:setState', {
+        week_start: weekKey(),
+        completed_items: items,
+        completed_at: items.length === ITEMS.length ? new Date().toISOString() : null,
+      });
       render(el);
     });
   });
@@ -99,21 +115,21 @@ function weekKey(): string {
   return start.toISOString().slice(0, 10);
 }
 
-function readCompleted(): Set<string> {
+// Migração única: o histórico de revisão semanal vivia só em localStorage
+// (perdido em restore de backup e não sincronizado entre dispositivos).
+// Importa tudo pra tabela SQLite na primeira vez que essa tela carrega após
+// o update, e nunca mais toca em localStorage depois disso.
+async function migrateLegacyIfNeeded(): Promise<void> {
+  if (localStorage.getItem(MIGRATED_KEY)) return;
   try {
-    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
-    const list = data[weekKey()];
-    return Array.isArray(list) ? new Set(list) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function writeCompleted(completed: Set<string>): void {
-  let data: Record<string, string[]> = {};
-  try {
-    data = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
-  } catch { /* noop */ }
-  data[weekKey()] = [...completed];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Record<string, string[]>;
+    await Promise.all(Object.entries(data).map(([week_start, items]) =>
+      invoke('weeklyReview:setState', {
+        week_start,
+        completed_items: items,
+        completed_at: Array.isArray(items) && items.length === ITEMS.length ? week_start : null,
+      })
+    ));
+  } catch { /* localStorage vazio/corrompido — não há nada pra migrar */ }
+  localStorage.setItem(MIGRATED_KEY, 'true');
 }

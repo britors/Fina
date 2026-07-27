@@ -351,7 +351,21 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
   });
 }
 
+// Família e MEI são duas subseções independentes na mesma tela. Cada uma
+// renderiza e salva só o próprio bloco (containers separados) — se as duas
+// compartilhassem um innerHTML e um re-render após salvar, alternar os dois
+// toggles e salvar um apagaria o valor ainda não salvo do outro (o re-render
+// reconstrói o HTML a partir de `s`, que só é atualizado pelo save que rodou).
 function renderFamily(el: HTMLElement, s: Settings): void {
+  el.innerHTML = `
+    <div id="family-subsection"></div>
+    <div id="mei-subsection" style="margin-top:28px"></div>
+  `;
+  renderFamilySubsection(el.querySelector('#family-subsection')!, s);
+  renderMeiSubsection(el.querySelector('#mei-subsection')!, s);
+}
+
+function renderFamilySubsection(el: HTMLElement, s: Settings): void {
   const enabled = s.family_mode === 'true';
   const members = s.family_members ?? '';
 
@@ -396,7 +410,40 @@ function renderFamily(el: HTMLElement, s: Settings): void {
     s.family_mode = family_mode;
     s.family_members = family_members;
     showAlert('Configurações de família/casal salvas.');
-    renderFamily(el, s);
+    renderFamilySubsection(el, s);
+  });
+}
+
+function renderMeiSubsection(el: HTMLElement, s: Settings): void {
+  const meiEnabled = s.mei_enabled === 'true';
+
+  el.innerHTML = `
+    <div class="settings-section-label">MEI (MICROEMPREENDEDOR INDIVIDUAL)</div>
+    <div class="settings-hr"></div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">Ativar livro-caixa MEI</div>
+        <div class="settings-row-sub">Mostra a opção "Receita MEI" em Lançamentos e habilita a tela MEI (faturamento vs. limite anual, controle de DAS)</div>
+      </div>
+      <div class="settings-row-right">
+        <label class="toggle">
+          <input type="checkbox" id="mei-enabled" ${meiEnabled ? 'checked' : ''}>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+    <div style="margin-top:16px;display:flex;justify-content:flex-end">
+      <button class="btn btn-primary" id="save-mei">Salvar MEI</button>
+    </div>
+  `;
+
+  el.querySelector('#save-mei')?.addEventListener('click', async () => {
+    const mei_enabled = el.querySelector<HTMLInputElement>('#mei-enabled')!.checked ? 'true' : 'false';
+    await invoke('settings:setMany', { mei_enabled });
+    s.mei_enabled = mei_enabled;
+    showAlert('Configurações de MEI salvas.');
+    renderMeiSubsection(el, s);
   });
 }
 
@@ -407,6 +454,7 @@ const AUTOBACKUP_TRIGGERS: { value: string; label: string }[] = [
   { value: 'daily',    label: 'Diariamente' },
   { value: 'weekly',   label: 'Semanalmente' },
   { value: 'monthly',  label: 'Mensalmente' },
+  { value: 'incremental_hourly', label: 'Incremental de hora em hora' },
 ];
 
 async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise<void> {
@@ -456,6 +504,29 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
            <div class="settings-row-sub" style="word-break:break-all;max-width:380px">${folder ? esc(folder) : 'Nenhuma pasta selecionada'}</div></div>
       <div class="settings-row-right">
         <button class="btn btn-ghost btn-sm" id="btn-autobackup-folder">Escolher pasta</button>
+      </div>
+    </div>
+    ${trigger === 'incremental_hourly' ? `
+      <div style="background:rgba(239,159,39,.08);border:1px solid rgba(239,159,39,.25);border-radius:8px;padding:10px 14px;font-size:0.78rem;color:var(--text-2);line-height:1.5;margin-top:8px">
+        <i class="ti ti-alert-triangle" style="color:var(--warning)"></i>
+        O patch incremental (.finpatch) não captura exclusões nem edições em categorias — por isso um backup completo (.fin) continua sendo gerado automaticamente 1x por semana para reconciliar.
+      </div>
+    ` : ''}
+
+    <div class="settings-section-label" style="margin-top:20px">BACKUP INCREMENTAL MANUAL</div>
+    <div class="settings-hr"></div>
+    <div class="settings-row">
+      <div><div class="settings-row-label">Exportar patch incremental</div>
+           <div class="settings-row-sub">Gera um .finpatch só com o que mudou desde o último export incremental (mais rápido que um backup completo)</div></div>
+      <div class="settings-row-right">
+        <button class="btn btn-ghost btn-sm" id="btn-export-incremental">Exportar</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div><div class="settings-row-label">Importar patch incremental</div>
+           <div class="settings-row-sub">Aplica um .finpatch recebido de outro dispositivo (não substitui nada além do que está no arquivo)</div></div>
+      <div class="settings-row-right">
+        <button class="btn btn-ghost btn-sm" id="btn-import-incremental">Importar</button>
       </div>
     </div>
 
@@ -513,6 +584,23 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
   el.querySelector('#btn-export')?.addEventListener('click', async () => {
     const savedPath = await invoke<string | null>('backup:export');
     if (savedPath) showAlert(`Backup salvo em:\n${savedPath}`);
+  });
+
+  el.querySelector('#btn-export-incremental')?.addEventListener('click', async () => {
+    const result = await invoke<{ file_path: string; table_counts: Record<string, number> } | null>('backup:exportIncremental');
+    if (!result) return;
+    const total = Object.values(result.table_counts).reduce((s, n) => s + n, 0);
+    showAlert(`Patch incremental salvo em:\n${result.file_path}\n\n${total} linha(s) alterada(s) desde o último export incremental.`);
+  });
+
+  el.querySelector('#btn-import-incremental')?.addEventListener('click', async () => {
+    if (!await showConfirm('Importar um patch incremental? Isso soma/atualiza dados sem apagar nada que já existe.', { okLabel: 'Importar' })) return;
+    try {
+      const result = await invoke<{ imported: boolean }>('backup:importIncremental');
+      if (result.imported) showAlert('Patch incremental importado com sucesso.');
+    } catch (err) {
+      showAlert(err instanceof Error ? err.message : 'Não foi possível importar o patch incremental.');
+    }
   });
 
   el.querySelector('#btn-import-backup')?.addEventListener('click', async () => {

@@ -2,12 +2,15 @@ import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { showAlert } from '../components/alertDialog';
-import type { IRPFReport, IRPFImportPreview } from '../../shared/types';
+import type { IRPFReport, IRPFImportPreview, CapitalGainsReport } from '../../shared/types';
+
+const CAPITAL_GAINS_TYPE_LABEL: Record<string, string> = { renda_variavel: 'Ações/renda variável', cripto: 'Criptomoeda' };
 
 export async function render(el: HTMLElement): Promise<void> {
   const currentYear = new Date().getFullYear();
   let year = currentYear - 1;
   let report: IRPFReport | null = null;
+  let capitalGains: CapitalGainsReport | null = null;
   let loading = false;
 
   setTopbarActions(`
@@ -58,7 +61,10 @@ export async function render(el: HTMLElement): Promise<void> {
   async function fetchAndRender(): Promise<void> {
     loading = true;
     renderPage();
-    report = await invoke<IRPFReport>('irpf:getReport', year);
+    [report, capitalGains] = await Promise.all([
+      invoke<IRPFReport>('irpf:getReport', year),
+      invoke<CapitalGainsReport>('irpf:getCapitalGains', year),
+    ]);
     loading = false;
     const pdfBtn = document.getElementById('btn-irpf-pdf') as HTMLButtonElement | null;
     if (pdfBtn) pdfBtn.disabled = false;
@@ -134,6 +140,9 @@ export async function render(el: HTMLElement): Promise<void> {
           r.total_deducoes,
           'Nenhuma dedução encontrada — verifique se suas categorias incluem "Saúde" ou "Educação"'
         )}
+
+        <!-- Ganho de capital / DARF -->
+        ${capitalGainsSection(capitalGains)}
 
         <!-- Bens -->
         <div class="card">
@@ -302,6 +311,38 @@ function previewRow(label: string, total: number, count: number): string {
     <div style="font-size:0.75rem;color:var(--text-3)">${label} (${count})</div>
     <div style="font-weight:600;margin-top:2px">${formatCurrency(total)}</div>
   </div>`;
+}
+
+function capitalGainsSection(cg: CapitalGainsReport | null): string {
+  if (!cg) return '';
+  return `
+    <div class="card">
+      <div class="card-header">
+        <span style="display:flex;align-items:center;gap:8px">
+          <i class="ti ti-chart-candle" style="color:#EF9F27"></i> Ganho de capital em investimentos (DARF)
+        </span>
+        <span style="font-weight:600;color:${cg.total_suggested_darf > 0 ? 'var(--danger)' : 'var(--accent)'}">${formatCurrency(cg.total_suggested_darf)}</span>
+      </div>
+      <div class="card-hr"></div>
+      ${cg.months.length === 0
+        ? `<div class="empty" style="padding:16px"><div class="empty-title" style="font-size:0.82rem">Nenhuma venda de ações ou criptomoeda registrada em ${cg.year} (cadastre operações em Investimentos)</div></div>`
+        : `<table class="table">
+            <thead><tr><th>MÊS</th><th>TIPO</th><th style="text-align:right">VENDIDO</th><th style="text-align:right">GANHO</th><th>ISENÇÃO</th><th style="text-align:right">DARF SUGERIDO</th></tr></thead>
+            <tbody>
+              ${cg.months.map(m => `<tr>
+                <td>${m.month}</td>
+                <td style="color:var(--text-3);font-size:0.78rem">${CAPITAL_GAINS_TYPE_LABEL[m.investment_type] ?? m.investment_type}</td>
+                <td style="text-align:right">${formatCurrency(m.total_sold)}</td>
+                <td style="text-align:right;color:${m.gain >= 0 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(m.gain)}</td>
+                <td>${m.exempt ? `<span class="badge badge-ok">Isento (até ${formatCurrency(m.exemption_limit)})</span>` : '<span class="badge badge-confirmed">Não isento</span>'}</td>
+                <td style="text-align:right;font-weight:600">${formatCurrency(m.suggested_darf)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>`}
+      <div style="padding:10px 16px;font-size:0.78rem;color:var(--text-3);line-height:1.5;border-top:0.5px solid var(--border)">
+        Cálculo auxiliar por custo médio ponderado das operações cadastradas em Investimentos — não substitui a apuração oficial (GCAP/programa da Receita Federal). Alíquota de 15% sobre o ganho quando o total vendido no mês ultrapassa a isenção.
+      </div>
+    </div>`;
 }
 
 function sectionCard(

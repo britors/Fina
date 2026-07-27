@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
-import type { CategorySplit, CategorySplitWithCategory, PaymentSplit, PaymentSplitWithAccount, Transaction, TransactionFilters, TransactionType } from '../../shared/types';
+import type { CategorySplit, CategorySplitWithCategory, PaymentSplit, PaymentSplitWithAccount, Transaction, TransactionFilters, TransactionMemberSplit, TransactionMemberSplitWithMember, TransactionType } from '../../shared/types';
 import { isCreditLikeAccountType, isPixEligibleAccountType } from '../../shared/utils';
 import { attachToInvoice, adjustInvoiceAmount } from '../invoices';
 import { buildExpenseAnalyticsWhere, categoryOrChildPredicate, transactionCategoryOrChildPredicate, EXPENSES_BY_ROOT_MONTH_SQL, EXPENSES_BY_ROOT_RANGE_SQL, EXPENSE_CATEGORY_DETAILS_SQL, EXPENSE_MONTHLY_ROOT_SERIES_SQL, EXPENSE_MONTHLY_SUBCATEGORY_SERIES_SQL, EXPENSE_SUBCATEGORY_BREAKDOWN_SQL } from '../categoryHierarchyQueries';
@@ -17,8 +17,8 @@ const JOIN = `
   LEFT JOIN categories parent ON parent.id = c.parent_id
 `;
 
-type TransactionInput = Omit<Transaction, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[]; categories?: CategorySplit[] };
-type TransactionUpdateInput = Partial<Transaction> & { id: string; payments?: PaymentSplit[]; categories?: CategorySplit[] };
+type TransactionInput = Omit<Transaction, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[]; categories?: CategorySplit[]; member_splits?: TransactionMemberSplit[] };
+type TransactionUpdateInput = Partial<Transaction> & { id: string; payments?: PaymentSplit[]; categories?: CategorySplit[]; member_splits?: TransactionMemberSplit[] };
 type InstallmentTransactionInput = TransactionInput & { installments: number };
 
 export function balanceDelta(type: TransactionType, amount: number): number {
@@ -141,6 +141,42 @@ function assertCategoryType(categoryId: string, transactionType: TransactionType
   }
 }
 
+// Rateio opcional por membro da família (quem deve quem). Ausente ou vazio
+// não altera nada — é aditivo ao comportamento existente sem `owner`.
+function normalizeMemberSplits(amount: number, splits?: TransactionMemberSplit[]): TransactionMemberSplit[] {
+  if (!splits?.length) return [];
+  const seen = new Set<string>();
+  let total = 0;
+  for (const split of splits) {
+    if (!split.member_id) throw new Error('Selecione todos os membros do rateio.');
+    if (!Number.isFinite(split.share_amount) || split.share_amount <= 0) throw new Error('Informe valores válidos para o rateio entre membros.');
+    if (seen.has(split.member_id)) throw new Error('Não repita o mesmo membro no rateio.');
+    seen.add(split.member_id);
+    total += split.share_amount;
+  }
+  if (Math.abs(total - amount) > 0.005) {
+    throw new Error('A soma do rateio entre membros deve ser igual ao valor total.');
+  }
+  return splits.map(split => ({ member_id: split.member_id, share_amount: roundMoney(split.share_amount) }));
+}
+
+function replaceTransactionMemberSplits(transactionId: string, splits: TransactionMemberSplit[]): void {
+  const db = getDb();
+  db.prepare('DELETE FROM transaction_member_splits WHERE transaction_id = ?').run(transactionId);
+  const stmt = db.prepare('INSERT INTO transaction_member_splits (id, transaction_id, member_id, share_amount) VALUES (?,?,?,?)');
+  for (const split of splits) {
+    stmt.run(randomUUID(), transactionId, split.member_id, split.share_amount);
+  }
+}
+
+function getTransactionMemberSplits(transactionId: string): TransactionMemberSplitWithMember[] {
+  return getDb().prepare(`
+    SELECT s.member_id, s.share_amount, m.name AS member_name
+    FROM transaction_member_splits s JOIN family_members m ON m.id = s.member_id
+    WHERE s.transaction_id = ?
+  `).all(transactionId) as TransactionMemberSplitWithMember[];
+}
+
 function replaceTransactionPayments(transactionId: string, payments: PaymentSplit[]): void {
   const db = getDb();
   db.prepare('DELETE FROM transaction_payments WHERE transaction_id = ?').run(transactionId);
@@ -169,13 +205,20 @@ function getTransactionCategories(transactionId: string): CategorySplitWithCateg
   `).all(transactionId) as CategorySplitWithCategory[];
 }
 
-function insertTransaction(data: TransactionInput, id: string, primaryAccountId: string, payments: PaymentSplit[], categories: CategorySplit[]): void {
+function insertTransaction(
+  data: TransactionInput, id: string, primaryAccountId: string, payments: PaymentSplit[], categories: CategorySplit[], memberSplits: TransactionMemberSplit[] = [],
+): void {
   const primaryCategoryId = categories[0]?.category_id ?? data.category_id;
-  getDb().prepare(
-    'INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, type, date, status, notes, recurring, owner) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
-  ).run(id, primaryAccountId, data.to_account_id ?? null, primaryCategoryId, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null);
+  getDb().prepare(`
+    INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, type, date, status,
+      notes, recurring, owner, is_mei_revenue, installment_group_id, installment_index, installment_total, paid_by_member_id)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `).run(id, primaryAccountId, data.to_account_id ?? null, primaryCategoryId, data.description, data.amount, data.type, data.date, data.status,
+         data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null, data.is_mei_revenue ? 1 : 0,
+         data.installment_group_id ?? null, data.installment_index ?? null, data.installment_total ?? null, data.paid_by_member_id ?? null);
   replaceTransactionPayments(id, payments);
   if (categories.length) replaceTransactionCategories(id, categories);
+  if (memberSplits.length) replaceTransactionMemberSplits(id, memberSplits);
 }
 
 function splitInstallmentAmounts(amount: number, installments: number): number[] {
@@ -222,17 +265,18 @@ function getTransactionPayments(transactionId: string): PaymentSplitWithAccount[
   `).all(transactionId) as PaymentSplitWithAccount[];
 }
 
-function enrichTransaction<T extends Transaction & { account_name: string }>(row: T | undefined | null): (T & { payments: PaymentSplitWithAccount[]; categories: CategorySplitWithCategory[] }) | null {
+function enrichTransaction<T extends Transaction & { account_name: string }>(row: T | undefined | null): (T & { payments: PaymentSplitWithAccount[]; categories: CategorySplitWithCategory[]; member_splits: TransactionMemberSplitWithMember[] }) | null {
   if (!row) return null;
   const payments = getTransactionPayments(row.id);
   const categories = getTransactionCategories(row.id);
+  const memberSplits = getTransactionMemberSplits(row.id);
   const accountName = payments.length > 1
     ? payments.map(p => p.account_name).join(' + ')
     : payments[0]?.account_name ?? row.account_name;
-  return { ...row, account_name: accountName, payments, categories };
+  return { ...row, account_name: accountName, payments, categories, member_splits: memberSplits };
 }
 
-function enrichTransactions<T extends Transaction & { account_name: string }>(rows: T[]): (T & { payments: PaymentSplitWithAccount[]; categories: CategorySplitWithCategory[] })[] {
+function enrichTransactions<T extends Transaction & { account_name: string }>(rows: T[]): (T & { payments: PaymentSplitWithAccount[]; categories: CategorySplitWithCategory[]; member_splits: TransactionMemberSplitWithMember[] })[] {
   return rows.map(row => enrichTransaction(row)!);
 }
 
@@ -441,11 +485,12 @@ export function registerTransactionHandlers(): void {
     }
     const payments = normalizePayments(data);
     const categories = normalizeCategories(data);
+    const memberSplits = normalizeMemberSplits(data.amount, data.member_splits);
     const primaryAccountId = data.type === 'transfer' ? data.account_id : payments[0]?.account_id ?? data.account_id;
     const id = randomUUID();
     const db = getDb();
     db.transaction(() => {
-      insertTransaction(data, id, primaryAccountId, payments, categories);
+      insertTransaction(data, id, primaryAccountId, payments, categories, memberSplits);
       if (data.status === 'confirmed') {
         applyBalanceEffect({ ...data, id, account_id: primaryAccountId, payments }, 1);
       }
@@ -462,6 +507,7 @@ export function registerTransactionHandlers(): void {
     const amounts = splitInstallmentAmounts(data.amount, data.installments);
     const primaryAccountId = payments[0].account_id;
     const primaryCategoryId = categories[0].category_id;
+    const groupId = randomUUID();
     const db = getDb();
 
     db.transaction(() => {
@@ -475,6 +521,9 @@ export function registerTransactionHandlers(): void {
           description: `${data.description} (${index + 1}/${data.installments})`,
           payments: [{ account_id: primaryAccountId, amount }],
           categories: [{ category_id: primaryCategoryId, amount }],
+          installment_group_id: groupId,
+          installment_index: index + 1,
+          installment_total: data.installments,
         };
         const installmentPayments = [{ account_id: primaryAccountId, amount }];
         const installmentCategories = [{ category_id: primaryCategoryId, amount }];
@@ -496,6 +545,7 @@ export function registerTransactionHandlers(): void {
     }
     const payments = normalizePayments(data as TransactionInput);
     const categories = normalizeCategories(data as TransactionInput);
+    const memberSplits = normalizeMemberSplits(data.amount!, (data as TransactionInput).member_splits);
     const primaryAccountId = data.type === 'transfer' ? data.account_id! : payments[0]?.account_id ?? data.account_id!;
     const primaryCategoryId = data.type === 'transfer' ? data.category_id! : categories[0]?.category_id ?? data.category_id!;
     const db = getDb();
@@ -503,8 +553,8 @@ export function registerTransactionHandlers(): void {
       const old = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as Transaction | undefined;
       const oldPayments = old ? getTransactionPayments(id) : [];
       db.prepare(
-        `UPDATE transactions SET account_id=?, to_account_id=?, category_id=?, description=?, amount=?, type=?, date=?, status=?, notes=?, recurring=?, owner=?, updated_at=datetime('now') WHERE id=?`
-      ).run(primaryAccountId, data.to_account_id ?? null, primaryCategoryId, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null, id);
+        `UPDATE transactions SET account_id=?, to_account_id=?, category_id=?, description=?, amount=?, type=?, date=?, status=?, notes=?, recurring=?, owner=?, is_mei_revenue=?, paid_by_member_id=?, updated_at=datetime('now') WHERE id=?`
+      ).run(primaryAccountId, data.to_account_id ?? null, primaryCategoryId, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null, data.is_mei_revenue ? 1 : 0, data.paid_by_member_id ?? null, id);
 
       if (old) {
         const wasConfirmed = old.status === 'confirmed';
@@ -516,6 +566,7 @@ export function registerTransactionHandlers(): void {
         }
         replaceTransactionPayments(id, payments);
         if (categories.length) replaceTransactionCategories(id, categories);
+        replaceTransactionMemberSplits(id, memberSplits);
         if (isConfirmed) {
           // Aplica o novo efeito
           applyBalanceEffect({
@@ -555,6 +606,24 @@ export function registerTransactionHandlers(): void {
         AND CAST(strftime('%Y', date) AS INTEGER) = ?
     `).get(month, year) as { income: number; expense: number };
     return { ...row, balance: row.income - row.expense };
+  });
+
+  // Soma, por cartão e por mês futuro, as parcelas já contratadas (via
+  // transactions:createInstallments) e ainda não vencidas — o "comprometimento
+  // futuro" que o card de Contas mostra para cada cartão.
+  ipcMain.handle('transactions:getInstallmentCommitments', () => {
+    return getDb().prepare(`
+      SELECT a.id AS account_id, a.name AS account_name, strftime('%Y-%m', t.date) AS month, SUM(t.amount) AS total
+      FROM transactions t
+      JOIN accounts a ON a.id = t.account_id
+      WHERE t.installment_group_id IS NOT NULL
+        AND t.type = 'expense'
+        AND t.status = 'confirmed'
+        AND t.date > date('now')
+        AND a.type = 'credit_card'
+      GROUP BY a.id, month
+      ORDER BY a.id, month
+    `).all();
   });
 
   ipcMain.handle('transactions:getMonthlyHistory', (_e, months = 6) => {

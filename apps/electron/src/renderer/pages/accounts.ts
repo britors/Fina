@@ -5,7 +5,7 @@ import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../component
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { openPayInvoiceModal } from './transactions';
-import type { Account, AccountCurrency, AccountType, CreditCardInvoice, CreditCardInvoiceCardState, CreditCardInvoiceStatus } from '../../shared/types';
+import type { Account, AccountCurrency, AccountType, BestPurchaseWindow, CreditCardInvoice, CreditCardInvoiceCardState, CreditCardInvoiceStatus, InstallmentCommitment } from '../../shared/types';
 
 const CURRENCY_LABELS: Record<AccountCurrency, string> = { BRL: 'Real (R$)', USD: 'Dólar (US$)', EUR: 'Euro (€)' };
 const CURRENCY_SYMBOLS: Record<AccountCurrency, string> = { BRL: 'R$', USD: 'US$', EUR: '€' };
@@ -19,6 +19,12 @@ export async function render(el: HTMLElement): Promise<void> {
   async function renderPage(): Promise<void> {
     const accounts = await invoke<Account[]>('accounts:list');
     const cardStates = await invoke<Record<string, CreditCardInvoiceCardState>>('invoices:getCardStates');
+    const commitments = await invoke<InstallmentCommitment[]>('transactions:getInstallmentCommitments');
+    const cardsWithCycle = accounts.filter(a => a.type === 'credit_card' && a.closing_day != null && a.due_day != null);
+    const purchaseWindowEntries = await Promise.all(
+      cardsWithCycle.map(async a => [a.id, await invoke<BestPurchaseWindow | null>('invoices:getBestPurchaseWindow', a.id)] as const)
+    );
+    const purchaseWindows = Object.fromEntries(purchaseWindowEntries.filter(([, w]) => w != null)) as Record<string, BestPurchaseWindow>;
     const inAcc    = accounts.filter(a => !isCreditLikeAccountType(a.type)).reduce((s, a) => s + a.balance, 0);
     const debt     = accounts.filter(a => isCreditLikeAccountType(a.type)).reduce((s, a) => s + a.balance, 0);
     const total    = inAcc - debt;
@@ -50,7 +56,7 @@ export async function render(el: HTMLElement): Promise<void> {
             <div class="empty-title">Nenhuma conta ou cartão cadastrado</div>
             <p>Clique em "Nova conta ou cartão" para começar.</p></div>`
         : `<div class="grid-2">
-            ${accounts.map(a => accountCard(a, cardStates[a.id])).join('')}
+            ${accounts.map(a => accountCard(a, cardStates[a.id], purchaseWindows[a.id], commitments.filter(c => c.account_id === a.id))).join('')}
           </div>`
       }
     `;
@@ -99,7 +105,7 @@ export async function render(el: HTMLElement): Promise<void> {
   await renderPage();
 }
 
-function accountCard(a: Account, cardState?: CreditCardInvoiceCardState): string {
+function accountCard(a: Account, cardState?: CreditCardInvoiceCardState, purchaseWindow?: BestPurchaseWindow, commitments: InstallmentCommitment[] = []): string {
   const typeColors: Record<string, string> = {
     checking: '#8B5CF6', savings: '#1D9E75', credit_card: '#7F77DD', meal_voucher: '#D85A30', food_voucher: '#10B981', wallet: '#EF9F27',
   };
@@ -163,6 +169,19 @@ function accountCard(a: Account, cardState?: CreditCardInvoiceCardState): string
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-3);margin-top:4px">
           <span>Limite: ${formatCurrency(a.credit_limit)}</span>
           <span>Disponível: ${formatCurrency(a.credit_limit - usedLimit)}</span>
+        </div>
+      ` : ''}
+      ${purchaseWindow ? `
+        <div style="font-size:11px;color:var(--text-3);margin-top:8px;display:flex;align-items:center;gap:4px">
+          <i class="ti ti-calendar-time"></i>
+          ${purchaseWindow.days_until_closing <= 0
+            ? `Fatura fecha hoje — compras de hoje já entram na próxima fatura`
+            : `Fatura fecha em ${purchaseWindow.days_until_closing}d — comprar depois disso maximiza o prazo até ${formatDate(purchaseWindow.due_date)}`}
+        </div>
+      ` : ''}
+      ${commitments.length > 0 ? `
+        <div style="font-size:11px;color:var(--text-3);margin-top:6px">
+          <i class="ti ti-stack-2"></i> Parcelas futuras: ${commitments.slice(0, 3).map(c => `${c.month} ${formatCurrency(c.total)}`).join(' · ')}${commitments.length > 3 ? ` +${commitments.length - 3}` : ''}
         </div>
       ` : ''}
       <div class="account-hr"></div>

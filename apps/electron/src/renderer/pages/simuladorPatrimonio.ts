@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, projectCompoundGrowth } from '../../shared/utils';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import type { Account, InvestmentSummary } from '../../shared/types';
 
@@ -79,14 +79,7 @@ export async function render(el: HTMLElement): Promise<void> {
 }
 
 function project(initial: number, monthly: number, annualRate: number, years: number): ProjectionPoint[] {
-  const monthlyRate = Math.pow(1 + annualRate / 100, 1 / 12) - 1;
-  const points: ProjectionPoint[] = [{ month: 0, value: initial }];
-  let value = initial;
-  for (let month = 1; month <= years * 12; month++) {
-    value = value * (1 + monthlyRate) + monthly;
-    points.push({ month, value });
-  }
-  return points;
+  return projectCompoundGrowth(initial, monthly, annualRate, years * 12).map((value, month) => ({ month, value }));
 }
 
 function chart(points: ProjectionPoint[]): string {

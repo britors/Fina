@@ -2,6 +2,9 @@ import { ipcMain, dialog, BrowserWindow } from 'electron';
 import { writeFileSync, readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
+import { computeCapitalGains } from '../../shared/utils';
+import type { CapitalGainsOperation } from '../../shared/utils';
+import type { CapitalGainsReport, FiscalClassification } from '../../shared/types';
 
 export interface IRPFRendimento {
   category: string;
@@ -36,8 +39,6 @@ export interface IRPFReport {
   total_dividas: number;
 }
 
-// Categorias consideradas renda tributável
-const CAT_TRIBUTAVEL = ['salário', 'salario', 'freelance', 'aluguel', 'pró-labore', 'pro-labore'];
 // Categorias consideradas renda isenta (FGTS, herança, poupança etc.)
 const CAT_ISENTA = ['poupança', 'poupanca', 'rendimento', 'dividendo', 'restituição', 'restituicao'];
 // Categorias dedutíveis
@@ -46,6 +47,31 @@ const CAT_DEDUCAO = ['saúde', 'saude', 'educação', 'educacao'];
 function matchesAny(name: string, list: string[]): boolean {
   const n = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   return list.some(k => n.includes(k.normalize('NFD').replace(/[̀-ͯ]/g, '')));
+}
+
+function isIsento(category: string, classification: FiscalClassification | null): boolean {
+  if (classification === 'isenta') return true;
+  if (classification === 'tributavel') return false;
+  return matchesAny(category, CAT_ISENTA);
+}
+
+function isDedutivel(category: string, classification: FiscalClassification | null): boolean {
+  if (classification === 'dedutivel') return true;
+  if (classification != null) return false;
+  return matchesAny(category, CAT_DEDUCAO);
+}
+
+// Cálculo auxiliar de ganho de capital — a lógica pura (custo médio
+// ponderado, isenção mensal, alíquota) vive em shared/utils.ts
+// (computeCapitalGains) para poder ser testada sem depender de banco.
+export function calculateCapitalGains(year: number): CapitalGainsReport {
+  const rows = getDb().prepare(`
+    SELECT o.investment_id, i.type AS investment_type, o.type, o.quantity, o.unit_price, o.fees, o.date
+    FROM investment_operations o JOIN investments i ON i.id = o.investment_id
+    WHERE i.type IN ('renda_variavel','cripto')
+    ORDER BY o.investment_id, o.date ASC, o.rowid ASC
+  `).all() as CapitalGainsOperation[];
+  return computeCapitalGains(rows, year);
 }
 
 export function registerIRPFHandlers(): void {
@@ -109,9 +135,12 @@ export function registerIRPFHandlers(): void {
 
     const userName = (db.prepare(`SELECT value FROM app_settings WHERE key='user_name'`).get() as { value: string } | undefined)?.value ?? 'Usuário';
 
-    // Receitas do ano agrupadas por categoria
+    // Receitas do ano agrupadas por categoria. A classificação fiscal
+    // explícita da categoria (definida em Configurações > Categorias) tem
+    // prioridade; só cai no matching de texto legado se a categoria nunca
+    // foi classificada.
     const incomes = db.prepare(`
-      SELECT c.name AS category, SUM(t.amount) AS total
+      SELECT c.name AS category, c.fiscal_classification AS classification, SUM(t.amount) AS total
       FROM transactions t
       JOIN categories c ON c.id = t.category_id
       WHERE t.type = 'income'
@@ -119,26 +148,25 @@ export function registerIRPFHandlers(): void {
         AND strftime('%Y', t.date) = ?
       GROUP BY c.id
       ORDER BY total DESC
-    `).all(y) as { category: string; total: number }[];
+    `).all(y) as { category: string; classification: FiscalClassification | null; total: number }[];
 
-    const tributaveis = incomes.filter(r => matchesAny(r.category, CAT_TRIBUTAVEL));
-    const isentos     = incomes.filter(r => matchesAny(r.category, CAT_ISENTA));
-    // Receitas não classificadas vão para tributável por padrão
-    const naoClassif  = incomes.filter(r => !matchesAny(r.category, CAT_TRIBUTAVEL) && !matchesAny(r.category, CAT_ISENTA));
-    const allTributaveis = [...tributaveis, ...naoClassif];
+    const isentos = incomes.filter(r => isIsento(r.category, r.classification));
+    // Tudo que não for isento é tributável por padrão (mantém o comportamento
+    // legado de "não classificado cai em tributável").
+    const allTributaveis = incomes.filter(r => !isIsento(r.category, r.classification));
 
     // Deduções (despesas em categorias dedutíveis)
     const deducoes = db.prepare(`
-      SELECT c.name AS categoria, SUM(t.amount) AS total
+      SELECT c.name AS categoria, c.fiscal_classification AS classification, SUM(t.amount) AS total
       FROM transactions t
       JOIN categories c ON c.id = t.category_id
       WHERE t.type = 'expense'
         AND t.status = 'confirmed'
         AND strftime('%Y', t.date) = ?
       GROUP BY c.id
-    `).all(y) as { categoria: string; total: number }[];
+    `).all(y) as { categoria: string; classification: FiscalClassification | null; total: number }[];
 
-    const deducoesFiltradas = deducoes.filter(d => matchesAny(d.categoria, CAT_DEDUCAO));
+    const deducoesFiltradas = deducoes.filter(d => isDedutivel(d.categoria, d.classification));
 
     // Bens e direitos: contas + investimentos + patrimônio
     const contas = db.prepare(`SELECT name, type, bank_name, balance FROM accounts WHERE balance > 0`).all() as
@@ -287,6 +315,8 @@ export function registerIRPFHandlers(): void {
     doImport();
     return { imported };
   });
+
+  ipcMain.handle('irpf:getCapitalGains', (_e, year: number): CapitalGainsReport => calculateCapitalGains(year));
 
   ipcMain.handle('irpf:downloadTemplate', async () => {
     const { filePath } = await dialog.showSaveDialog({

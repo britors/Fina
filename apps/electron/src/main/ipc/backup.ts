@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import Database from 'better-sqlite3-multiple-ciphers';
 import { getDb, closeDatabase, openDatabase, runMigrations, dbPath } from '../database';
+import { exportIncrementalBackup, getLastIncrementalBackupAt, importIncrementalPatch, incrementalBackupFileName, setLastIncrementalBackupAt, sqliteNow } from '../incrementalBackup';
 
 const SQLITE_PLAINTEXT_HEADER = 'SQLite format 3\0';
 
@@ -150,6 +151,32 @@ export function registerBackupHandlers(): void {
     if (!filePath) return { imported: false };
 
     restoreFromFile(filePath);
+    return { imported: true };
+  });
+
+  ipcMain.handle('backup:exportIncremental', async () => {
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Exportar backup incremental',
+      defaultPath: incrementalBackupFileName(),
+      filters: [{ name: 'Patch incremental Fina', extensions: ['finpatch'] }],
+    });
+    if (!filePath) return null;
+
+    const result = exportIncrementalBackup(getLastIncrementalBackupAt(), filePath);
+    setLastIncrementalBackupAt(sqliteNow());
+    return result;
+  });
+
+  ipcMain.handle('backup:importIncremental', async () => {
+    const { filePaths } = await dialog.showOpenDialog({
+      title: 'Importar backup incremental',
+      filters: [{ name: 'Patch incremental Fina', extensions: ['finpatch'] }],
+      properties: ['openFile'],
+    });
+    const filePath = filePaths?.[0];
+    if (!filePath) return { imported: false };
+
+    importIncrementalPatch(filePath);
     return { imported: true };
   });
 }

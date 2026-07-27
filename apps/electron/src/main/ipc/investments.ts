@@ -1,9 +1,10 @@
 import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
-import type { Investment, InvestmentSummary, InvestmentType } from '../../shared/types';
+import type { Investment, InvestmentOperation, InvestmentOperationWithInvestment, InvestmentSummary, InvestmentType } from '../../shared/types';
 
 type CreatePayload = Omit<Investment, 'id' | 'created_at' | 'updated_at'>;
+type CreateOperationPayload = Omit<InvestmentOperation, 'id' | 'created_at'>;
 
 const TYPE_COLORS: Record<InvestmentType, string> = {
   renda_fixa:     '#1D9E75',
@@ -73,5 +74,52 @@ export function registerInvestmentHandlers(): void {
         color: TYPE_COLORS[r.type],
       })),
     };
+  });
+
+  // ── Livro de operações (compra/venda) — base para o cálculo de ganho de capital ──
+
+  ipcMain.handle('investments:listOperations', (_e, investmentId?: string) => {
+    const db = getDb();
+    if (investmentId) {
+      return db.prepare(`
+        SELECT o.*, i.name AS investment_name, i.type AS investment_type
+        FROM investment_operations o JOIN investments i ON i.id = o.investment_id
+        WHERE o.investment_id = ? ORDER BY o.date DESC, o.rowid DESC
+      `).all(investmentId) as InvestmentOperationWithInvestment[];
+    }
+    return db.prepare(`
+      SELECT o.*, i.name AS investment_name, i.type AS investment_type
+      FROM investment_operations o JOIN investments i ON i.id = o.investment_id
+      ORDER BY o.date DESC, o.rowid DESC
+    `).all() as InvestmentOperationWithInvestment[];
+  });
+
+  ipcMain.handle('investments:createOperation', (_e, data: CreateOperationPayload) => {
+    if (data.type !== 'compra' && data.type !== 'venda') throw new Error('Tipo de operação inválido.');
+    if (!Number.isFinite(data.quantity) || data.quantity <= 0) throw new Error('Informe uma quantidade válida.');
+    if (!Number.isFinite(data.unit_price) || data.unit_price < 0) throw new Error('Informe um preço unitário válido.');
+    if (!data.date) throw new Error('Informe a data da operação.');
+    const db = getDb();
+    const id = randomUUID();
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO investment_operations (id, investment_id, type, quantity, unit_price, fees, date, notes)
+        VALUES (?,?,?,?,?,?,?,?)
+      `).run(id, data.investment_id, data.type, data.quantity ?? 0, data.unit_price ?? 0,
+             data.fees ?? 0, data.date, data.notes ?? null);
+      // Toca updated_at do investimento pai para o backup incremental
+      // ressincronizar as operações junto com ele.
+      db.prepare(`UPDATE investments SET updated_at = datetime('now') WHERE id = ?`).run(data.investment_id);
+    })();
+    return getDb().prepare('SELECT * FROM investment_operations WHERE id = ?').get(id);
+  });
+
+  ipcMain.handle('investments:deleteOperation', (_e, id: string) => {
+    const db = getDb();
+    const op = db.prepare('SELECT investment_id FROM investment_operations WHERE id = ?').get(id) as { investment_id: string } | undefined;
+    db.transaction(() => {
+      db.prepare('DELETE FROM investment_operations WHERE id = ?').run(id);
+      if (op) db.prepare(`UPDATE investments SET updated_at = datetime('now') WHERE id = ?`).run(op.investment_id);
+    })();
   });
 }

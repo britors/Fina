@@ -2,7 +2,8 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import { ensureCurrentInvoice } from '../invoices';
-import type { CreditCardInvoice, CreditCardInvoiceCardState, CreditCardInvoiceStatus, CreditCardInvoiceWithAccount } from '../../shared/types';
+import { invoiceDueDate, invoicePeriodClosingDate } from '../../shared/utils';
+import type { BestPurchaseWindow, CreditCardInvoice, CreditCardInvoiceCardState, CreditCardInvoiceStatus, CreditCardInvoiceWithAccount } from '../../shared/types';
 
 function getInvoice(id: string): CreditCardInvoice | null {
   return (getDb().prepare('SELECT * FROM credit_card_invoices WHERE id = ?').get(id) as CreditCardInvoice | undefined) ?? null;
@@ -34,6 +35,24 @@ export function registerInvoiceHandlers(): void {
   );
 
   ipcMain.handle('invoices:getCardState', (_e, accountId: string) => getCardState(accountId));
+
+  // "Melhor dia para comprar": quanto mais perto do fechamento uma compra
+  // acontece, maior o float até o vencimento da fatura correspondente.
+  ipcMain.handle('invoices:getBestPurchaseWindow', (_e, accountId: string): BestPurchaseWindow | null => {
+    const account = getDb().prepare(
+      `SELECT closing_day, due_day FROM accounts WHERE id = ? AND type = 'credit_card'`
+    ).get(accountId) as { closing_day: number | null; due_day: number | null } | undefined;
+    if (!account || account.closing_day == null || account.due_day == null) return null;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const closingDate = invoicePeriodClosingDate(account.closing_day, today);
+    const dueDate = invoiceDueDate(closingDate, account.closing_day, account.due_day);
+    const daysUntilClosing = Math.round(
+      (new Date(`${closingDate}T00:00:00`).getTime() - new Date(`${today}T00:00:00`).getTime()) / 86_400_000,
+    );
+
+    return { days_until_closing: daysUntilClosing, closing_date: closingDate, due_date: dueDate };
+  });
 
   // Estado de todos os cartões com fatura ativada, em uma única chamada —
   // evita N+1 round-trips ao renderizar a lista de contas.

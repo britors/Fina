@@ -1,47 +1,50 @@
 import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
-import type { Debt, DebtSimulation } from '../../shared/types';
+import { projectCompoundGrowth, simulateDebtPayoff } from '../../shared/utils';
+import type { Debt, DebtSimulation, DebtVsInvestComparison } from '../../shared/types';
 
 type CreatePayload = Omit<Debt, 'id' | 'created_at' | 'updated_at'>;
 
 function simulatePayoff(balance: number, rate: number, minPayment: number, extraPayment: number): DebtSimulation {
-  const monthly = rate / 100;
-  const payment = minPayment + extraPayment;
-  let remaining = balance;
-  let months = 0;
-  let totalPaid = 0;
-
-  while (remaining > 0.01 && months < 600) {
-    const interest = remaining * monthly;
-    const owed = remaining + interest;
-    const actualPayment = Math.min(payment, owed);
-    remaining = owed - actualPayment;
-    if (remaining < 0) remaining = 0;
-    totalPaid += actualPayment;
-    months++;
-  }
-
-  // Base (minimum only) for savings comparison
-  let baseRemaining = balance;
-  let basePaid = 0;
-  let baseMonths = 0;
-  while (baseRemaining > 0.01 && baseMonths < 600) {
-    const interest = baseRemaining * monthly;
-    const owed = baseRemaining + interest;
-    const actualPayment = Math.min(minPayment, owed);
-    baseRemaining = owed - actualPayment;
-    if (baseRemaining < 0) baseRemaining = 0;
-    basePaid += actualPayment;
-    baseMonths++;
-  }
+  const withExtra = simulateDebtPayoff(balance, rate, minPayment + extraPayment);
+  const baseline = simulateDebtPayoff(balance, rate, minPayment);
 
   return {
     extra_payment: extraPayment,
-    months_to_pay: months,
-    total_paid: totalPaid,
-    total_interest: totalPaid - balance,
-    savings_vs_minimum: basePaid - totalPaid,
+    months_to_pay: withExtra.monthsToPay,
+    total_paid: withExtra.totalPaid,
+    total_interest: withExtra.totalInterest,
+    savings_vs_minimum: baseline.totalPaid - withExtra.totalPaid,
+  };
+}
+
+// Compara quitar a dívida antecipadamente (pagando minPayment + extra por mês)
+// contra manter só o pagamento mínimo e investir o valor extra pelo mesmo
+// número de meses que a quitação antecipada levaria — horizonte igual para
+// as duas opções ficarem comparáveis.
+function compareDebtVsInvest(
+  balance: number, monthlyRate: number, minPayment: number, extraPayment: number, annualInvestRate: number,
+): DebtVsInvestComparison {
+  const withExtra = simulateDebtPayoff(balance, monthlyRate, minPayment + extraPayment);
+  const baseline = simulateDebtPayoff(balance, monthlyRate, minPayment);
+  const horizonMonths = withExtra.monthsToPay;
+
+  const investPath = projectCompoundGrowth(0, extraPayment, annualInvestRate, horizonMonths);
+  const investFinalValue = investPath[investPath.length - 1] ?? 0;
+  const investContributed = extraPayment * horizonMonths;
+
+  const payoffInterestSaved = baseline.totalInterest - withExtra.totalInterest;
+  const investGain = investFinalValue - investContributed;
+
+  return {
+    monthly_amount: extraPayment,
+    months: horizonMonths,
+    payoff_interest_saved: payoffInterestSaved,
+    payoff_months_to_pay: withExtra.monthsToPay,
+    invest_final_value: investFinalValue,
+    invest_gain: investGain,
+    recommendation: investGain > payoffInterestSaved ? 'invest' : 'payoff',
   };
 }
 
@@ -87,6 +90,15 @@ export function registerDebtHandlers(): void {
     min_payment: number;
     extra_payment: number;
   }): DebtSimulation => simulatePayoff(payload.balance, payload.rate, payload.min_payment, payload.extra_payment));
+
+  ipcMain.handle('debts:compareVsInvest', (_e, payload: {
+    balance: number;
+    rate: number;
+    min_payment: number;
+    extra_payment: number;
+    annual_invest_rate: number;
+  }): DebtVsInvestComparison =>
+    compareDebtVsInvest(payload.balance, payload.rate, payload.min_payment, payload.extra_payment, payload.annual_invest_rate));
 
   ipcMain.handle('debts:createBill', (_e, debtId: string) => {
     const debt = getDb().prepare('SELECT * FROM debts WHERE id = ?').get(debtId) as Debt | undefined;

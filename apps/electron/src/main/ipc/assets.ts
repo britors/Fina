@@ -1,10 +1,11 @@
 import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
-import type { Asset } from '../../shared/types';
-import { isCreditLikeAccountType } from '../../shared/utils';
+import type { Asset, AssetReminder, AssetReminderWithAsset } from '../../shared/types';
+import { getDaysUntilDue, isCreditLikeAccountType } from '../../shared/utils';
 
 type CreatePayload = Omit<Asset, 'id' | 'created_at' | 'updated_at'>;
+type CreateReminderPayload = Omit<AssetReminder, 'id' | 'dismissed_at' | 'created_at' | 'updated_at'>;
 
 export function registerAssetHandlers(): void {
   ipcMain.handle('assets:list', () =>
@@ -80,4 +81,42 @@ export function registerAssetHandlers(): void {
     }
     return result;
   });
+
+  // ── Lembretes de bens (seguro, garantia, IPVA etc.) ──────────────────────────
+
+  ipcMain.handle('assets:listReminders', (_e, assetId?: string) => {
+    const db = getDb();
+    const where = assetId ? 'WHERE r.asset_id = ?' : '';
+    return db.prepare(`
+      SELECT r.*, a.name AS asset_name
+      FROM asset_reminders r JOIN assets a ON a.id = r.asset_id
+      ${where}
+      ORDER BY r.due_date ASC
+    `).all(...(assetId ? [assetId] : [])).map((row) => {
+      const r = row as AssetReminderWithAsset;
+      return { ...r, days_until: getDaysUntilDue(r.due_date) };
+    });
+  });
+
+  ipcMain.handle('assets:createReminder', (_e, data: CreateReminderPayload) => {
+    if (!data.kind?.trim()) throw new Error('Informe o tipo do lembrete.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data.due_date ?? '')) throw new Error('Informe uma data de vencimento válida.');
+    const id = randomUUID();
+    getDb().prepare(`
+      INSERT INTO asset_reminders (id, asset_id, kind, due_date, recurrence, notes)
+      VALUES (?,?,?,?,?,?)
+    `).run(id, data.asset_id, data.kind, data.due_date, data.recurrence ?? 'none', data.notes ?? null);
+    return getDb().prepare('SELECT * FROM asset_reminders WHERE id = ?').get(id);
+  });
+
+  ipcMain.handle('assets:updateReminder', (_e, { id, ...data }: Partial<CreateReminderPayload> & { id: string }) => {
+    getDb().prepare(`
+      UPDATE asset_reminders SET kind=?, due_date=?, recurrence=?, notes=?, updated_at=datetime('now') WHERE id=?
+    `).run(data.kind, data.due_date, data.recurrence ?? 'none', data.notes ?? null, id);
+    return getDb().prepare('SELECT * FROM asset_reminders WHERE id = ?').get(id);
+  });
+
+  ipcMain.handle('assets:deleteReminder', (_e, id: string) =>
+    getDb().prepare('DELETE FROM asset_reminders WHERE id = ?').run(id)
+  );
 }

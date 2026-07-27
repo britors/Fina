@@ -4,7 +4,7 @@ import { setTopbarActions } from '../components/topbar';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { createDonut } from '../components/charts';
-import type { Investment, InvestmentSummary, InvestmentType } from '../../shared/types';
+import type { Investment, InvestmentOperation, InvestmentSummary, InvestmentType } from '../../shared/types';
 
 const TYPE_META: Record<InvestmentType, { label: string; icon: string; color: string }> = {
   renda_fixa:     { label: 'Renda Fixa',     icon: 'ti-building-bank',  color: '#1D9E75' },
@@ -111,6 +111,7 @@ export async function render(el: HTMLElement): Promise<void> {
                       <span style="font-size:0.72rem">${pct !== '—' ? (diff >= 0 ? '+' : '') + pct + '%' : '—'}</span>
                     </td>
                     <td style="text-align:right">
+                      <button class="btn btn-ghost btn-sm btn-ops-inv" data-id="${inv.id}" title="Operações de compra/venda"><i class="ti ti-list"></i></button>
                       <button class="btn btn-ghost btn-sm btn-edit-inv" data-id="${inv.id}"><i class="ti ti-pencil"></i></button>
                       <button class="btn btn-ghost btn-sm btn-del-inv" data-id="${inv.id}" style="color:var(--danger)"><i class="ti ti-trash"></i></button>
                     </td>
@@ -147,6 +148,13 @@ export async function render(el: HTMLElement): Promise<void> {
     `;
 
     el.querySelector('#btn-empty-new')?.addEventListener('click', () => openModal(null));
+
+    el.querySelectorAll<HTMLElement>('.btn-ops-inv').forEach(btn =>
+      btn.addEventListener('click', () => {
+        const inv = investments.find(i => i.id === btn.dataset.id);
+        if (inv) void openOperationsModal(inv);
+      })
+    );
 
     el.querySelectorAll<HTMLElement>('.btn-edit-inv').forEach(btn =>
       btn.addEventListener('click', () => openModal(investments.find(i => i.id === btn.dataset.id) ?? null))
@@ -262,6 +270,111 @@ export async function render(el: HTMLElement): Promise<void> {
 
   await load();
   await renderPage();
+}
+
+async function openOperationsModal(inv: Investment): Promise<void> {
+  let ops = await invoke<InvestmentOperation[]>('investments:listOperations', inv.id);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  document.body.appendChild(overlay);
+
+  function renderModal(): void {
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:640px">
+        <div class="modal-header">
+          <span class="modal-title">Operações — ${esc(inv.name)}</span>
+          <button class="btn btn-ghost btn-sm modal-close"><i class="ti ti-x"></i></button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+          <div style="font-size:0.78rem;color:var(--text-3);line-height:1.5">
+            Registre aqui compras e vendas para o Fina calcular o custo médio e o ganho de capital em IRPF &gt; Ganho de capital (DARF).
+          </div>
+          <table class="table">
+            <thead><tr><th>DATA</th><th>TIPO</th><th style="text-align:right">QTD</th><th style="text-align:right">PREÇO UNIT.</th><th style="text-align:right">TAXAS</th><th></th></tr></thead>
+            <tbody>
+              ${ops.length === 0
+                ? `<tr><td colspan="6" style="color:var(--text-3);padding:10px 0">Nenhuma operação registrada</td></tr>`
+                : ops.map(op => `<tr>
+                    <td>${op.date}</td>
+                    <td>${op.type === 'compra' ? 'Compra' : 'Venda'}</td>
+                    <td style="text-align:right">${op.quantity}</td>
+                    <td style="text-align:right">${formatCurrency(op.unit_price)}</td>
+                    <td style="text-align:right">${formatCurrency(op.fees)}</td>
+                    <td style="text-align:right"><button class="btn btn-ghost btn-sm btn-del-op" data-id="${op.id}" style="color:var(--danger)"><i class="ti ti-trash"></i></button></td>
+                  </tr>`).join('')}
+            </tbody>
+          </table>
+          <div class="card" style="padding:12px 14px">
+            <div class="form-row">
+              <div class="form-group" style="flex:0 0 110px">
+                <label class="form-label">Tipo</label>
+                <select class="form-ctrl" id="op-type">
+                  <option value="compra">Compra</option>
+                  <option value="venda">Venda</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:0 0 130px">
+                <label class="form-label">Data</label>
+                <input class="form-ctrl" id="op-date" type="date" value="${new Date().toISOString().slice(0, 10)}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Quantidade</label>
+                <input class="form-ctrl" id="op-qty" type="number" step="0.00000001" min="0">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Preço unitário</label>
+                <input class="form-ctrl" id="op-price" type="text" inputmode="decimal" value="${formatMoneyValue(0)}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Taxas/corretagem</label>
+                <input class="form-ctrl" id="op-fees" type="text" inputmode="decimal" value="${formatMoneyValue(0)}">
+              </div>
+            </div>
+            <button class="btn btn-primary" id="btn-add-op" style="width:100%;justify-content:center">
+              <i class="ti ti-plus"></i> Adicionar operação
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary modal-close">Fechar</button>
+        </div>
+      </div>`;
+
+    attachMoneyMask(overlay.querySelector('#op-price'));
+    attachMoneyMask(overlay.querySelector('#op-fees'));
+
+    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
+
+    overlay.querySelectorAll<HTMLElement>('.btn-del-op').forEach(btn =>
+      btn.addEventListener('click', async () => {
+        if (!await showConfirm('Excluir esta operação?', { danger: true, okLabel: 'Excluir' })) return;
+        await invoke('investments:deleteOperation', btn.dataset.id);
+        ops = await invoke<InvestmentOperation[]>('investments:listOperations', inv.id);
+        renderModal();
+      })
+    );
+
+    overlay.querySelector('#btn-add-op')?.addEventListener('click', async () => {
+      const quantity = parseFloat((overlay.querySelector<HTMLInputElement>('#op-qty')!).value);
+      if (!quantity || quantity <= 0) { showAlert('Informe a quantidade.'); return; }
+      await invoke('investments:createOperation', {
+        investment_id: inv.id,
+        type: (overlay.querySelector<HTMLSelectElement>('#op-type')!).value as 'compra' | 'venda',
+        quantity,
+        unit_price: moneyInputValue(overlay.querySelector<HTMLInputElement>('#op-price')) || 0,
+        fees: moneyInputValue(overlay.querySelector<HTMLInputElement>('#op-fees')) || 0,
+        date: (overlay.querySelector<HTMLInputElement>('#op-date')!).value,
+        notes: null,
+      });
+      ops = await invoke<InvestmentOperation[]>('investments:listOperations', inv.id);
+      renderModal();
+    });
+  }
+
+  renderModal();
 }
 
 function esc(s: string | null | undefined): string {

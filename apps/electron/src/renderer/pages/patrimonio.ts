@@ -4,7 +4,11 @@ import { setTopbarActions } from '../components/topbar';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { createAreaChart } from '../components/charts';
-import type { Asset, AssetType } from '../../shared/types';
+import type { Asset, AssetReminder, AssetReminderKind, AssetType } from '../../shared/types';
+
+const REMINDER_KIND_LABEL: Record<AssetReminderKind, string> = {
+  seguro: 'Seguro', garantia: 'Garantia', ipva: 'IPVA', outro: 'Outro',
+};
 
 type NetWorthPoint = { month: string; label: string; account_balance: number; net_worth: number };
 
@@ -133,6 +137,9 @@ export async function render(el: HTMLElement): Promise<void> {
                         <span style="font-size:0.72rem">${pct !== '—' ? (diff >= 0 ? '+' : '') + pct + '%' : '—'}</span>
                       </td>
                       <td style="text-align:right">
+                        <button class="btn btn-ghost btn-sm btn-reminders-asset" data-id="${a.id}" title="Lembretes (seguro, garantia, IPVA)">
+                          <i class="ti ti-bell"></i>
+                        </button>
                         <button class="btn btn-ghost btn-sm btn-edit-asset" data-id="${a.id}" title="Editar">
                           <i class="ti ti-pencil"></i>
                         </button>
@@ -151,6 +158,13 @@ export async function render(el: HTMLElement): Promise<void> {
     `;
 
     el.querySelector('#btn-empty-new')?.addEventListener('click', () => openModal(null));
+
+    el.querySelectorAll<HTMLElement>('.btn-reminders-asset').forEach(btn =>
+      btn.addEventListener('click', () => {
+        const a = assets.find(x => x.id === btn.dataset.id);
+        if (a) void openRemindersModal(a);
+      })
+    );
 
     el.querySelectorAll<HTMLElement>('.btn-edit-asset').forEach(btn =>
       btn.addEventListener('click', () => openModal(assets.find(a => a.id === btn.dataset.id) ?? null))
@@ -254,6 +268,93 @@ export async function render(el: HTMLElement): Promise<void> {
 
   await load();
   await renderPage();
+}
+
+async function openRemindersModal(asset: Asset): Promise<void> {
+  let reminders = await invoke<(AssetReminder & { days_until: number })[]>('assets:listReminders', asset.id);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  document.body.appendChild(overlay);
+
+  function renderModal(): void {
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:560px">
+        <div class="modal-header">
+          <span class="modal-title">Lembretes — ${esc(asset.name)}</span>
+          <button class="btn btn-ghost btn-sm modal-close"><i class="ti ti-x"></i></button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+          <table class="table">
+            <thead><tr><th>TIPO</th><th>VENCIMENTO</th><th>RECORRÊNCIA</th><th></th></tr></thead>
+            <tbody>
+              ${reminders.length === 0
+                ? `<tr><td colspan="4" style="color:var(--text-3);padding:10px 0">Nenhum lembrete cadastrado</td></tr>`
+                : reminders.map(r => `<tr>
+                    <td>${REMINDER_KIND_LABEL[r.kind]}</td>
+                    <td style="color:${r.days_until < 0 ? 'var(--danger)' : r.days_until <= 7 ? 'var(--warning)' : 'var(--text)'}">${r.due_date}${r.days_until < 0 ? ' (vencido)' : ` (${r.days_until}d)`}</td>
+                    <td style="color:var(--text-3);font-size:0.78rem">${r.recurrence === 'annual' ? 'Anual' : 'Único'}</td>
+                    <td style="text-align:right"><button class="btn btn-ghost btn-sm btn-del-reminder" data-id="${r.id}" style="color:var(--danger)"><i class="ti ti-trash"></i></button></td>
+                  </tr>`).join('')}
+            </tbody>
+          </table>
+          <div class="card" style="padding:12px 14px">
+            <div class="form-row">
+              <div class="form-group" style="flex:0 0 130px">
+                <label class="form-label">Tipo</label>
+                <select class="form-ctrl" id="rem-kind">
+                  ${Object.entries(REMINDER_KIND_LABEL).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Vencimento</label>
+                <input class="form-ctrl" id="rem-date" type="date">
+              </div>
+              <div class="form-group" style="flex:0 0 130px">
+                <label class="form-label">Recorrência</label>
+                <select class="form-ctrl" id="rem-recurrence">
+                  <option value="none">Único</option>
+                  <option value="annual">Anual</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="btn-add-reminder" style="width:100%;justify-content:center">
+              <i class="ti ti-plus"></i> Adicionar lembrete
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary modal-close">Fechar</button>
+        </div>
+      </div>`;
+
+    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
+
+    overlay.querySelectorAll<HTMLElement>('.btn-del-reminder').forEach(btn =>
+      btn.addEventListener('click', async () => {
+        if (!await showConfirm('Excluir este lembrete?', { danger: true, okLabel: 'Excluir' })) return;
+        await invoke('assets:deleteReminder', btn.dataset.id);
+        reminders = await invoke('assets:listReminders', asset.id);
+        renderModal();
+      })
+    );
+
+    overlay.querySelector('#btn-add-reminder')?.addEventListener('click', async () => {
+      const due_date = (overlay.querySelector<HTMLInputElement>('#rem-date')!).value;
+      if (!due_date) { showAlert('Informe a data de vencimento.'); return; }
+      await invoke('assets:createReminder', {
+        asset_id: asset.id,
+        kind: (overlay.querySelector<HTMLSelectElement>('#rem-kind')!).value as AssetReminderKind,
+        due_date,
+        recurrence: (overlay.querySelector<HTMLSelectElement>('#rem-recurrence')!).value as 'none' | 'annual',
+        notes: null,
+      });
+      reminders = await invoke('assets:listReminders', asset.id);
+      renderModal();
+    });
+  }
+
+  renderModal();
 }
 
 function esc(s: string | null | undefined): string {

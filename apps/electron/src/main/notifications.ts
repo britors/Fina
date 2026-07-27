@@ -420,6 +420,35 @@ export function checkAndNotify(): void {
       logSent('receivable_price_increase', refId);
     }
   }
+
+  if (getSetting('notif_asset_reminders') !== 'false') {
+    checkAssetReminders();
+  }
+}
+
+const ASSET_REMINDER_KIND_LABEL: Record<string, string> = {
+  seguro: 'Seguro', garantia: 'Garantia', ipva: 'IPVA', outro: 'Lembrete',
+};
+
+// Lembretes de bens (seguro, garantia, IPVA etc.) a vencer em até 7 dias ou já
+// vencidos — mesmo padrão de janela usado para contas a pagar/receber.
+function checkAssetReminders(): void {
+  const db = getDb();
+  const upcoming = db.prepare(`
+    SELECT r.id, r.kind, r.due_date, a.name AS asset_name
+    FROM asset_reminders r JOIN assets a ON a.id = r.asset_id
+    WHERE r.dismissed_at IS NULL
+      AND r.due_date <= date('now', '+7 days')
+  `).all() as { id: string; kind: string; due_date: string; asset_name: string }[];
+
+  for (const r of upcoming) {
+    if (alreadySent('asset_reminder', r.id)) continue;
+    const days = Math.ceil((new Date(r.due_date).getTime() - Date.now()) / 86400_000);
+    const label = ASSET_REMINDER_KIND_LABEL[r.kind] ?? r.kind;
+    const when = days < 0 ? 'está vencido' : days === 0 ? 'vence hoje' : days === 1 ? 'vence amanhã' : `vence em ${days} dias`;
+    notify(`${label} a vencer`, `${label} de "${r.asset_name}" ${when}`);
+    logSent('asset_reminder', r.id);
+  }
 }
 
 function sendWeeklySummaryIfDue(): void {

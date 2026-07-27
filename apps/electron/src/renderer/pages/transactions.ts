@@ -5,7 +5,7 @@ import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../component
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
-import type { Account, AITransactionBatchDraft, AITransactionDraft, Category, CategorySplit, CategorySplitWithCategory, CategorySuggestion, CreditCardInvoice, PaymentSplit, PaymentSplitWithAccount, TransactionStatus, TransactionWithDetails, TransactionType } from '../../shared/types';
+import type { Account, AITransactionBatchDraft, AITransactionDraft, Category, CategorySplit, CategorySplitWithCategory, CategorySuggestion, CreditCardInvoice, FamilyMember, PaymentSplit, PaymentSplitWithAccount, TransactionMemberSplit, TransactionStatus, TransactionWithDetails, TransactionType } from '../../shared/types';
 import { categoryOptions } from '../components/categorySelect';
 import { consumePendingTransactionFilter } from '../navigation';
 
@@ -13,6 +13,8 @@ let accounts: Account[]  = [];
 let categories: Category[] = [];
 let familyEnabled = false;
 let familyMembers: string[] = [];
+let meiEnabled = false;
+let familyMembersList: FamilyMember[] = [];
 
 interface OcrResult {
   amount: number | null;
@@ -64,6 +66,8 @@ export async function render(el: HTMLElement): Promise<void> {
   categories = loadedCategories;
   familyEnabled = settings.family_mode === 'true';
   familyMembers = (settings.family_members ?? '').split(',').map(v => v.trim()).filter(Boolean);
+  meiEnabled = settings.mei_enabled === 'true';
+  familyMembersList = familyEnabled ? await invoke<FamilyMember[]>('familyMembers:list') : [];
 
   setTopbarActions(`
     <details class="topbar-dropdown">
@@ -429,6 +433,39 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
           </select>
         </div>
       ` : ''}
+      ${meiEnabled ? `
+        <div class="form-group" id="f-mei-group" style="display:${initialType === 'income' ? '' : 'none'}">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="f-mei" ${tx?.is_mei_revenue ? 'checked' : ''}>
+            <span class="form-label" style="margin:0">Receita MEI (entra no livro-caixa)</span>
+          </label>
+        </div>
+      ` : ''}
+      ${familyEnabled && familyMembersList.length >= 2 ? `
+        <div class="form-group" id="f-split-group" style="display:${initialType === 'transfer' ? 'none' : ''}">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="f-split-enabled" ${tx?.member_splits?.length ? 'checked' : ''}>
+            <span class="form-label" style="margin:0">Dividir entre membros da família (quem deve quem)</span>
+          </label>
+          <div id="f-split-body" style="display:${tx?.member_splits?.length ? '' : 'none'};margin-top:8px;padding:10px;background:var(--bg);border:0.5px solid var(--border);border-radius:8px">
+            <div class="form-group" style="margin-bottom:8px">
+              <label class="form-label">Pago por</label>
+              <select class="form-ctrl" id="f-paid-by">
+                ${familyMembersList.map(m => `<option value="${m.id}" ${tx?.paid_by_member_id === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-label" style="margin-bottom:4px">Dividir igualmente entre:</div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              ${familyMembersList.map(m => `
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer">
+                  <input type="checkbox" class="f-split-member" value="${m.id}" ${!tx?.member_splits?.length || tx.member_splits.some(s => s.member_id === m.id) ? 'checked' : ''}>
+                  ${esc(m.name)}
+                </label>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      ` : ''}
       <div class="form-group">
         <label class="form-label">Observações (opcional)</label>
         <textarea class="form-ctrl" id="f-notes" rows="2">${tx?.notes ?? draft?.notes ?? ''}</textarea>
@@ -444,6 +481,20 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
       const status    = (document.getElementById('f-status')   as HTMLSelectElement).value;
       const notes     = (document.getElementById('f-notes')    as HTMLTextAreaElement).value.trim();
       const owner     = (document.getElementById('f-owner') as HTMLSelectElement | null)?.value || null;
+      const is_mei_revenue = type === 'income' && (document.getElementById('f-mei') as HTMLInputElement | null)?.checked ? 1 : 0;
+      const splitEnabled = type !== 'transfer' && (document.getElementById('f-split-enabled') as HTMLInputElement | null)?.checked;
+      let paid_by_member_id: string | null = null;
+      let member_splits: TransactionMemberSplit[] | undefined;
+      if (splitEnabled) {
+        paid_by_member_id = (document.getElementById('f-paid-by') as HTMLSelectElement | null)?.value || null;
+        const selectedMembers = Array.from(document.querySelectorAll<HTMLInputElement>('.f-split-member:checked')).map(cb => cb.value);
+        if (!paid_by_member_id || selectedMembers.length === 0) {
+          showAlert('Selecione quem pagou e ao menos um membro para dividir a despesa.');
+          return false;
+        }
+        const shares = splitEqualAmounts(amount, selectedMembers.length);
+        member_splits = selectedMembers.map((memberId, i) => ({ member_id: memberId, share_amount: shares[i] }));
+      }
       const installments = parseInt((document.getElementById('f-installments') as HTMLInputElement | null)?.value ?? '1', 10) || 1;
 
       if (!desc || isNaN(amount) || !date || !account) {
@@ -477,10 +528,12 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         to_account_id: type === 'transfer' ? toAccount : null,
         category_id: type === 'transfer' ? transferCategoryId : txCategories![0].category_id,
         date, status, notes: notes || null, recurring: 0, payments, categories: txCategories, owner,
+        is_mei_revenue,
       };
-      if (tx) { await invoke('transactions:update', { id: tx.id, ...payload }); }
+      const splitFields = splitEnabled ? { paid_by_member_id, member_splits } : {};
+      if (tx) { await invoke('transactions:update', { id: tx.id, ...payload, ...splitFields }); }
       else if (installments > 1) { await invoke('transactions:createInstallments', { ...payload, installments }); }
-      else    { await invoke('transactions:create', payload); }
+      else    { await invoke('transactions:create', { ...payload, ...splitFields }); }
       onDone();
     },
   });
@@ -499,10 +552,17 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
     updatePaymentAccountOptions(overlay, selectedType === 'income');
     updatePaymentSummary(overlay);
     updateInstallmentsVisibility(overlay, !!tx);
+    const meiGroup = overlay.querySelector<HTMLElement>('#f-mei-group');
+    if (meiGroup) meiGroup.style.display = selectedType === 'income' ? '' : 'none';
+    const splitGroup = overlay.querySelector<HTMLElement>('#f-split-group');
+    if (splitGroup) splitGroup.style.display = isTransfer ? 'none' : '';
     if (!isTransfer) {
       updateCategorySelectOptions(overlay, selectedType === 'income' ? 'income' : 'expense');
       updateCategorySummary(overlay);
     }
+  });
+  overlay.querySelector('#f-split-enabled')?.addEventListener('change', e => {
+    (overlay.querySelector('#f-split-body') as HTMLElement).style.display = (e.target as HTMLInputElement).checked ? '' : 'none';
   });
   overlay.querySelector('#f-amount')?.addEventListener('input', () => {
     syncFirstPaymentAmount(overlay);
@@ -1089,6 +1149,16 @@ function updateCategorySummary(overlay: HTMLElement): void {
     .reduce((sum, input) => sum + (moneyInputValue(input) || 0), 0);
   const rest = Math.round((total - used) * 100) / 100;
   summary.innerHTML = `Total: <strong>${formatCurrency(total)}</strong> · Distribuído: <strong>${formatCurrency(used)}</strong> · Restante: <strong style="color:${Math.abs(rest) < 0.005 ? 'var(--accent)' : 'var(--danger)'}">${formatCurrency(rest)}</strong>`;
+}
+
+// Divide `amount` em `count` partes iguais em centavos, distribuindo o
+// resto entre as primeiras partes (mesmo critério de splitInstallmentAmounts
+// no backend, pra não deixar sobra de centavo perdida).
+function splitEqualAmounts(amount: number, count: number): number[] {
+  const cents = Math.round(amount * 100);
+  const base = Math.floor(cents / count);
+  const remainder = cents % count;
+  return Array.from({ length: count }, (_, index) => (base + (index < remainder ? 1 : 0)) / 100);
 }
 
 function updateInstallmentsVisibility(overlay: HTMLElement, editing: boolean): void {

@@ -4,7 +4,7 @@ import { setTopbarActions } from '../components/topbar';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
-import type { AIDebtDraft, Debt, DebtType, DebtStatus, DebtSimulation } from '../../shared/types';
+import type { AIDebtDraft, Debt, DebtType, DebtStatus, DebtSimulation, DebtVsInvestComparison } from '../../shared/types';
 
 const TYPE_META: Record<DebtType, { label: string; icon: string }> = {
   emprestimo:      { label: 'Empréstimo pessoal',   icon: 'ti-cash'            },
@@ -289,11 +289,19 @@ export async function render(el: HTMLElement): Promise<void> {
           <div style="font-size:0.85rem;color:var(--text-2)">
             <strong>${esc(debt.description)}</strong> · Saldo: ${formatCurrency(debt.outstanding_balance)} · ${debt.interest_rate}% a.m.
           </div>
-          <div class="form-group">
-            <label class="form-label">Pagamento extra por mês</label>
-            <input class="form-ctrl" id="sim-extra" type="text" inputmode="decimal" placeholder="0,00">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Pagamento extra por mês</label>
+              <input class="form-ctrl" id="sim-extra" type="text" inputmode="decimal" placeholder="0,00">
+            </div>
+            <div class="form-group" style="flex:0 0 160px">
+              <label class="form-label">Se investisse, rendimento anual (%)</label>
+              <input class="form-ctrl" id="sim-invest-rate" type="number" step="0.5" value="10">
+            </div>
           </div>
           <div id="sim-result" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;display:none">
+          </div>
+          <div id="sim-vs-invest" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;display:none">
           </div>
         </div>
         <div class="modal-footer">
@@ -339,6 +347,35 @@ export async function render(el: HTMLElement): Promise<void> {
             <i class="ti ti-piggy-bank"></i> Economia total em juros: <strong>${formatCurrency(withExtra.savings_vs_minimum)}</strong>
             e quitação <strong>${base.months_to_pay - withExtra.months_to_pay} meses mais cedo</strong>
           </div>` : ''}
+      `;
+
+      const vsInvest = overlay.querySelector<HTMLElement>('#sim-vs-invest')!;
+      if (extra <= 0) { vsInvest.style.display = 'none'; return; }
+
+      const annualInvestRate = parseFloat((overlay.querySelector<HTMLInputElement>('#sim-invest-rate')!).value) || 0;
+      const comparison = await invoke<DebtVsInvestComparison>('debts:compareVsInvest', {
+        balance: debt.outstanding_balance, rate: debt.interest_rate,
+        min_payment: debt.installment_amount, extra_payment: extra, annual_invest_rate: annualInvestRate,
+      });
+
+      vsInvest.style.display = 'block';
+      vsInvest.innerHTML = `
+        <div style="font-size:0.78rem;color:var(--text-3);margin-bottom:8px">Antecipar parcela vs. investir os mesmos ${formatCurrency(extra)}/mês por ${comparison.months} meses:</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-size:0.75rem;color:var(--text-3);margin-bottom:4px">Quitar antecipado</div>
+            <div style="font-weight:600;color:var(--accent)">${formatCurrency(comparison.payoff_interest_saved)}</div>
+            <div style="font-size:0.75rem;color:var(--text-3)">economia de juros</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem;color:var(--text-3);margin-bottom:4px">Investir a ${annualInvestRate}% a.a.</div>
+            <div style="font-weight:600;color:var(--accent)">${formatCurrency(comparison.invest_gain)}</div>
+            <div style="font-size:0.75rem;color:var(--text-3)">ganho estimado</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;padding:8px;background:rgba(29,158,117,.1);border-radius:6px;font-size:0.82rem;color:var(--accent)">
+          <i class="ti ti-bulb"></i> Nesse cenário, ${comparison.recommendation === 'invest' ? 'investir rende mais do que a economia de juros de quitar antecipado' : 'quitar antecipado economiza mais do que investir renderia'}.
+        </div>
       `;
     });
   }

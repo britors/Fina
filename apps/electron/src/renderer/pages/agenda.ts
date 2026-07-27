@@ -5,7 +5,7 @@ import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../component
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
-import type { Account, AIBillDraft, Bill, BillInterval, BillStatus, BillWithCategory, Category, CategorySplit, CategorySplitWithCategory, CreditCardInvoiceWithAccount, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
+import type { Account, AIBillDraft, Bill, BillInterval, BillStatus, BillWithCategory, BoletoData, Category, CategorySplit, CategorySplitWithCategory, CreditCardInvoiceWithAccount, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOptions } from '../components/categorySelect';
 
 const INTERVAL_LABELS: Record<BillInterval, string> = {
@@ -31,6 +31,7 @@ export async function render(el: HTMLElement): Promise<void> {
   let filterCategory = '';
 
   setTopbarActions(`
+    <button class="btn btn-secondary" id="btn-import-boleto"><i class="ti ti-scan"></i> Importar boleto</button>
     <button class="btn btn-secondary" id="btn-ai-create-bill"><i class="ti ti-sparkles"></i> Criar com IA</button>
     <button class="btn btn-primary" id="btn-new-bill"><i class="ti ti-plus"></i> Nova conta à pagar</button>
   `);
@@ -131,6 +132,32 @@ export async function render(el: HTMLElement): Promise<void> {
   }
 
   document.getElementById('btn-new-bill')?.addEventListener('click', () => openBillModal(null, renderPage));
+  document.getElementById('btn-import-boleto')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-import-boleto') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader ti-spin"></i> Lendo boleto...';
+    try {
+      const data = await invoke<BoletoData | null>('ocr:scanBoleto');
+      if (!data) return;
+      if (!data.linha_digitavel) {
+        showAlert('Não foi possível localizar a linha digitável na imagem. Revise a foto/print e tente novamente, ou cadastre manualmente.');
+        return;
+      }
+      const warnings = data.valid ? [] : ['Os dígitos verificadores da linha digitável não bateram — confira valor e vencimento com atenção antes de salvar.'];
+      openBillModal(null, renderPage, {
+        target: 'bill',
+        explanation: `Dados extraídos da linha digitável (banco ${data.bank_code ?? '—'}) via OCR local. Revise antes de salvar.`,
+        warnings,
+        description: data.beneficiario ?? 'Boleto',
+        amount: data.amount ?? undefined,
+        due_date: data.due_date ?? undefined,
+        status: 'pending',
+      });
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-scan"></i> Importar boleto';
+    }
+  });
   document.getElementById('btn-ai-create-bill')?.addEventListener('click', () => {
     openAICreateDraft<AIBillDraft>({
       target: 'bill',

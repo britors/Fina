@@ -51,6 +51,8 @@ export interface FinancialDocument {
   created_at: string;
 }
 
+export type FiscalClassification = 'tributavel' | 'isenta' | 'dedutivel';
+
 export interface Category {
   id: string;
   name: string;
@@ -62,6 +64,7 @@ export interface Category {
   parent_name?: string | null;
   depth?: 0 | 1;
   children_count?: number;
+  fiscal_classification?: FiscalClassification | null;
   created_at: string;
 }
 
@@ -78,6 +81,11 @@ export interface Transaction {
   notes: string | null;
   recurring: 0 | 1;
   owner: string | null;
+  installment_group_id?: string | null;
+  installment_index?: number | null;
+  installment_total?: number | null;
+  paid_by_member_id?: string | null;
+  is_mei_revenue?: 0 | 1;
   openfinance_provider?: string | null;
   openfinance_id?: string | null;
   created_at: string;
@@ -93,6 +101,36 @@ export interface PaymentSplit {
 export interface PaymentSplitWithAccount extends PaymentSplit {
   account_name: string;
   invoice_id?: string | null;
+}
+
+// ── Família/casal: membros e rateio de despesas ───────────────────────────────
+
+export interface FamilyMember {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface TransactionMemberSplit {
+  member_id: string;
+  share_amount: number;
+}
+
+export interface TransactionMemberSplitWithMember extends TransactionMemberSplit {
+  member_name: string;
+}
+
+export interface FamilySettlementTransfer {
+  from_member_id: string;
+  from_member_name: string;
+  to_member_id: string;
+  to_member_name: string;
+  amount: number;
+}
+
+export interface FamilySettlement {
+  balances: { member_id: string; member_name: string; net: number }[];
+  transfers: FamilySettlementTransfer[];
 }
 
 export interface CategorySplit {
@@ -113,6 +151,7 @@ export interface TransactionWithDetails extends Transaction {
   category_color: string;
   payments?: PaymentSplitWithAccount[];
   categories?: CategorySplitWithCategory[];
+  member_splits?: TransactionMemberSplitWithMember[];
 }
 
 export interface Budget {
@@ -192,6 +231,19 @@ export interface ReceivablePriceIncrease {
   previous_amount: number;
   new_amount: number;
   changed_at: string;
+}
+
+export interface InstallmentCommitment {
+  account_id: string;
+  account_name: string;
+  month: string; // 'YYYY-MM'
+  total: number;
+}
+
+export interface BestPurchaseWindow {
+  days_until_closing: number;
+  closing_date: string;
+  due_date: string;
 }
 
 export interface CreditCardInvoice {
@@ -287,6 +339,26 @@ export interface Asset {
   updated_at: string;
 }
 
+export type AssetReminderKind = 'seguro' | 'garantia' | 'ipva' | 'outro';
+export type AssetReminderRecurrence = 'none' | 'annual';
+
+export interface AssetReminder {
+  id: string;
+  asset_id: string;
+  kind: AssetReminderKind;
+  due_date: string;
+  recurrence: AssetReminderRecurrence;
+  notes: string | null;
+  dismissed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetReminderWithAsset extends AssetReminder {
+  asset_name: string;
+  days_until: number;
+}
+
 // ── Carteira de investimentos ─────────────────────────────────────────────────
 
 export type InvestmentType = 'renda_fixa' | 'renda_variavel' | 'fundo' | 'cripto' | 'outro';
@@ -311,6 +383,45 @@ export interface InvestmentSummary {
   gain: number;
   gain_pct: number;
   by_type: { type: string; label: string; total: number; color: string }[];
+}
+
+export type InvestmentOperationType = 'compra' | 'venda';
+
+export interface InvestmentOperation {
+  id: string;
+  investment_id: string;
+  type: InvestmentOperationType;
+  quantity: number;
+  unit_price: number;
+  fees: number;
+  date: string;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface InvestmentOperationWithInvestment extends InvestmentOperation {
+  investment_name: string;
+  investment_type: InvestmentType;
+}
+
+// Cálculo auxiliar de ganho de capital por custo médio ponderado — não
+// substitui a apuração oficial (GCAP/programa da Receita).
+export interface CapitalGainsMonth {
+  month: string; // 'YYYY-MM'
+  investment_type: InvestmentType;
+  total_sold: number;
+  cost_basis: number;
+  gain: number;
+  exempt: boolean;
+  exemption_limit: number;
+  suggested_darf: number;
+}
+
+export interface CapitalGainsReport {
+  year: number;
+  months: CapitalGainsMonth[];
+  total_gain: number;
+  total_suggested_darf: number;
 }
 
 // ── Previsão de saldo ─────────────────────────────────────────────────────────
@@ -614,6 +725,19 @@ export interface Goal {
   updated_at: string;
 }
 
+export interface GoalContribution {
+  id: string;
+  goal_id: string;
+  member_id: string | null;
+  amount: number;
+  date: string;
+  note: string | null;
+}
+
+export interface GoalContributionWithMember extends GoalContribution {
+  member_name: string | null;
+}
+
 // ── Dívidas ───────────────────────────────────────────────────────────────────
 
 export type DebtType = 'emprestimo' | 'financiamento' | 'cartao' | 'cheque_especial' | 'pessoal' | 'outro';
@@ -642,6 +766,18 @@ export interface DebtSimulation {
   total_paid: number;
   total_interest: number;
   savings_vs_minimum: number;
+}
+
+// Comparador "quitar dívida antecipadamente vs. investir o mesmo valor" —
+// reaproveita simulateDebtPayoff/projectCompoundGrowth de shared/utils.ts.
+export interface DebtVsInvestComparison {
+  monthly_amount: number;
+  months: number;
+  payoff_interest_saved: number;
+  payoff_months_to_pay: number;
+  invest_final_value: number;
+  invest_gain: number;
+  recommendation: 'payoff' | 'invest';
 }
 
 // ── IRPF ─────────────────────────────────────────────────────────────────────
@@ -691,4 +827,66 @@ export interface UpdateStatus {
   version?: string;
   percent?: number;
   message?: string;
+}
+
+// ── MEI: livro-caixa e DAS ─────────────────────────────────────────────────────
+
+export type MeiDasStatus = 'pendente' | 'pago';
+
+export interface MeiDasPayment {
+  id: string;
+  competencia: string; // 'YYYY-MM'
+  amount: number;
+  paid_date: string | null;
+  status: MeiDasStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MeiMonthRevenue {
+  month: string; // 'YYYY-MM'
+  revenue: number;
+  cumulative: number;
+}
+
+export interface MeiReport {
+  year: number;
+  months: MeiMonthRevenue[];
+  total_revenue: number;
+  annual_limit: number;
+  projected_to_exceed: boolean;
+  das_payments: MeiDasPayment[];
+}
+
+// ── Revisão semanal: persistência e streak ─────────────────────────────────────
+
+export interface WeeklyReviewState {
+  week_start: string;
+  completed_items: string[];
+  completed_at: string | null;
+}
+
+export interface WeeklyReviewStreak {
+  current_streak: number;
+  best_streak: number;
+}
+
+// ── Importação de boleto via OCR ───────────────────────────────────────────────
+
+export interface BoletoData {
+  raw_text: string;
+  linha_digitavel: string | null;
+  valid: boolean;
+  bank_code: string | null;
+  due_date: string | null;
+  amount: number | null;
+  beneficiario: string | null;
+}
+
+// ── Backup incremental ──────────────────────────────────────────────────────────
+
+export interface IncrementalBackupResult {
+  file_path: string;
+  since: string;
+  table_counts: Record<string, number>;
 }

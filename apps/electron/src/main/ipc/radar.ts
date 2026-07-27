@@ -81,6 +81,44 @@ function radarSignals(): RadarSignal[] {
       action: 'Revise os gastos ou redistribua os limites do mês.', route: 'budget',
     });
   }
+  const cards = db.prepare(`
+    SELECT id, name, balance, credit_limit FROM accounts
+    WHERE type = 'credit_card' AND credit_limit IS NOT NULL AND credit_limit > 0
+  `).all() as { id: string; name: string; balance: number; credit_limit: number }[];
+  for (const card of cards) {
+    const usage = card.balance / card.credit_limit;
+    if (usage < 0.8) continue;
+    add({
+      key: `card-limit-${card.id}`,
+      severity: usage >= 1 ? 'danger' : 'warning',
+      icon: 'ti-credit-card',
+      title: `Limite do cartão "${card.name}" ${usage >= 1 ? 'estourado' : 'quase no limite'}`,
+      body: `Uso atual: ${formatMoney(card.balance)} de ${formatMoney(card.credit_limit)} (${Math.round(usage * 100)}%).`,
+      action: 'Revise os gastos no cartão ou considere antecipar o pagamento da fatura.',
+      route: 'accounts',
+    });
+  }
+
+  const assetReminders = db.prepare(`
+    SELECT r.id, r.kind, r.due_date, a.name AS asset_name
+    FROM asset_reminders r JOIN assets a ON a.id = r.asset_id
+    WHERE r.dismissed_at IS NULL AND r.due_date <= date('now', '+14 days')
+  `).all() as { id: string; kind: string; due_date: string; asset_name: string }[];
+  const kindLabel: Record<string, string> = { seguro: 'Seguro', garantia: 'Garantia', ipva: 'IPVA', outro: 'Lembrete' };
+  const today = new Date().toISOString().slice(0, 10);
+  for (const r of assetReminders) {
+    const overdue = r.due_date < today;
+    add({
+      key: `asset-reminder-${r.id}`,
+      severity: overdue ? 'danger' : 'warning',
+      icon: 'ti-bell',
+      title: `${kindLabel[r.kind] ?? 'Lembrete'} de "${r.asset_name}" ${overdue ? 'vencido' : 'a vencer'}`,
+      body: `Vencimento em ${formatDate(r.due_date)}.`,
+      action: 'Confira em Patrimônio e renove ou registre a renovação.',
+      route: 'patrimonio',
+    });
+  }
+
   return signals;
 }
 

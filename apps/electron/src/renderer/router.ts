@@ -30,6 +30,9 @@ import { render as renderReserva      } from './pages/reserva';
 import { render as renderMarket       } from './pages/market';
 import { render as renderOpenFinance  } from './pages/openFinance';
 import { render as renderIRPF         } from './pages/irpf';
+import { render as renderMei          } from './pages/mei';
+import { render as renderFamilia      } from './pages/familia';
+import { render as renderRetrospectiva } from './pages/retrospectiva';
 import { render as renderManual       } from './pages/manual';
 import { render as renderDocumentos   } from './pages/documentos';
 import { setActiveRoute               } from './components/sidebar';
@@ -87,6 +90,9 @@ const ROUTES: Record<string, Route> = {
   market:       { title: 'Mercado',       subtitle: 'Câmbio, bolsas e indicadores',                 render: renderMarket       },
   openfinance:  { title: 'Open Finance',  subtitle: 'Instituições, contas e conexões ativas',        render: renderOpenFinance  },
   irpf:         { title: 'IRPF',          subtitle: 'Informe de rendimentos para declaração',        render: renderIRPF         },
+  mei:          { title: 'MEI',           subtitle: 'Livro-caixa e controle de DAS',                 render: renderMei          },
+  familia:      { title: 'Família/Casal', subtitle: 'Membros, rateio de despesas e quem deve quem',  render: renderFamilia      },
+  retrospectiva: { title: 'Retrospectiva', subtitle: 'Seu ano financeiro resumido',                  render: renderRetrospectiva },
   manual:       { title: 'Manual',        subtitle: 'Guia de uso do Fina',                           render: renderManual       },
   documentos:   { title: 'Documentos',    subtitle: 'Comprovantes e arquivos financeiros locais',  render: renderDocumentos   },
 };

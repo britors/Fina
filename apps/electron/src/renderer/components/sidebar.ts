@@ -45,6 +45,7 @@ const NAV: NavGroup[] = [
       { route: 'fixas-receber', label: 'Receitas fixas', icon: 'ti-repeat' },
       { route: 'calendario',   label: 'Calendário', icon: 'ti-calendar-month'  },
       { route: 'budget',       label: 'Orçamento',  icon: 'ti-target'          },
+      { route: 'familia',      label: 'Família/Casal', icon: 'ti-users'        },
     ],
   },
   {
@@ -77,9 +78,11 @@ const NAV: NavGroup[] = [
     icon: 'ti-chart-bar',
     items: [
       { route: 'reports', label: 'Relatórios', icon: 'ti-chart-bar'    },
+      { route: 'retrospectiva', label: 'Retrospectiva', icon: 'ti-confetti' },
       { route: 'market',  label: 'Mercado',    icon: 'ti-chart-line'   },
       { route: 'openfinance', label: 'Open Finance', icon: 'ti-plug-connected' },
       { route: 'irpf',    label: 'IRPF',       icon: 'ti-file-invoice' },
+      { route: 'mei',     label: 'MEI',        icon: 'ti-receipt-2' },
       { route: 'documentos', label: 'Documentos', icon: 'ti-folder' },
     ],
   },
