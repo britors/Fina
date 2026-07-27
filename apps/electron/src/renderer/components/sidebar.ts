@@ -121,19 +121,19 @@ function searchNav(query: string): SearchEntry[] {
     .slice(0, 8);
 }
 
-function readOpenGroups(): Set<string> {
+function readOpenGroup(): string | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Set(['overview', 'movement']);
+    if (!raw) return 'overview';
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? new Set(parsed.filter(v => typeof v === 'string')) : new Set(['overview', 'movement']);
+    return typeof parsed === 'string' ? parsed : 'overview';
   } catch {
-    return new Set(['overview', 'movement']);
+    return 'overview';
   }
 }
 
-function writeOpenGroups(groups: Set<string>): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...groups]));
+function writeOpenGroup(groupId: string | null): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(groupId));
 }
 
 export async function initSidebar(el: HTMLElement): Promise<void> {
@@ -145,10 +145,9 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
 
   const initials = userName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
   const currentRoute = window.location.hash.replace(/^#/, '') || 'dashboard';
-  const openGroups = readOpenGroups();
   const activeGroup = groupForRoute(currentRoute);
-  if (activeGroup) openGroups.add(activeGroup);
-  writeOpenGroups(openGroups);
+  const openGroup = activeGroup ?? readOpenGroup();
+  writeOpenGroup(openGroup);
 
   el.innerHTML = `
     <div class="sidebar-header">
@@ -175,8 +174,8 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
     </div>
     <nav class="sidebar-nav">
       ${NAV.map(group => `
-        <div class="nav-section ${openGroups.has(group.id) ? 'open' : ''}" data-group="${group.id}">
-          <button class="nav-group" type="button" data-toggle-group="${group.id}" aria-expanded="${openGroups.has(group.id) ? 'true' : 'false'}">
+        <div class="nav-section ${openGroup === group.id ? 'open' : ''}" data-group="${group.id}">
+          <button class="nav-group" type="button" data-toggle-group="${group.id}" aria-expanded="${openGroup === group.id ? 'true' : 'false'}">
             <span class="nav-group-main">
               <i class="ti ${group.icon}"></i>
               ${group.label}
@@ -209,14 +208,16 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
   el.querySelectorAll<HTMLElement>('[data-toggle-group]').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.toggleGroup!;
-      const groups = readOpenGroups();
       const section = el.querySelector<HTMLElement>(`[data-group="${id}"]`);
-      const isOpen = groups.has(id);
-      if (isOpen) groups.delete(id);
-      else groups.add(id);
-      writeOpenGroups(groups);
-      section?.classList.toggle('open', !isOpen);
-      btn.setAttribute('aria-expanded', String(!isOpen));
+      const isOpen = section?.classList.contains('open') ?? false;
+      const nextOpenGroup = isOpen ? null : id;
+      writeOpenGroup(nextOpenGroup);
+
+      el.querySelectorAll<HTMLElement>('.nav-section').forEach(sectionEl => {
+        const shouldBeOpen = sectionEl.dataset.group === nextOpenGroup;
+        sectionEl.classList.toggle('open', shouldBeOpen);
+        sectionEl.querySelector<HTMLElement>('.nav-group')?.setAttribute('aria-expanded', String(shouldBeOpen));
+      });
     });
   });
 
@@ -290,18 +291,12 @@ function initSidebarSearch(el: HTMLElement): void {
 
 export function setActiveRoute(route: string): void {
   const activeGroup = groupForRoute(route);
-  if (activeGroup) {
-    const groups = readOpenGroups();
-    groups.add(activeGroup);
-    writeOpenGroups(groups);
-  }
+  if (activeGroup) writeOpenGroup(activeGroup);
 
   document.querySelectorAll<HTMLElement>('.nav-section').forEach(el => {
     const isActiveGroup = el.dataset.group === activeGroup;
-    if (isActiveGroup) {
-      el.classList.add('open');
-      el.querySelector<HTMLElement>('.nav-group')?.setAttribute('aria-expanded', 'true');
-    }
+    el.classList.toggle('open', isActiveGroup);
+    el.querySelector<HTMLElement>('.nav-group')?.setAttribute('aria-expanded', String(isActiveGroup));
     el.classList.toggle('active-group', isActiveGroup);
   });
 
