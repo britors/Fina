@@ -5,6 +5,8 @@ import {
   calculateAvailableCredit,
   formatCurrency,
   accountTypeLabel,
+  isCreditLikeAccountType,
+  isVoucherAccountType,
 } from '../src/shared/utils';
 import type { Account } from '../src/shared/types';
 
@@ -33,6 +35,27 @@ describe('calculateTotalBalance', () => {
 
   test('funciona com conta de saldo zero', () => {
     assert.equal(calculateTotalBalance([make({ balance: 0 })]), 0);
+  });
+
+  test('considera o saldo do vale como valor disponível', () => {
+    assert.equal(calculateTotalBalance([
+      make({ type: 'meal_voucher', balance: 350 }),
+      make({ type: 'credit_card', balance: 100 }),
+    ]), 250);
+  });
+});
+
+describe('tipos de conta', () => {
+  test('somente cartão de crédito é tratado como dívida', () => {
+    assert.equal(isCreditLikeAccountType('credit_card'), true);
+    assert.equal(isCreditLikeAccountType('meal_voucher'), false);
+    assert.equal(isCreditLikeAccountType('food_voucher'), false);
+  });
+
+  test('identifica os vales', () => {
+    assert.equal(isVoucherAccountType('meal_voucher'), true);
+    assert.equal(isVoucherAccountType('food_voucher'), true);
+    assert.equal(isVoucherAccountType('credit_card'), false);
   });
 });
 

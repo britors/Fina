@@ -7,7 +7,7 @@ export function registerForecastHandlers(): void {
     const db = getDb();
 
     // Saldo atual de todas as contas
-    const { total } = db.prepare(`SELECT COALESCE(SUM(balance),0) AS total FROM accounts`).get() as { total: number };
+    const { total } = db.prepare(`SELECT COALESCE(SUM(CASE WHEN type = 'credit_card' THEN -balance ELSE balance END),0) AS total FROM accounts`).get() as { total: number };
 
     // Transações confirmadas futuras (pendentes)
     const futureTxs = db.prepare(`
@@ -77,7 +77,7 @@ export function registerForecastHandlers(): void {
     const endIso = endOfMonth.toISOString().slice(0, 10);
     const days = Math.max(0, Math.round((endOfMonth.getTime() - now.getTime()) / 86400000));
 
-    const { total } = db.prepare(`SELECT COALESCE(SUM(balance),0) AS total FROM accounts`).get() as { total: number };
+    const { total } = db.prepare(`SELECT COALESCE(SUM(CASE WHEN type = 'credit_card' THEN -balance ELSE balance END),0) AS total FROM accounts`).get() as { total: number };
 
     const futureTxs = db.prepare(`
       SELECT date, type, description, amount

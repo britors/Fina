@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency, formatDate, accountTypeLabel, isCreditLikeAccountType } from '../../shared/utils';
+import { formatCurrency, formatDate, accountTypeLabel, isCreditLikeAccountType, isVoucherAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
@@ -111,15 +111,19 @@ function accountCard(a: Account, cardState?: CreditCardInvoiceCardState, purchas
   };
   const color = a.color ?? typeColors[a.type] ?? '#9CA3AF';
   const isCreditCard = a.type === 'credit_card';
-  const isVoucher = a.type === 'meal_voucher' || a.type === 'food_voucher';
+  const isVoucher = isVoucherAccountType(a.type);
   const isCredit = isCreditLikeAccountType(a.type);
-  // Crédito/vales são dívida positiva; conta corrente/poupança/carteira usam
-  // saldo negativo para representar uso do limite (cheque especial).
-  const usedLimit = isCredit ? a.balance : Math.max(0, -a.balance);
-  const availableToSpend = a.credit_limit != null ? a.credit_limit - usedLimit : -usedLimit;
+  // Cartões guardam a fatura como saldo positivo; vales guardam diretamente
+  // o valor disponível para gastar. As demais contas podem ficar negativas
+  // para representar uso do limite (cheque especial).
+  const usedLimit = isCredit
+    ? a.balance
+    : isVoucher && a.credit_limit != null
+      ? Math.max(0, a.credit_limit - a.balance)
+      : Math.max(0, -a.balance);
   const balanceLabel = isVoucher ? 'Disponível para gastar' : isCreditCard ? 'Fatura atual' : 'Saldo disponível';
-  const balanceValue = isVoucher ? formatCurrency(availableToSpend) : isCredit ? formatDebt(a.balance) : formatCurrency(a.balance);
-  const isNegative = isVoucher ? availableToSpend < 0 : isCredit ? a.balance > 0 : a.balance < 0;
+  const balanceValue = isVoucher ? formatCurrency(a.balance) : isCredit ? formatDebt(a.balance) : formatCurrency(a.balance);
+  const isNegative = isVoucher ? a.balance < 0 : isCredit ? a.balance > 0 : a.balance < 0;
 
   // Sem fatura ativada (closing_day/due_day não configurados) mantém o
   // atalho antigo, simples, de "Pagar fatura" — só cartões com o ciclo
@@ -161,14 +165,14 @@ function accountCard(a: Account, cardState?: CreditCardInvoiceCardState, purchas
           · ${cardState.closed ? 'vencimento' : 'fecha em'} ${formatDate(cardState.closed ? cardState.closed.due_date : cardState.open.closing_date)}
         </div>
       ` : ''}
-      ${a.credit_limit ? `
+      ${(isCreditCard || isVoucher) && a.credit_limit != null && a.credit_limit > 0 ? `
         <div class="prog-track" style="margin-top:10px">
           <div class="prog-fill ${usedLimit / a.credit_limit > 0.8 ? 'prog-over' : 'prog-ok'}"
             style="width:${Math.min((usedLimit / a.credit_limit) * 100, 100).toFixed(1)}%"></div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-3);margin-top:4px">
           <span>Limite: ${formatCurrency(a.credit_limit)}</span>
-          <span>Disponível: ${formatCurrency(a.credit_limit - usedLimit)}</span>
+          <span>${isVoucher ? `Gasto: ${formatCurrency(usedLimit)}` : `Disponível: ${formatCurrency(a.credit_limit - usedLimit)}`}</span>
         </div>
       ` : ''}
       ${purchaseWindow ? `
@@ -226,15 +230,15 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
       </div>
       <div class="form-row">
         <div class="form-group" id="f-balance-brl-group">
-          <label class="form-label">Saldo (R$)</label>
+          <label class="form-label" id="f-balance-label">Saldo (R$)</label>
           <input class="form-ctrl" id="f-balance" type="text" inputmode="decimal" value="${formatMoneyValue(acc?.balance ?? 0)}">
         </div>
         <div class="form-group" id="f-balance-foreign-group" style="display:none">
           <label class="form-label" id="f-balance-foreign-label">Saldo original</label>
           <input class="form-ctrl" id="f-original-balance" type="text" inputmode="decimal" value="${formatMoneyValue(acc?.original_balance)}">
         </div>
-        <div class="form-group">
-          <label class="form-label">Limite de crédito (R$)</label>
+        <div class="form-group" id="f-limit-group">
+          <label class="form-label" id="f-limit-label">Limite de crédito (R$)</label>
           <input class="form-ctrl" id="f-limit" type="text" inputmode="decimal" value="${formatMoneyValue(acc?.credit_limit)}">
         </div>
       </div>
@@ -279,7 +283,7 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
         currency: curr,
         balance: isNaN(balance) ? 0 : balance,
         original_balance: curr === 'BRL' ? null : original,
-        credit_limit: isNaN(limit) ? null : limit,
+        credit_limit: (type === 'credit_card' || isVoucherAccountType(type)) && !isNaN(limit) ? limit : null,
         closing_day: type === 'credit_card' && !isNaN(closingDay) ? closingDay : null,
         due_day: type === 'credit_card' && !isNaN(dueDay) ? dueDay : null,
         color: acc?.color ?? null,
@@ -307,8 +311,12 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
   function toggleCreditCardFields(): void {
     const type = (overlay.querySelector('#f-type') as HTMLSelectElement).value as AccountType;
     const isCreditCard = type === 'credit_card';
+    const isVoucher = isVoucherAccountType(type);
     (overlay.querySelector('#f-cycle-group') as HTMLElement).style.display = isCreditCard ? '' : 'none';
     (overlay.querySelector('#f-cycle-hint') as HTMLElement).style.display = isCreditCard ? '' : 'none';
+    (overlay.querySelector('#f-limit-group') as HTMLElement).style.display = isCreditCard || isVoucher ? '' : 'none';
+    (overlay.querySelector('#f-balance-label') as HTMLElement).textContent = isVoucher ? 'Saldo disponível para gastar (R$)' : 'Saldo (R$)';
+    (overlay.querySelector('#f-limit-label') as HTMLElement).textContent = isVoucher ? 'Limite total (R$)' : 'Limite de crédito (R$)';
   }
   overlay.querySelector('#f-currency')?.addEventListener('change', toggleCurrencyFields);
   overlay.querySelector('#f-type')?.addEventListener('change', toggleCreditCardFields);

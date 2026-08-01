@@ -1,6 +1,6 @@
 {
   "name": "fina-desktop",
-  "version": "17.10.1",
+  "version": "17.10.2",
   "private": true,
   "description": "Fina desktop para Windows, macOS e Linux",
   "workspaces": [

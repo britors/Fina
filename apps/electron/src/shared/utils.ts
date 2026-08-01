@@ -75,7 +75,13 @@ export function accountTypeLabel(type: string): string {
 }
 
 export function isCreditLikeAccountType(type: string): boolean {
-  return type === 'credit_card' || type === 'meal_voucher' || type === 'food_voucher';
+  // Cartão de crédito guarda no saldo o valor da fatura (uma dívida). Vales
+  // guardam diretamente o valor disponível para gastar, como uma conta.
+  return type === 'credit_card';
+}
+
+export function isVoucherAccountType(type: string): boolean {
+  return type === 'meal_voucher' || type === 'food_voucher';
 }
 
 // Pix só se aplica a pagamentos feitos por conta corrente ou fatura de cartão

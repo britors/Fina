@@ -25,9 +25,10 @@ export function balanceDelta(type: TransactionType, amount: number): number {
   return type === 'income' ? amount : -amount;
 }
 
-// Para crédito/vales, "balance" representa a fatura (dívida), não caixa:
+// Para cartões de crédito, "balance" representa a fatura (dívida), não caixa:
 // uma despesa deve aumentar o valor devido, e não diminuí-lo como numa conta
-// corrente. Por isso o delta é invertido para essas contas.
+// corrente. Vales usam o próprio saldo como valor disponível, então seguem o
+// mesmo efeito de saldo das contas comuns.
 // Retorna o delta já invertido (signedDelta), para que quem chamou possa
 // aplicar o mesmo valor exato à fatura correspondente (attachToInvoice),
 // sem duplicar/dessincronizar a lógica de sinal.

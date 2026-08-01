@@ -35,3 +35,27 @@ test('executa toda a cadeia de migrações e cria a hierarquia de categorias', (
     db.close();
   }
 });
+
+test('converte o saldo antigo dos vales para o valor disponível', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  const migrationsDir = join(process.cwd(), 'src/main/migrations');
+  const files = readdirSync(migrationsDir)
+    .filter(file => file.endsWith('.sql') && file !== '040_voucher_available_balance.sql')
+    .sort();
+
+  try {
+    for (const file of files) db.exec(readFileSync(join(migrationsDir, file), 'utf8'));
+    db.prepare(`
+      INSERT INTO accounts (id, name, type, balance, credit_limit)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('voucher-test', 'Vale', 'meal_voucher', 120, 500);
+
+    db.exec(readFileSync(join(migrationsDir, '040_voucher_available_balance.sql'), 'utf8'));
+    const account = db.prepare('SELECT balance, credit_limit FROM accounts WHERE id = ?').get('voucher-test') as { balance: number; credit_limit: number | null };
+    assert.equal(account.balance, 380);
+    assert.equal(account.credit_limit, 500);
+  } finally {
+    db.close();
+  }
+});

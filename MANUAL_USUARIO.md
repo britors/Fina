@@ -538,8 +538,8 @@ A tela `Meios de pagamento` gerencia contas bancárias, cartões, vales e cartei
 O topo da tela mostra:
 
 - `Patrimônio líquido`: soma dos saldos cadastrados.
-- `Disponível`: soma dos meios de pagamento que não funcionam como crédito/vale.
-- `Em débito`: soma dos valores de cartão de crédito e vales.
+- `Disponível`: soma dos saldos das contas, carteiras e vales disponíveis para gastar.
+- `Em débito`: soma dos valores de cartão de crédito.
 
 ### Cartões de meio de pagamento
 
@@ -549,10 +549,10 @@ Cada meio de pagamento mostra:
 - Tipo.
 - Nome.
 - Saldo disponível, fatura atual ou valor disponível para gastar, conforme o tipo.
-- Limite e limite disponível, quando for cartão de crédito ou vale.
+- Limite e gasto do limite, quando for cartão de crédito ou vale.
 - Data de criação.
 
-Para `Vale Refeição` e `Vale Alimentação`, o valor principal do card mostra quanto ainda há disponível para gastar, em vez do total já usado.
+Para `Vale Refeição` e `Vale Alimentação`, o campo `Saldo` e o valor principal do card mostram quanto ainda há disponível para gastar. Despesas reduzem esse valor diretamente.
 
 As ações disponíveis são:
 
@@ -580,8 +580,8 @@ Campos disponíveis:
 - `Tipo`: conta corrente, poupança, cartão de crédito, vale refeição, vale alimentação ou carteira.
 - `Banco`: nome da instituição.
 - `Moeda da conta`: Real (padrão), Dólar ou Euro.
-- `Saldo` (contas em Real) ou `Saldo original` (contas em moeda estrangeira, no valor na própria moeda).
-- `Limite de crédito`: usado principalmente para cartões e vales.
+- `Saldo` (contas em Real) ou `Saldo original` (contas em moeda estrangeira, no valor na própria moeda). Nos vales, esse campo é diretamente o valor disponível para gastar.
+- `Limite de crédito`: usado para cartões de crédito. Nos vales, representa o limite total, enquanto `Saldo` representa o valor ainda disponível para gastar.
 
 Contas em Dólar ou Euro têm o saldo convertido automaticamente para Real usando a cotação do painel `Mercado`, tanto ao salvar quanto ao clicar em `Atualizar cotações`. O cartão do meio de pagamento mostra o valor convertido e, abaixo, o valor na moeda original.
 
@@ -1227,14 +1227,14 @@ Cada dívida tem um botão `Gerar rascunho com IA` que pede ao Assistente IA um 
 
 A tela `Reserva` ajuda a calcular e acompanhar uma reserva de emergência.
 
-Ela usa a média de despesas dos últimos 3 meses e o saldo disponível em meios de pagamento que não funcionam como crédito/vale.
+Ela usa a média de despesas dos últimos 3 meses e o saldo disponível em meios de pagamento que não são cartão de crédito.
 
 ### Cartões principais
 
 A tela mostra:
 
 - `Despesa média`: média de despesas dos últimos 3 meses.
-- `Saldo em meios de pagamento`: valor disponível nos meios de pagamento.
+- `Saldo em meios de pagamento`: valor disponível nos meios de pagamento, incluindo os saldos dos vales.
 - `Reserva ideal`: valor necessário para o objetivo escolhido.
 
 ### Objetivo de reserva
