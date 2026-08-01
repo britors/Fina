@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from './database';
-import { addInterval } from './ipc/bills';
+import { addInterval, settleAutomaticBills } from './ipc/bills';
+import { settleAutomaticReceivables } from './ipc/receivables';
 import type { BillInterval, ReceivableInterval } from '../shared/types';
 
 interface RecurrenceResult {
@@ -67,14 +68,14 @@ export function generateRecurrences(): RecurrenceResult {
     WHERE recurring = 1 AND status != 'paid' AND due_date <= date('now', '+' || ? || ' days')
   `).all(BILL_LEAD_DAYS) as {
     id: string; description: string; amount: number; due_date: string;
-    account_id: string | null; category_id: string | null; recurrence_interval: BillInterval;
+    account_id: string | null; category_id: string | null; auto_settle: 0 | 1; recurrence_interval: BillInterval;
   }[];
 
   const checkBillLog  = db.prepare(`SELECT 1 FROM recurring_log WHERE source_id=? AND source_type='bill' AND generated_date=?`);
   const insertBillLog = db.prepare(`INSERT OR IGNORE INTO recurring_log (source_id, source_type, generated_date) VALUES (?,?,?)`);
   const insertBill    = db.prepare(`
-    INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring)
-    VALUES (?,?,?,?,?,?,?,0)
+    INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring, auto_settle)
+    VALUES (?,?,?,?,?,?,?,0,?)
   `);
   const billPayments = db.prepare(`SELECT account_id, amount, is_pix FROM bill_payments WHERE bill_id=?`);
   const insertBillPayment = db.prepare(`INSERT INTO bill_payments (id, bill_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
@@ -86,7 +87,7 @@ export function generateRecurrences(): RecurrenceResult {
     if (checkBillLog.get(bill.id, bill.due_date)) continue;
 
     const newId = randomUUID();
-    insertBill.run(newId, bill.description, bill.amount, bill.due_date, 'pending', bill.account_id, bill.category_id);
+    insertBill.run(newId, bill.description, bill.amount, bill.due_date, 'pending', bill.account_id, bill.category_id, bill.auto_settle);
     for (const payment of billPayments.all(bill.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[]) {
       insertBillPayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
     }
@@ -107,14 +108,14 @@ export function generateRecurrences(): RecurrenceResult {
     WHERE recurring = 1 AND status != 'received' AND due_date <= date('now', '+' || ? || ' days')
   `).all(BILL_LEAD_DAYS) as {
     id: string; description: string; amount: number; due_date: string;
-    account_id: string | null; category_id: string | null; recurrence_interval: ReceivableInterval;
+    account_id: string | null; category_id: string | null; auto_settle: 0 | 1; recurrence_interval: ReceivableInterval;
   }[];
 
   const checkReceivableLog  = db.prepare(`SELECT 1 FROM recurring_log WHERE source_id=? AND source_type='receivable' AND generated_date=?`);
   const insertReceivableLog = db.prepare(`INSERT OR IGNORE INTO recurring_log (source_id, source_type, generated_date) VALUES (?,?,?)`);
   const insertReceivable    = db.prepare(`
-    INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring)
-    VALUES (?,?,?,?,?,?,?,0)
+    INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring, auto_settle)
+    VALUES (?,?,?,?,?,?,?,0,?)
   `);
   const receivablePayments = db.prepare(`SELECT account_id, amount, is_pix FROM receivable_payments WHERE receivable_id=?`);
   const insertReceivablePayment = db.prepare(`INSERT INTO receivable_payments (id, receivable_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
@@ -126,7 +127,7 @@ export function generateRecurrences(): RecurrenceResult {
     if (checkReceivableLog.get(receivable.id, receivable.due_date)) continue;
 
     const newId = randomUUID();
-    insertReceivable.run(newId, receivable.description, receivable.amount, receivable.due_date, 'pending', receivable.account_id, receivable.category_id);
+    insertReceivable.run(newId, receivable.description, receivable.amount, receivable.due_date, 'pending', receivable.account_id, receivable.category_id, receivable.auto_settle);
     for (const payment of receivablePayments.all(receivable.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[]) {
       insertReceivablePayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
     }
@@ -139,6 +140,13 @@ export function generateRecurrences(): RecurrenceResult {
     const nextDue = addInterval(receivable.due_date, receivable.recurrence_interval ?? 'monthly', 1);
     advanceReceivableDue.run(nextDue, receivable.id);
   }
+
+  // As ocorrências já geradas ficam pendentes até o próprio vencimento. A
+  // rotina também alcança contas antigas vencidas enquanto o app estava
+  // fechado, evitando lançamentos duplicados porque a conta é removida ao
+  // virar transação.
+  result.transactions += settleAutomaticBills();
+  result.transactions += settleAutomaticReceivables();
 
   return result;
 }

@@ -233,6 +233,17 @@ function registerHandlers(): void {
   });
 }
 
+function runRecurrenceCycle(): void {
+  try {
+    const rec = generateRecurrences();
+    if (rec.transactions + rec.bills + rec.receivables > 0) {
+      console.log(`[Recorrências] ${rec.transactions} lançamentos/contas processados, ${rec.bills} contas a pagar e ${rec.receivables} contas a receber geradas`);
+    }
+  } catch (err) {
+    console.error('[Recorrências] Erro ao processar recorrências e baixas automáticas:', err);
+  }
+}
+
 app.whenReady().then(async () => {
   if (isBackgroundRun) {
     await runBackgroundTasksAndExit();
@@ -285,10 +296,8 @@ app.whenReady().then(async () => {
     win.show();
     if (!splash.isDestroyed()) splash.destroy();
     if (unlockWin && !unlockWin.isDestroyed()) unlockWin.close();
-    const rec = generateRecurrences();
-    if (rec.transactions + rec.bills + rec.receivables > 0) {
-      console.log(`[Recorrências] ${rec.transactions} transações, ${rec.bills} contas a pagar, ${rec.receivables} contas a receber geradas`);
-    }
+    runRecurrenceCycle();
+    setInterval(runRecurrenceCycle, 60 * 60 * 1000);
     startNotificationScheduler();
     startAutoBackupScheduler();
   });

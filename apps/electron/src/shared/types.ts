@@ -183,6 +183,7 @@ export interface Bill {
   account_id: string | null;
   category_id: string | null;
   recurring: 0 | 1;
+  auto_settle: 0 | 1;
   recurrence_interval: BillInterval;
   created_at: string;
   updated_at: string;
@@ -205,6 +206,7 @@ export interface Receivable {
   account_id: string | null;
   category_id: string | null;
   recurring: 0 | 1;
+  auto_settle: 0 | 1;
   recurrence_interval: ReceivableInterval;
   created_at: string;
   updated_at: string;

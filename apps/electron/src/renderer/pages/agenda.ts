@@ -303,12 +303,17 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
           ).join('')}
         </select>
       </div>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:0.82rem;color:var(--text-2);margin-top:4px">
+        <input type="checkbox" id="f-auto-settle" ${(b?.auto_settle ?? 0) === 1 ? 'checked' : ''}>
+        <span><strong style="color:var(--text)">Baixa automática</strong><br><small>Gera a despesa automaticamente no dia do vencimento.</small></span>
+      </label>
     `,
     onSave: async () => {
       const desc   = (document.getElementById('f-desc')    as HTMLInputElement).value.trim();
       const amount = moneyInputValue(document.getElementById('f-amount') as HTMLInputElement);
       const due    = (document.getElementById('f-due')     as HTMLInputElement).value;
       const status = (document.getElementById('f-status')  as HTMLSelectElement).value as BillStatus;
+      const autoSettle = (document.getElementById('f-auto-settle') as HTMLInputElement).checked;
       if (!desc || isNaN(amount) || !due) { showAlert('Preencha todos os campos.'); return false; }
       const payments = collectPayments('bill', amount, true);
       if (!payments) return false;
@@ -323,7 +328,7 @@ function openBillModal(b: Bill | null, onDone: () => void, draft?: AIBillDraft):
       if (markingAsPaid && finalCategories.length === 0) { showAlert('Selecione uma categoria para o lançamento.'); return false; }
       if (markingAsPaid && payments.length === 0) { showAlert('Defina pelo menos uma conta.'); return false; }
 
-      const payload = { description: desc, amount, due_date: due, status: markingAsPaid ? b!.status : status, account_id: payments[0]?.account_id ?? null, category_id: billCategories[0]?.category_id ?? null, recurring: 0 as const, payments, categories: billCategories };
+      const payload = { description: desc, amount, due_date: due, status: markingAsPaid ? b!.status : status, account_id: payments[0]?.account_id ?? null, category_id: billCategories[0]?.category_id ?? null, recurring: 0 as const, auto_settle: autoSettle ? 1 as const : 0 as const, payments, categories: billCategories };
       if (b) {
         await invoke('bills:update', { id: b.id, ...payload });
         if (markingAsPaid) {

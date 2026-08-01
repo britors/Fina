@@ -197,6 +197,10 @@ function openFixedModal(receivable: Partial<ReceivableWithCategory> | null, onDo
           ).join('')}
         </select>
       </div>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:0.82rem;color:var(--text-2);margin-top:4px">
+        <input type="checkbox" id="f-auto-settle" ${(receivable?.auto_settle ?? 0) === 1 ? 'checked' : ''}>
+        <span><strong style="color:var(--text)">Baixa automática</strong><br><small>Os recebimentos gerados serão lançados como receita no dia do vencimento.</small></span>
+      </label>
     `,
     onSave: async () => {
       const description = (document.getElementById('f-desc') as HTMLInputElement).value.trim();
@@ -205,6 +209,7 @@ function openFixedModal(receivable: Partial<ReceivableWithCategory> | null, onDo
       const accountId = (document.getElementById('f-account') as HTMLSelectElement).value;
       const categoryId = (document.getElementById('f-category') as HTMLSelectElement).value;
       const interval = (document.getElementById('f-interval') as HTMLSelectElement).value as ReceivableInterval;
+      const autoSettle = (document.getElementById('f-auto-settle') as HTMLInputElement).checked;
 
       if (!description || !Number.isFinite(amount) || amount <= 0 || !due) {
         showAlert('Preencha descrição, valor e vencimento.');
@@ -221,6 +226,7 @@ function openFixedModal(receivable: Partial<ReceivableWithCategory> | null, onDo
         status: 'pending',
         account_id: accountId || null,
         category_id: categoryId || null,
+        auto_settle: autoSettle ? 1 as const : 0 as const,
         recurring: 1 as const,
         recurrence_interval: interval,
         payments: accountId ? [{ account_id: accountId, amount, is_pix: (isPix ? 1 : 0) as 0 | 1 }] : [],

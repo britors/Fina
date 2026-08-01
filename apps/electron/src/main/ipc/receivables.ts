@@ -157,6 +157,97 @@ function trackPriceHistory(receivableId: string, amount: number): void {
   ).run(randomUUID(), receivableId, amount);
 }
 
+function markReceivableAsReceived({ id, category_id, categories: inputCategories, date, payments: inputPayments }: {
+  id: string;
+  category_id?: string;
+  categories?: CategorySplit[];
+  date?: string;
+  payments?: PaymentSplit[];
+}): Receivable | null {
+  const db = getDb();
+  const receivable = db.prepare('SELECT * FROM receivables WHERE id = ?').get(id) as Receivable | undefined;
+  if (!receivable) return null;
+  if (receivable.status === 'received') return receivable;
+
+  const payments = normalizePayments({
+    amount: receivable.amount,
+    account_id: receivable.account_id,
+    payments: inputPayments?.length ? inputPayments : getReceivablePayments(id),
+  }, false);
+  const resolvedCategories = inputCategories?.length
+    ? inputCategories
+    : category_id
+      ? [{ category_id, amount: receivable.amount }]
+      : getReceivableCategories(id);
+  if (!receivable.category_id && !category_id && resolvedCategories.length === 0) {
+    throw new Error('Selecione uma categoria para o lançamento.');
+  }
+  const categories = normalizeCategories({
+    amount: receivable.amount,
+    category_id: category_id || receivable.category_id,
+    categories: resolvedCategories,
+  }, false);
+  const receivedAt = date ?? new Date().toISOString().slice(0, 10);
+
+  db.transaction(() => {
+    if (receivable.recurring) {
+      for (const payment of payments) {
+        const signedDelta = adjustBalance(payment.account_id, payment.amount);
+        attachToInvoice(payment.account_id, receivedAt, signedDelta);
+      }
+      db.prepare(`UPDATE receivables SET status='received', updated_at=datetime('now') WHERE id=?`).run(id);
+      replaceReceivablePayments(id, payments);
+      replaceReceivableCategories(id, categories);
+      return;
+    }
+
+    const txId = randomUUID();
+    db.prepare(
+      'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,0)'
+    ).run(txId, payments[0].account_id, categories[0].category_id, receivable.description, receivable.amount, 'income', receivedAt, 'confirmed', null);
+    const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
+    const invoiceLinkStmt = db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?');
+    for (const payment of payments) {
+      const paymentId = randomUUID();
+      txPaymentStmt.run(paymentId, txId, payment.account_id, payment.amount, payment.is_pix ? 1 : 0);
+      const signedDelta = adjustBalance(payment.account_id, payment.amount);
+      const invoiceId = attachToInvoice(payment.account_id, receivedAt, signedDelta);
+      if (invoiceId) invoiceLinkStmt.run(invoiceId, paymentId);
+    }
+    const txCategoryStmt = db.prepare('INSERT INTO transaction_categories (id, transaction_id, category_id, amount) VALUES (?,?,?,?)');
+    for (const category of categories) {
+      txCategoryStmt.run(randomUUID(), txId, category.category_id, category.amount);
+    }
+    db.prepare('DELETE FROM receivables WHERE id = ?').run(id);
+  })();
+
+  return db.prepare('SELECT * FROM receivables WHERE id = ?').get(id) as Receivable | undefined ?? null;
+}
+
+// Espelha a baixa automática de contas a pagar. Cadastros incompletos não são
+// baixados e continuam disponíveis para correção/manualização.
+export function settleAutomaticReceivables(): number {
+  const db = getDb();
+  const receivables = db.prepare(`
+    SELECT * FROM receivables
+    WHERE auto_settle = 1 AND recurring = 0
+      AND status IN ('pending', 'overdue')
+      AND due_date <= date('now')
+    ORDER BY due_date, created_at
+  `).all() as Receivable[];
+  let settled = 0;
+  for (const receivable of receivables) {
+    try {
+      if (!db.prepare('SELECT 1 FROM receivables WHERE id = ?').get(receivable.id)) continue;
+      markReceivableAsReceived({ id: receivable.id, date: receivable.due_date });
+      if (!db.prepare('SELECT 1 FROM receivables WHERE id = ?').get(receivable.id)) settled++;
+    } catch (err) {
+      console.warn(`[Baixa automática] Não foi possível baixar o recebimento ${receivable.id}:`, err);
+    }
+  }
+  return settled;
+}
+
 export function registerReceivableHandlers(): void {
   ipcMain.handle('receivables:list', (_e, filters: { status?: string; dateFrom?: string; dateTo?: string; category_id?: string } = {}) => {
     autoMarkOverdue();
@@ -199,8 +290,8 @@ export function registerReceivableHandlers(): void {
     const db = getDb();
     db.transaction(() => {
       db.prepare(
-        'INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring, recurrence_interval) VALUES (?,?,?,?,?,?,?,?,?)'
-      ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly');
+        'INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring, auto_settle, recurrence_interval) VALUES (?,?,?,?,?,?,?,?,?,?)'
+      ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly');
       replaceReceivablePayments(id, payments);
       if (categories.length) replaceReceivableCategories(id, categories);
       if (data.recurring) trackPriceHistory(id, data.amount);
@@ -223,8 +314,8 @@ export function registerReceivableHandlers(): void {
         const newId = randomUUID();
         const newDue = addInterval(receivable.due_date, interval, i);
         db.prepare(
-          'INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring) VALUES (?,?,?,?,?,?,?,0)'
-        ).run(newId, receivable.description, receivable.amount, newDue, 'pending', receivable.account_id, receivable.category_id);
+          'INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring, auto_settle) VALUES (?,?,?,?,?,?,?,0,?)'
+        ).run(newId, receivable.description, receivable.amount, newDue, 'pending', receivable.account_id, receivable.category_id, receivable.auto_settle);
         replaceReceivablePayments(newId, getReceivablePayments(receivable.id));
         replaceReceivableCategories(newId, getReceivableCategories(receivable.id));
         createdIds.push(newId);
@@ -242,8 +333,8 @@ export function registerReceivableHandlers(): void {
     const db = getDb();
     db.transaction(() => {
       db.prepare(
-        `UPDATE receivables SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, recurrence_interval=?, updated_at=datetime('now') WHERE id=?`
-      ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
+        `UPDATE receivables SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, auto_settle=?, recurrence_interval=?, updated_at=datetime('now') WHERE id=?`
+      ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
       replaceReceivablePayments(id, payments);
       if (categories.length) replaceReceivableCategories(id, categories);
       if (data.recurring && data.amount != null) trackPriceHistory(id, data.amount);
@@ -285,56 +376,5 @@ export function registerReceivableHandlers(): void {
   // próximas ocorrências, então continuam existindo (apenas com
   // status='received') em vez de serem apagadas, senão a recorrência para
   // de funcionar.
-  ipcMain.handle('receivables:markAsReceived', (_e, { id, category_id, categories: inputCategories, date, payments: inputPayments }: { id: string; category_id?: string; categories?: CategorySplit[]; date?: string; payments?: PaymentSplit[] }) => {
-    const db = getDb();
-    const receivable = db.prepare('SELECT * FROM receivables WHERE id = ?').get(id) as Receivable | undefined;
-    if (!receivable) return null;
-    if (receivable.status === 'received') return receivable;
-    const payments = normalizePayments({ amount: receivable.amount, account_id: receivable.account_id, payments: inputPayments?.length ? inputPayments : getReceivablePayments(id) }, false);
-    const resolvedCategories = inputCategories?.length
-      ? inputCategories
-      : category_id
-        ? [{ category_id, amount: receivable.amount }]
-        : getReceivableCategories(id);
-    if (!receivable.category_id && !category_id && resolvedCategories.length === 0) {
-      throw new Error('Selecione uma categoria para o lançamento.');
-    }
-    const categories = normalizeCategories({ amount: receivable.amount, category_id: category_id || receivable.category_id, categories: resolvedCategories }, false);
-
-    const receivedAt = date ?? new Date().toISOString().slice(0, 10);
-
-    db.transaction(() => {
-      if (receivable.recurring) {
-        for (const payment of payments) {
-          const signedDelta = adjustBalance(payment.account_id, payment.amount);
-          attachToInvoice(payment.account_id, receivedAt, signedDelta);
-        }
-        db.prepare(`UPDATE receivables SET status='received', updated_at=datetime('now') WHERE id=?`).run(id);
-        replaceReceivablePayments(id, payments);
-        replaceReceivableCategories(id, categories);
-        return;
-      }
-
-      const txId = randomUUID();
-      db.prepare(
-        'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,0)'
-      ).run(txId, payments[0].account_id, categories[0].category_id, receivable.description, receivable.amount, 'income', receivedAt, 'confirmed', null);
-      const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
-      const invoiceLinkStmt = db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?');
-      for (const payment of payments) {
-        const paymentId = randomUUID();
-        txPaymentStmt.run(paymentId, txId, payment.account_id, payment.amount, payment.is_pix ? 1 : 0);
-        const signedDelta = adjustBalance(payment.account_id, payment.amount);
-        const invoiceId = attachToInvoice(payment.account_id, receivedAt, signedDelta);
-        if (invoiceId) invoiceLinkStmt.run(invoiceId, paymentId);
-      }
-      const txCategoryStmt = db.prepare('INSERT INTO transaction_categories (id, transaction_id, category_id, amount) VALUES (?,?,?,?)');
-      for (const category of categories) {
-        txCategoryStmt.run(randomUUID(), txId, category.category_id, category.amount);
-      }
-      db.prepare('DELETE FROM receivables WHERE id = ?').run(id);
-    })();
-
-    return db.prepare('SELECT * FROM receivables WHERE id = ?').get(id) ?? null;
-  });
+  ipcMain.handle('receivables:markAsReceived', (_e, data: { id: string; category_id?: string; categories?: CategorySplit[]; date?: string; payments?: PaymentSplit[] }) => markReceivableAsReceived(data));
 }
