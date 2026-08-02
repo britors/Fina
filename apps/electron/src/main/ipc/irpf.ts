@@ -2,6 +2,7 @@ import { ipcMain, dialog, BrowserWindow } from 'electron';
 import { writeFileSync, readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
+import { insertConfirmedTransaction } from './transactions';
 import { computeCapitalGains } from '../../shared/utils';
 import type { CapitalGainsOperation } from '../../shared/utils';
 import type { CapitalGainsReport, FiscalClassification } from '../../shared/types';
@@ -264,25 +265,51 @@ export function registerIRPFHandlers(): void {
       return fallback?.id ?? 'cat-1';
     };
 
-    const insertTx = db.prepare(`
-      INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring)
-      VALUES (?,?,?,?,?,?,?,'confirmed',?,0)
+    const txExists = db.prepare(`
+      SELECT 1 FROM transactions
+      WHERE account_id = ? AND type = ? AND date = ? AND description = ? AND amount = ?
+        AND (notes = ? OR notes LIKE ?)
+      LIMIT 1
+    `);
+    const assetExists = db.prepare(`
+      SELECT 1 FROM assets WHERE name = ? AND description = ? LIMIT 1
+    `);
+    const debtExists = db.prepare(`
+      SELECT 1 FROM debts WHERE description = ? AND creditor IS ? AND original_amount = ? LIMIT 1
     `);
 
     const doImport = db.transaction(() => {
       // Rendimentos tributáveis → transações de receita
-      for (const r of preview.rendimentos) {
+      for (const [index, r] of preview.rendimentos.entries()) {
         if (r.total <= 0) continue;
-        insertTx.run(randomUUID(), accountId, catId(r.category, 'income'),
-          r.category, r.total, 'income', date, `IRPF ${year}`);
+        const notes = `IRPF ${year}|rendimento:${index}`;
+        if (txExists.get(accountId, 'income', date, r.category, r.total, notes, `IRPF ${year}%`)) continue;
+        insertConfirmedTransaction({
+          account_id: accountId,
+          category_id: catId(r.category, 'income'),
+          description: r.category,
+          amount: r.total,
+          type: 'income',
+          date,
+          notes,
+        });
         imported++;
       }
 
       // Deduções → transações de despesa
-      for (const d of preview.deducoes) {
+      for (const [index, d] of preview.deducoes.entries()) {
         if (d.total <= 0) continue;
-        insertTx.run(randomUUID(), accountId, catId(d.categoria, 'expense'),
-          d.categoria, d.total, 'expense', date, `IRPF ${year} — dedução`);
+        const notes = `IRPF ${year}|deducao:${index}`;
+        if (txExists.get(accountId, 'expense', date, d.categoria, d.total, notes, `IRPF ${year}%`)) continue;
+        insertConfirmedTransaction({
+          account_id: accountId,
+          category_id: catId(d.categoria, 'expense'),
+          description: d.categoria,
+          amount: d.total,
+          type: 'expense',
+          date,
+          notes,
+        });
         imported++;
       }
 
@@ -294,6 +321,7 @@ export function registerIRPFHandlers(): void {
       for (const b of preview.bens) {
         if (b.valor <= 0) continue;
         const assetType = guessAssetType(b.tipo);
+        if (assetExists.get(b.descricao, `Importado IRPF ${year}`)) continue;
         insertAsset.run(randomUUID(), b.descricao, assetType, b.valor, b.valor, `Importado IRPF ${year}`);
         imported++;
       }
@@ -307,6 +335,7 @@ export function registerIRPFHandlers(): void {
       `);
       for (const d of preview.dividas) {
         if (d.saldo <= 0) continue;
+        if (debtExists.get(d.descricao, d.credor ?? null, d.saldo)) continue;
         insertDebt.run(randomUUID(), d.descricao, 'outro', d.credor, d.saldo, d.saldo);
         imported++;
       }

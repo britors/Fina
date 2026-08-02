@@ -11,6 +11,7 @@ export function registerSyncHandlers(): void {
 
   ipcMain.handle('sync:pull', (_e, folder: string) => {
     if (!folder) throw new Error('Escolha uma pasta antes de sincronizar.');
+    if (!folder.trim()) throw new Error('Escolha uma pasta antes de sincronizar.');
     pullSync(folder);
   });
 }

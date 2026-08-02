@@ -21,6 +21,26 @@ export function getDb(): Database.Database {
   return db;
 }
 
+// Valida um arquivo candidato sem alterar a conexão principal. Retorna null
+// quando ele está criptografado e esta sessão não possui a senha; nesse caso
+// o arquivo não pode ser validado com segurança e deve ser recusado pelo
+// fluxo de restore.
+export function validateDatabaseFile(filePath: string): boolean | null {
+  let candidate: Database.Database | null = null;
+  try {
+    candidate = new Database(filePath, { readonly: true, fileMustExist: true });
+    if (currentPassword) candidate.key(Buffer.from(currentPassword, 'utf8'));
+    const result = candidate.prepare(
+      `SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'`
+    ).get();
+    return !!result;
+  } catch {
+    return currentPassword ? false : null;
+  } finally {
+    candidate?.close();
+  }
+}
+
 function resolveDbPath(): string {
   return process.env.FINA_DB_PATH ?? path.join(app.getPath('userData'), 'fina.db');
 }
@@ -40,7 +60,7 @@ function canReadPlaintext(): boolean {
   }
 }
 
-function finalizePragmas(): void {
+export function finalizePragmas(): void {
   const database = getDb();
   database.pragma('journal_mode = WAL');
   database.pragma('foreign_keys = ON');
@@ -49,6 +69,16 @@ function finalizePragmas(): void {
 function reopenConnection(): void {
   db?.close();
   openDatabase();
+}
+
+// Usado apenas no rollback de operações que fecharam a conexão no meio do
+// caminho. Reaplica a senha que já estava em memória na sessão para que uma
+// falha de restore/rekey não deixe o app com uma conexão inutilizável.
+export function reopenWithCurrentCredentials(): void {
+  openDatabase();
+  if (currentPassword) getDb().key(Buffer.from(currentPassword, 'utf8'));
+  if (!canReadPlaintext()) throw new Error('Não foi possível reabrir o banco restaurado.');
+  finalizePragmas();
 }
 
 // true se o arquivo não puder ser lido sem antes informar uma senha (banco

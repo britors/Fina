@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from './database';
 import { addInterval, settleAutomaticBills } from './ipc/bills';
 import { settleAutomaticReceivables } from './ipc/receivables';
+import { applyBalanceEffect } from './ipc/transactions';
 import type { BillInterval, ReceivableInterval } from '../shared/types';
 
 interface RecurrenceResult {
@@ -27,33 +28,61 @@ export function generateRecurrences(): RecurrenceResult {
     SELECT * FROM transactions WHERE recurring = 1
   `).all() as {
     id: string; account_id: string; category_id: string; description: string;
-    amount: number; type: string; status: string; notes: string | null;
+    to_account_id: string | null; amount: number; type: 'income' | 'expense' | 'transfer';
+    date: string; status: 'confirmed' | 'pending'; notes: string | null; owner: string | null;
+    is_mei_revenue: 0 | 1; paid_by_member_id: string | null;
   }[];
 
   const checkTxLog  = db.prepare(`SELECT 1 FROM recurring_log WHERE source_id=? AND source_type='transaction' AND generated_date=?`);
   const insertTxLog = db.prepare(`INSERT OR IGNORE INTO recurring_log (source_id, source_type, generated_date) VALUES (?,?,?)`);
   const insertTx    = db.prepare(`
-    INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring)
-    VALUES (?,?,?,?,?,?,?,?,?,0)
+    INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, type, date, status,
+      notes, recurring, owner, is_mei_revenue, paid_by_member_id)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
   const txPayments = db.prepare(`SELECT account_id, amount, is_pix FROM transaction_payments WHERE transaction_id=?`);
   const insertTxPayment = db.prepare(`INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
   const txCategories = db.prepare(`SELECT category_id, amount FROM transaction_categories WHERE transaction_id=?`);
   const insertTxCategory = db.prepare(`INSERT INTO transaction_categories (id, transaction_id, category_id, amount) VALUES (?,?,?,?)`);
+  const txMemberSplits = db.prepare(`SELECT member_id, share_amount FROM transaction_member_splits WHERE transaction_id=?`);
+  const insertTxMemberSplit = db.prepare(`INSERT INTO transaction_member_splits (id, transaction_id, member_id, share_amount) VALUES (?,?,?,?)`);
 
   const newDate = `${year}-${String(month).padStart(2, '0')}-01`;
 
   for (const tx of recurringTxs) {
     if (checkTxLog.get(tx.id, newDate)) continue;
+    // A ocorrência pode ter sido criada no primeiro dia do mês (ou o molde
+    // pode ter sido cadastrado durante o mês). Nesse caso, não replique o
+    // próprio lançamento no mesmo ciclo.
+    if (tx.date.slice(0, 7) === newDate.slice(0, 7)) {
+      insertTxLog.run(tx.id, 'transaction', newDate);
+      continue;
+    }
 
     const newId = randomUUID();
-    insertTx.run(newId, tx.account_id, tx.category_id, tx.description,
-                 tx.amount, tx.type, newDate, tx.status, tx.notes);
-    for (const payment of txPayments.all(tx.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[]) {
+    insertTx.run(newId, tx.account_id, tx.to_account_id, tx.category_id, tx.description,
+                 tx.amount, tx.type, newDate, tx.status, tx.notes, 0, tx.owner,
+                 tx.is_mei_revenue, tx.paid_by_member_id);
+    const payments = txPayments.all(tx.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[];
+    for (const payment of payments) {
       insertTxPayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
     }
     for (const category of txCategories.all(tx.id) as { category_id: string; amount: number }[]) {
       insertTxCategory.run(randomUUID(), newId, category.category_id, category.amount);
+    }
+    for (const split of txMemberSplits.all(tx.id) as { member_id: string; share_amount: number }[]) {
+      insertTxMemberSplit.run(randomUUID(), newId, split.member_id, split.share_amount);
+    }
+    if (tx.status === 'confirmed') {
+      applyBalanceEffect({
+        id: newId,
+        account_id: tx.account_id,
+        to_account_id: tx.to_account_id,
+        type: tx.type,
+        amount: tx.amount,
+        date: newDate,
+        payments,
+      }, 1);
     }
     insertTxLog.run(tx.id, 'transaction', newDate);
     result.transactions++;

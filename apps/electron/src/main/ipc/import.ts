@@ -109,13 +109,25 @@ export function registerImportHandlers(): void {
       INSERT INTO transaction_payments (id, transaction_id, account_id, amount)
       VALUES (?,?,?,?)
     `);
+    const insertCategory = db.prepare(`
+      INSERT INTO transaction_categories (id, transaction_id, category_id, amount)
+      VALUES (?,?,?,?)
+    `);
     const linkInvoice = db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?');
+    const duplicateByAccount = db.prepare(`
+      SELECT 1 FROM transactions
+      WHERE account_id = ? AND (notes LIKE ? OR notes LIKE ?)
+      LIMIT 1
+    `);
 
     const doImport = db.transaction((rows: ImportPreviewRow[]) => {
       for (const row of rows) {
-        if (row.duplicate) { skipped++; continue; }
-
         const hash  = txHash(row.date, row.amount, row.description);
+        const fitidPattern = row.fitid ? `%FITID:${row.fitid}%` : '__NO_FITID__';
+        if (duplicateByAccount.get(payload.accountId, fitidPattern, `%HASH:${hash}%`)) {
+          skipped++;
+          continue;
+        }
         const notes = row.fitid ? `FITID:${row.fitid}|HASH:${hash}` : `HASH:${hash}`;
         const id = randomUUID();
         const categoryId = payload.useSuggestions && row.suggested_category_id ? row.suggested_category_id : payload.categoryId;
@@ -124,6 +136,7 @@ export function registerImportHandlers(): void {
                    row.description, row.amount, row.type as TransactionType,
                    row.date, notes);
         const signedDelta = adjustBalance(payload.accountId, balanceDelta(row.type as TransactionType, row.amount));
+        insertCategory.run(randomUUID(), id, categoryId, row.amount);
         if (row.type !== 'transfer') {
           const paymentId = randomUUID();
           insertPayment.run(paymentId, id, payload.accountId, row.amount);

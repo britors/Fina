@@ -61,13 +61,13 @@ afterEach(() => db.close());
 describe('agregação hierárquica de despesas', () => {
   test('consolida pai, filhas e lançamento direto sem duplicar', () => {
     const rows = db.prepare(EXPENSES_BY_ROOT_MONTH_SQL).all(7, 2026) as { id: string; total: number }[];
-    assert.deepEqual(rows.map(row => [row.id, row.total]), [['home', 500], ['food', 350]]);
-    assert.equal(rows.reduce((sum, row) => sum + row.total, 0), 850);
+    assert.deepEqual(rows.map(row => [row.id, row.total]), [['home', 500], ['food', 250]]);
+    assert.equal(rows.reduce((sum, row) => sum + row.total, 0), 750);
   });
 
   test('respeita intervalo de datas', () => {
     const rows = db.prepare(EXPENSES_BY_ROOT_RANGE_SQL).all('2026-07-01', '2026-07-03') as { id: string; total: number }[];
-    assert.deepEqual(rows.map(row => [row.id, row.total]), [['food', 350]]);
+    assert.deepEqual(rows.map(row => [row.id, row.total]), [['food', 250]]);
   });
 
   test('detalha filhas e lançamentos sem subcategoria reconciliando com o pai', () => {
@@ -75,10 +75,9 @@ describe('agregação hierárquica de despesas', () => {
       .all('food', 'food', 'food', 'food', '2026-07-01', '2026-07-31') as { id: string | null; name: string; total: number }[];
     assert.deepEqual(rows.map(row => [row.id, row.name, row.total]), [
       ['market', 'Mercado', 200],
-      ['restaurant', 'Restaurante', 100],
       [null, 'Sem subcategoria', 50],
     ]);
-    assert.equal(rows.reduce((sum, row) => sum + row.total, 0), 350);
+    assert.equal(rows.reduce((sum, row) => sum + row.total, 0), 250);
   });
 
   test('calcula métricas analíticas consolidadas por pai', () => {
@@ -86,9 +85,9 @@ describe('agregação hierárquica de despesas', () => {
       id: string; total: number; transaction_count: number; average_amount: number; largest_amount: number;
     }[];
     const food = rows.find(row => row.id === 'food')!;
-    assert.equal(food.total, 350);
-    assert.equal(food.transaction_count, 3);
-    assert.ok(Math.abs(food.average_amount - 350 / 3) < 0.001);
+    assert.equal(food.total, 250);
+    assert.equal(food.transaction_count, 2);
+    assert.ok(Math.abs(food.average_amount - 250 / 2) < 0.001);
     assert.equal(food.largest_amount, 200);
   });
 
@@ -96,12 +95,12 @@ describe('agregação hierárquica de despesas', () => {
     const roots = db.prepare(EXPENSE_MONTHLY_ROOT_SERIES_SQL).all('2026-06-01', '2026-07-31') as { month: string; id: string; total: number }[];
     assert.deepEqual(roots.filter(row => row.id === 'food').map(row => [row.month, row.total]), [
       ['2026-06', 75],
-      ['2026-07', 350],
+      ['2026-07', 250],
     ]);
 
     const details = db.prepare(EXPENSE_MONTHLY_SUBCATEGORY_SERIES_SQL)
       .all('food', 'food', 'food', 'food', '2026-07-01', '2026-07-31') as { month: string; id: string | null; total: number }[];
-    assert.equal(details.reduce((sum, row) => sum + row.total, 0), 350);
+    assert.equal(details.reduce((sum, row) => sum + row.total, 0), 250);
     assert.ok(details.some(row => row.id === null && row.total === 50));
   });
 });
@@ -129,7 +128,7 @@ describe('filtro por categoria', () => {
 describe('gasto de orçamento', () => {
   test('orçamento do pai soma lançamentos diretos e filhas no mês', () => {
     const row = db.prepare(CATEGORY_SPENT_MONTH_SQL).get('food', 'food', 7, 2026) as { spent: number };
-    assert.equal(row.spent, 350);
+    assert.equal(row.spent, 250);
   });
 
   test('orçamento da filha considera somente a filha', () => {

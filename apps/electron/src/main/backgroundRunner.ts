@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { openDatabase, runMigrations, needsUnlock, closeDatabase } from './database';
+import { openDatabase, runMigrations, needsUnlock, closeDatabase, finalizePragmas } from './database';
 import { generateRecurrences } from './recurrences';
 import { checkAndNotify } from './notifications';
 import { runAutoBackup } from './autobackup';
@@ -22,6 +22,7 @@ export async function runBackgroundTasksAndExit(): Promise<void> {
       return;
     }
 
+    finalizePragmas();
     runMigrations();
     generateRecurrences();
     checkAndNotify();

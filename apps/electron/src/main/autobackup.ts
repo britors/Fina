@@ -2,7 +2,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { getDb } from './database';
 import { performBackup, backupFileName, cleanupOldBackups } from './ipc/backup';
-import { exportIncrementalBackup, getLastIncrementalBackupAt, incrementalBackupFileName, setLastIncrementalBackupAt, sqliteNow } from './incrementalBackup';
+import { exportIncrementalBackup, getLastIncrementalBackupAt, incrementalBackupFileName, incrementalCursorNow, setLastIncrementalBackupAt } from './incrementalBackup';
 
 type AutoBackupEvent = 'on_open' | 'on_close' | 'scheduled';
 
@@ -37,12 +37,12 @@ function isIncrementalDue(lastIso: string | null): boolean {
   return (Date.now() - new Date(lastIso).getTime()) / 3_600_000 >= 1;
 }
 
-// Complementa o backup incremental de hora em hora: o patch não captura
-// exclusões, então um backup completo semanal reconcilia o estado real.
+// Complementa o backup incremental de hora em hora; o backup completo semanal
+// continua sendo mantido como camada adicional de recuperação.
 function doIncrementalBackup(folder: string): void {
   const filePath = path.join(folder, incrementalBackupFileName());
-  exportIncrementalBackup(getLastIncrementalBackupAt(), filePath);
-  setLastIncrementalBackupAt(sqliteNow());
+  exportIncrementalBackup(getLastIncrementalBackupAt('automatic'), filePath);
+  setLastIncrementalBackupAt(incrementalCursorNow(), 'automatic');
   setSetting('autobackup_last', new Date().toISOString());
   console.log(`[AutoBackup] Backup incremental salvo em: ${filePath}`);
 

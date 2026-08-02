@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { app } from 'electron';
 import { getDb } from './database';
 import { performBackup, restoreFromFile } from './ipc/backup';
@@ -28,28 +29,66 @@ function syncStatePath(): string {
   return path.join(app.getPath('userData'), 'sync-state.json');
 }
 
-function readLastSyncedMtime(): number | null {
+interface SyncState {
+  lastSyncedMtime?: number;
+  lastSyncedHash?: string;
+}
+
+function readSyncState(): SyncState {
   try {
     const raw = fs.readFileSync(syncStatePath(), 'utf-8');
-    const parsed = JSON.parse(raw) as { lastSyncedMtime?: number };
-    return parsed.lastSyncedMtime ?? null;
+    return JSON.parse(raw) as SyncState;
   } catch {
-    return null;
+    return {};
   }
 }
 
-function writeLastSyncedMtime(mtime: number): void {
-  fs.writeFileSync(syncStatePath(), JSON.stringify({ lastSyncedMtime: mtime }));
+function fileHash(filePath: string): string {
+  return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function writeSyncState(mtime: number, hash: string): void {
+  const target = syncStatePath();
+  const temp = `${target}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    fs.writeFileSync(temp, JSON.stringify({ lastSyncedMtime: mtime, lastSyncedHash: hash }), { mode: 0o600 });
+    fs.chmodSync(temp, 0o600);
+    try {
+      fs.renameSync(temp, target);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (process.platform !== 'win32' || !['EEXIST', 'EPERM', 'ENOTEMPTY'].includes(code ?? '')) throw err;
+      if (fs.existsSync(target)) fs.unlinkSync(target);
+      fs.renameSync(temp, target);
+    }
+  } finally {
+    if (fs.existsSync(temp)) fs.unlinkSync(temp);
+  }
 }
 
 function syncFilePath(folder: string): string {
   return path.join(folder, SYNC_FILE_NAME);
 }
 
+function assertNoRemoteConflict(folder: string): void {
+  const filePath = syncFilePath(folder);
+  if (!fs.existsSync(filePath)) return;
+  const remoteMtime = fs.statSync(filePath).mtimeMs;
+  const state = readSyncState();
+  const remoteHash = fileHash(filePath);
+  if (!state.lastSyncedHash) {
+    throw new Error('Confirme a versão da pasta sincronizada recebendo-a uma vez antes de enviar dados locais.');
+  }
+  if (remoteHash !== state.lastSyncedHash) {
+    throw new Error('Existe uma versão mais nova na pasta sincronizada. Receba essa versão antes de enviar dados locais.');
+  }
+}
+
 export function getSyncStatus(): SyncStatus {
   const enabled = getSetting('sync_enabled') === 'true';
   const folder = getSetting('sync_folder') ?? '';
-  const lastSyncedMtime = readLastSyncedMtime();
+  const state = readSyncState();
+  const lastSyncedMtime = state.lastSyncedMtime ?? null;
 
   if (!enabled || !folder || !fs.existsSync(folder)) {
     return { enabled, folder, remoteAvailable: false, remoteNewer: false, remoteMtime: null, lastSyncedMtime };
@@ -61,15 +100,21 @@ export function getSyncStatus(): SyncStatus {
   }
 
   const remoteMtime = fs.statSync(filePath).mtimeMs;
-  const remoteNewer = lastSyncedMtime === null || remoteMtime > lastSyncedMtime;
+  const remoteNewer = state.lastSyncedHash
+    ? fileHash(filePath) !== state.lastSyncedHash
+    : true;
   return { enabled, folder, remoteAvailable: true, remoteNewer, remoteMtime, lastSyncedMtime };
 }
 
 // Envia o estado atual do banco para a pasta compartilhada.
 export function pushSync(folder: string): void {
+  if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
+    throw new Error('A pasta de sincronização não existe ou não é uma pasta.');
+  }
+  assertNoRemoteConflict(folder);
   const filePath = syncFilePath(folder);
   performBackup(filePath);
-  writeLastSyncedMtime(fs.statSync(filePath).mtimeMs);
+  writeSyncState(fs.statSync(filePath).mtimeMs, fileHash(filePath));
 }
 
 // Substitui o banco atual pela versão da pasta compartilhada e reinicia o
@@ -77,6 +122,10 @@ export function pushSync(folder: string): void {
 export function pullSync(folder: string): void {
   const filePath = syncFilePath(folder);
   if (!fs.existsSync(filePath)) throw new Error('Nenhum arquivo de sincronização encontrado na pasta.');
-  writeLastSyncedMtime(fs.statSync(filePath).mtimeMs);
+  const remoteMtime = fs.statSync(filePath).mtimeMs;
+  const remoteHash = fileHash(filePath);
   restoreFromFile(filePath);
+  // Só avance o marcador depois que a validação, cópia e abertura do banco
+  // restaurado concluírem sem erro.
+  writeSyncState(remoteMtime, remoteHash);
 }

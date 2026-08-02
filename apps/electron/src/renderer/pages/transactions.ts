@@ -468,7 +468,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
       ` : ''}
       <div class="form-group">
         <label class="form-label">Observações (opcional)</label>
-        <textarea class="form-ctrl" id="f-notes" rows="2">${tx?.notes ?? draft?.notes ?? ''}</textarea>
+        <textarea class="form-ctrl" id="f-notes" rows="2">${esc(tx?.notes ?? draft?.notes ?? '')}</textarea>
       </div>
     `,
     onSave: async () => {

@@ -83,7 +83,7 @@ export function registerCategoryHandlers(): void {
     const fiscalClassification = parent?.fiscal_classification ?? data.fiscal_classification ?? null;
     const id = randomUUID();
     getDb().prepare(
-      'INSERT INTO categories (id, name, icon, color, type, kind, parent_id, fiscal_classification) VALUES (?,?,?,?,?,?,?,?)'
+      'INSERT INTO categories (id, name, icon, color, type, kind, parent_id, fiscal_classification, updated_at) VALUES (?,?,?,?,?,?,?,?,datetime(\'now\'))'
     ).run(id, name, data.icon, data.color, type, kind, parentId, fiscalClassification);
     return categoryWithDetails(id);
   });
@@ -111,10 +111,10 @@ export function registerCategoryHandlers(): void {
     const db = getDb();
     db.transaction(() => {
       db.prepare(`
-        UPDATE categories SET name=?, icon=?, color=?, type=?, kind=?, parent_id=?, fiscal_classification=? WHERE id=?
+        UPDATE categories SET name=?, icon=?, color=?, type=?, kind=?, parent_id=?, fiscal_classification=?, updated_at=datetime('now') WHERE id=?
       `).run(name, icon, color, type, kind, parentId, fiscalClassification, id);
       if (hasChildren) {
-        db.prepare('UPDATE categories SET type=?, kind=?, fiscal_classification=? WHERE parent_id=?').run(type, kind, fiscalClassification, id);
+        db.prepare("UPDATE categories SET type=?, kind=?, fiscal_classification=?, updated_at=datetime('now') WHERE parent_id=?").run(type, kind, fiscalClassification, id);
       }
     })();
     return categoryWithDetails(id);

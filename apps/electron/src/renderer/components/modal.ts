@@ -2,6 +2,7 @@ export interface ModalOptions {
   title: string;
   body: string;
   saveLabel?: string;
+  onClose?: () => void;
   onSave?: (overlay: HTMLElement) => void | boolean | Promise<void | boolean | false | undefined>;
 }
 
@@ -11,18 +12,22 @@ export function openModal(opts: ModalOptions): HTMLElement {
   overlay.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-header">
-        <span class="modal-title">${opts.title}</span>
+        <span class="modal-title"></span>
         <button class="modal-close" aria-label="Fechar">✕</button>
       </div>
       <div class="modal-body">${opts.body}</div>
       <div class="modal-footer">
         <button class="btn btn-secondary" data-close>Cancelar</button>
-        <button class="btn btn-primary" data-save>${opts.saveLabel ?? 'Salvar'}</button>
+        <button class="btn btn-primary" data-save></button>
       </div>
     </div>
   `;
 
+  overlay.querySelector<HTMLElement>('.modal-title')!.textContent = opts.title;
+  overlay.querySelector<HTMLButtonElement>('[data-save]')!.textContent = opts.saveLabel ?? 'Salvar';
+
   const close = (): void => {
+    opts.onClose?.();
     overlay.remove();
     // No Windows, janelas frameless podem perder o foco se o elemento focado for removido.
     // Garantimos que o foco volte para o corpo do documento.

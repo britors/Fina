@@ -3,9 +3,46 @@ import { setTopbarActions } from '../components/topbar';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { applyAccent, applyTheme } from '../theme';
 import { openCategoryModal } from '../components/categoryModal';
+import { openModal } from '../components/modal';
 import type { Account, BalanceAlertSettings, Category, UpdateStatus } from '../../shared/types';
 
 type Settings = Record<string, string>;
+
+function askPatchPassword(mode: 'export' | 'import'): Promise<string | null> {
+  return new Promise(resolve => {
+    let settled = false;
+    const settle = (value: string | null): void => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const overlay = openModal({
+      title: mode === 'export' ? 'Proteger patch incremental' : 'Desbloquear patch incremental',
+      body: `
+        <div style="line-height:1.5;color:var(--text-2);margin-bottom:12px">
+          ${mode === 'export'
+            ? 'Use uma senha de pelo menos 8 caracteres. Ela será necessária para importar o patch em outro dispositivo.'
+            : 'Informe a senha usada na exportação deste patch.'}
+        </div>
+        <input class="form-ctrl" id="patch-password" type="password" placeholder="Senha do patch">
+        ${mode === 'export' ? '<input class="form-ctrl" id="patch-password-confirm" type="password" placeholder="Confirme a senha" style="margin-top:8px">' : ''}
+      `,
+      saveLabel: mode === 'export' ? 'Exportar' : 'Importar',
+      onClose: () => settle(null),
+      onSave: () => {
+        const password = (overlay.querySelector('#patch-password') as HTMLInputElement).value;
+        const confirmation = mode === 'export'
+          ? (overlay.querySelector('#patch-password-confirm') as HTMLInputElement).value
+          : password;
+        if (password.length < 8) { showAlert('Use uma senha de pelo menos 8 caracteres.'); return false; }
+        if (password !== confirmation) { showAlert('As senhas não conferem.'); return false; }
+        settle(password);
+        return true;
+      },
+    });
+    void overlay;
+  });
+}
 
 export async function render(el: HTMLElement): Promise<void> {
   setTopbarActions('');
@@ -248,7 +285,8 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
       </div>
       <div class="settings-row-right">
         <input class="form-ctrl" id="smtp-user" value="${esc(s.smtp_user ?? '')}" placeholder="usuário" style="width:180px">
-        <input class="form-ctrl" id="smtp-pass" type="password" value="${esc(s.smtp_pass ?? '')}" placeholder="senha" style="width:180px">
+        <input class="form-ctrl" id="smtp-pass" type="password" value="" placeholder="em branco mantém a senha salva" style="width:220px">
+        <button class="btn btn-ghost btn-sm" id="clear-smtp-password" type="button">Remover senha salva</button>
       </div>
     </div>
     <div class="settings-row">
@@ -328,6 +366,11 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
     Object.assign(s, { smtp_enabled, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass, smtp_from, smtp_to });
     showAlert('Configurações SMTP salvas.');
     renderNotifications(el, s);
+  });
+
+  el.querySelector('#clear-smtp-password')?.addEventListener('click', async () => {
+    await invoke('settings:clearSmtpPassword');
+    showAlert('Senha SMTP removida.');
   });
 
   el.querySelector('#save-webhook')?.addEventListener('click', async () => {
@@ -509,7 +552,7 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
     ${trigger === 'incremental_hourly' ? `
       <div style="background:rgba(239,159,39,.08);border:1px solid rgba(239,159,39,.25);border-radius:8px;padding:10px 14px;font-size:0.78rem;color:var(--text-2);line-height:1.5;margin-top:8px">
         <i class="ti ti-alert-triangle" style="color:var(--warning)"></i>
-        O patch incremental (.finpatch) não captura exclusões nem edições em categorias — por isso um backup completo (.fin) continua sendo gerado automaticamente 1x por semana para reconciliar.
+        O patch automático fica protegido para este dispositivo. Para levar alterações a outro dispositivo, use a exportação manual com uma senha portátil; o backup completo semanal continua sendo mantido como camada de recuperação.
       </div>
     ` : ''}
 
@@ -517,14 +560,14 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
     <div class="settings-hr"></div>
     <div class="settings-row">
       <div><div class="settings-row-label">Exportar patch incremental</div>
-           <div class="settings-row-sub">Gera um .finpatch só com o que mudou desde o último export incremental (mais rápido que um backup completo)</div></div>
+           <div class="settings-row-sub">Gera um .finpatch protegido por senha, portátil entre dispositivos, só com o que mudou desde o último export incremental</div></div>
       <div class="settings-row-right">
         <button class="btn btn-ghost btn-sm" id="btn-export-incremental">Exportar</button>
       </div>
     </div>
     <div class="settings-row">
       <div><div class="settings-row-label">Importar patch incremental</div>
-           <div class="settings-row-sub">Aplica um .finpatch recebido de outro dispositivo (não substitui nada além do que está no arquivo)</div></div>
+           <div class="settings-row-sub">Aplica um .finpatch recebido de outro dispositivo; a senha da exportação será solicitada</div></div>
       <div class="settings-row-right">
         <button class="btn btn-ghost btn-sm" id="btn-import-incremental">Importar</button>
       </div>
@@ -587,16 +630,24 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
   });
 
   el.querySelector('#btn-export-incremental')?.addEventListener('click', async () => {
-    const result = await invoke<{ file_path: string; table_counts: Record<string, number> } | null>('backup:exportIncremental');
-    if (!result) return;
-    const total = Object.values(result.table_counts).reduce((s, n) => s + n, 0);
-    showAlert(`Patch incremental salvo em:\n${result.file_path}\n\n${total} linha(s) alterada(s) desde o último export incremental.`);
+    const password = await askPatchPassword('export');
+    if (!password) return;
+    try {
+      const result = await invoke<{ file_path: string; table_counts: Record<string, number> } | null>('backup:exportIncremental', { password });
+      if (!result) return;
+      const total = Object.values(result.table_counts).reduce((s, n) => s + n, 0);
+      showAlert(`Patch incremental salvo em:\n${result.file_path}\n\n${total} linha(s) alterada(s) desde o último export incremental.`);
+    } catch (err) {
+      showAlert(err instanceof Error ? err.message : 'Não foi possível exportar o patch incremental.');
+    }
   });
 
   el.querySelector('#btn-import-incremental')?.addEventListener('click', async () => {
-    if (!await showConfirm('Importar um patch incremental? Isso soma/atualiza dados sem apagar nada que já existe.', { okLabel: 'Importar' })) return;
+    if (!await showConfirm('Importar um patch incremental? Ele pode atualizar ou remover registros correspondentes ao arquivo. Deseja continuar?', { okLabel: 'Importar', danger: true })) return;
+    const password = await askPatchPassword('import');
+    if (!password) return;
     try {
-      const result = await invoke<{ imported: boolean }>('backup:importIncremental');
+      const result = await invoke<{ imported: boolean }>('backup:importIncremental', { password });
       if (result.imported) showAlert('Patch incremental importado com sucesso.');
     } catch (err) {
       showAlert(err instanceof Error ? err.message : 'Não foi possível importar o patch incremental.');

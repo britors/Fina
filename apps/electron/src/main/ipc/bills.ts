@@ -314,14 +314,18 @@ export function registerBillHandlers(): void {
     const primaryCategoryId = categories[0]?.category_id ?? data.category_id ?? null;
     const id = randomUUID();
     const db = getDb();
+    const shouldMarkAsPaid = data.status === 'paid';
     db.transaction(() => {
       db.prepare(
         'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring, auto_settle, recurrence_interval) VALUES (?,?,?,?,?,?,?,?,?,?)'
-      ).run(id, data.description, data.amount, data.due_date, data.status ?? 'pending', primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly');
+      ).run(id, data.description, data.amount, data.due_date, shouldMarkAsPaid ? 'pending' : (data.status ?? 'pending'), primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly');
       replaceBillPayments(id, payments);
-      if (categories.length) replaceBillCategories(id, categories);
+      replaceBillCategories(id, categories);
       if (data.recurring) trackPriceHistory(id, data.amount);
     })();
+    if (shouldMarkAsPaid) {
+      markBillAsPaid({ id, category_id: data.category_id ?? undefined, categories: data.categories, date: data.due_date, payments: data.payments });
+    }
     return enrichBill(db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined);
   });
 
@@ -352,6 +356,11 @@ export function registerBillHandlers(): void {
   });
 
   ipcMain.handle('bills:update', (_e, { id, ...data }: BillUpdateInput) => {
+    const current = getDb().prepare('SELECT status FROM bills WHERE id = ?').get(id) as { status: Bill['status'] } | undefined;
+    if (!current) throw new Error('Conta não encontrada.');
+    if (data.status === 'paid' && current.status !== 'paid') {
+      throw new Error('Use bills:markAsPaid para registrar o pagamento.');
+    }
     const payments = normalizePayments(data as BillInput, true);
     const categories = normalizeCategories(data as BillInput, true);
     const primaryAccountId = payments[0]?.account_id ?? data.account_id ?? null;
@@ -362,7 +371,7 @@ export function registerBillHandlers(): void {
         `UPDATE bills SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, auto_settle=?, recurrence_interval=?, updated_at=datetime('now') WHERE id=?`
       ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
       replaceBillPayments(id, payments);
-      if (categories.length) replaceBillCategories(id, categories);
+      replaceBillCategories(id, categories);
       if (data.recurring && data.amount != null) trackPriceHistory(id, data.amount);
     })();
     return enrichBill(db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined);

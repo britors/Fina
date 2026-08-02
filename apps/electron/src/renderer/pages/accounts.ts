@@ -221,21 +221,23 @@ function openAccModal(acc: Account | null, onDone: () => void): void {
       </div>
       <div class="form-group">
         <label class="form-label">Moeda da conta</label>
-        <select class="form-ctrl" id="f-currency">
+        <select class="form-ctrl" id="f-currency" ${acc ? 'disabled' : ''}>
           ${(['BRL','USD','EUR'] as AccountCurrency[]).map(c =>
             `<option value="${c}" ${currency === c ? 'selected' : ''}>${CURRENCY_LABELS[c]}</option>`
           ).join('')}
         </select>
+        ${acc ? '<div class="form-hint" style="font-size:11px;color:var(--text-3);margin-top:4px">A moeda é definida na criação da conta. Crie uma nova conta para usar outra moeda.</div>' : ''}
         <div class="form-hint" style="font-size:11px;color:var(--text-3);margin-top:4px">Contas em moeda estrangeira têm o saldo convertido automaticamente para R$ usando a cotação do painel de Mercado.</div>
       </div>
       <div class="form-row">
         <div class="form-group" id="f-balance-brl-group">
           <label class="form-label" id="f-balance-label">Saldo (R$)</label>
-          <input class="form-ctrl" id="f-balance" type="text" inputmode="decimal" value="${formatMoneyValue(acc?.balance ?? 0)}">
+          <input class="form-ctrl" id="f-balance" type="text" inputmode="decimal" value="${formatMoneyValue(acc?.balance ?? 0)}" ${acc ? 'disabled' : ''}>
+          ${acc ? '<div class="form-hint" style="font-size:11px;color:var(--text-3);margin-top:4px">O saldo de uma conta com histórico é atualizado pelos lançamentos. Use um lançamento de ajuste para alterar o valor de forma auditável.</div>' : ''}
         </div>
         <div class="form-group" id="f-balance-foreign-group" style="display:none">
           <label class="form-label" id="f-balance-foreign-label">Saldo original</label>
-          <input class="form-ctrl" id="f-original-balance" type="text" inputmode="decimal" value="${formatMoneyValue(acc?.original_balance)}">
+          <input class="form-ctrl" id="f-original-balance" type="text" inputmode="decimal" value="${formatMoneyValue(acc?.original_balance)}" ${acc ? 'disabled' : ''}>
         </div>
         <div class="form-group" id="f-limit-group">
           <label class="form-label" id="f-limit-label">Limite de crédito (R$)</label>

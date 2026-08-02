@@ -114,7 +114,10 @@ export function initRouter(content: HTMLElement): void {
     try {
       await route.render(content);
     } catch (err) {
-      content.innerHTML = `<div class="alert alert-error">Erro ao carregar página: ${err}</div>`;
+      const alert = document.createElement('div');
+      alert.className = 'alert alert-error';
+      alert.textContent = `Erro ao carregar página: ${err instanceof Error ? err.message : String(err)}`;
+      content.replaceChildren(alert);
     }
   }
 

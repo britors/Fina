@@ -2,8 +2,8 @@ import { ipcMain, dialog, app } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import Database from 'better-sqlite3-multiple-ciphers';
-import { getDb, closeDatabase, openDatabase, runMigrations, dbPath } from '../database';
-import { exportIncrementalBackup, getLastIncrementalBackupAt, importIncrementalPatch, incrementalBackupFileName, setLastIncrementalBackupAt, sqliteNow } from '../incrementalBackup';
+import { getDb, closeDatabase, openDatabase, reopenWithCurrentCredentials, runMigrations, dbPath, validateDatabaseFile } from '../database';
+import { exportPortableIncrementalBackup, getLastIncrementalBackupAt, importIncrementalPatch, incrementalBackupFileName, incrementalCursorNow, setLastIncrementalBackupAt } from '../incrementalBackup';
 
 const SQLITE_PLAINTEXT_HEADER = 'SQLite format 3\0';
 
@@ -15,12 +15,10 @@ function readHeader(filePath: string): string {
   return buf.toString('utf8');
 }
 
-// Backups criptografados têm o cabeçalho embaralhado e não podem ser
-// validados sem a senha (que só é pedida depois do reinício, na tela de
-// desbloqueio). Nesse caso deixamos passar de forma otimista: se o arquivo
-// não for mesmo um banco do Fina, a tela de desbloqueio nunca vai aceitar
-// nenhuma senha, e a cópia de segurança feita antes de sobrescrever
-// (ver `${target}.bak-*`) permite reverter manualmente.
+// A validação também abre bancos criptografados com a senha já destravada na
+// sessão. Arquivos criptografados sem credencial disponível são recusados,
+// pois não há como diferenciá-los de um arquivo aleatório antes de substituir
+// o banco atual.
 export function isValidFinaBackup(filePath: string): boolean {
   let header: string;
   try {
@@ -30,7 +28,7 @@ export function isValidFinaBackup(filePath: string): boolean {
   }
 
   if (header !== SQLITE_PLAINTEXT_HEADER) {
-    return fs.statSync(filePath).size > 0;
+    return validateDatabaseFile(filePath) === true;
   }
 
   let check: Database.Database | null = null;
@@ -50,9 +48,34 @@ export function isValidFinaBackup(filePath: string): boolean {
 // Grava uma cópia consistente e autocontida do banco no caminho informado.
 // Reaproveitada pela exportação manual, pelo auto-backup e pela sincronização.
 export function performBackup(filePath: string): void {
-  // VACUUM INTO exige que o arquivo de destino ainda não exista.
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  getDb().prepare('VACUUM INTO ?').run(filePath);
+  const target = path.resolve(filePath);
+  if (target === path.resolve(dbPath())) {
+    throw new Error('O destino do backup não pode ser o próprio banco de dados.');
+  }
+
+  // VACUUM INTO exige um destino inexistente. Gere primeiro um arquivo
+  // completo temporário; só depois substitua o anterior, para uma falha de
+  // disco não destruir o último backup válido.
+  const temp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    if (fs.existsSync(temp)) fs.unlinkSync(temp);
+    getDb().prepare('VACUUM INTO ?').run(temp);
+    if (!fs.existsSync(temp) || fs.statSync(temp).size === 0) {
+      throw new Error('O backup gerado está vazio.');
+    }
+    try {
+      fs.renameSync(temp, filePath);
+    } catch (err) {
+      // rename não substitui arquivo existente no Windows. O novo backup já
+      // está completo neste ponto, então a remoção do antigo é segura.
+      const code = (err as NodeJS.ErrnoException).code;
+      if (process.platform !== 'win32' || !['EEXIST', 'EPERM', 'ENOTEMPTY'].includes(code ?? '')) throw err;
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      fs.renameSync(temp, filePath);
+    }
+  } finally {
+    if (fs.existsSync(temp)) fs.unlinkSync(temp);
+  }
 }
 
 export function backupFileName(): string {
@@ -96,25 +119,52 @@ export function restoreFromFile(filePath: string): void {
   }
 
   const target = dbPath();
-  closeDatabase();
-
-  // Guarda uma cópia de segurança do banco atual antes de sobrescrever.
-  const safetyCopy = `${target}.bak-${Date.now()}`;
-  if (fs.existsSync(target)) fs.copyFileSync(target, safetyCopy);
-
-  // Remove arquivos de WAL/SHM do banco atual: o arquivo restaurado é único
-  // e autocontido, sem journal pendente.
-  for (const suffix of ['-wal', '-shm']) {
-    if (fs.existsSync(target + suffix)) fs.unlinkSync(target + suffix);
+  if (path.resolve(filePath) === path.resolve(target)) {
+    throw new Error('Escolha um arquivo de backup diferente do banco atual.');
   }
 
-  fs.copyFileSync(filePath, target);
+  // Gera a cópia de segurança enquanto a conexão ainda está aberta. Copiar
+  // apenas o arquivo principal depois de fechar a conexão pode perder páginas
+  // que ainda estejam no WAL.
+  const safetyCopy = `${target}.bak-${Date.now()}`;
+  performBackup(safetyCopy);
 
-  // Se o arquivo restaurado estiver criptografado, não dá pra rodar
-  // migrações aqui sem a senha — o relaunch abaixo passa pela tela de
-  // desbloqueio normal, que roda as migrações depois de destravado.
-  openDatabase();
-  if (readHeader(target) === SQLITE_PLAINTEXT_HEADER) runMigrations();
+  try {
+    closeDatabase();
+
+    // Remove arquivos de WAL/SHM do banco atual: o arquivo restaurado é único
+    // e autocontido, sem journal pendente.
+    for (const suffix of ['-wal', '-shm']) {
+      if (fs.existsSync(target + suffix)) fs.unlinkSync(target + suffix);
+    }
+
+    fs.copyFileSync(filePath, target);
+
+    // Se o arquivo restaurado estiver criptografado, não dá pra rodar
+    // migrações aqui sem a senha — o relaunch abaixo passa pela tela de
+    // desbloqueio normal, que roda as migrações depois de destravado.
+    openDatabase();
+    if (readHeader(target) === SQLITE_PLAINTEXT_HEADER) runMigrations();
+    else if (validateDatabaseFile(target) !== true) throw new Error('Não foi possível validar o backup criptografado com a senha atual.');
+  } catch (err) {
+    // Falhas de cópia, abertura ou migração não podem deixar o app apontando
+    // para um banco parcial. Restaura a cópia consistente criada acima.
+    try {
+      closeDatabase();
+      for (const suffix of ['-wal', '-shm']) {
+        if (fs.existsSync(target + suffix)) fs.unlinkSync(target + suffix);
+      }
+      fs.copyFileSync(safetyCopy, target);
+      reopenWithCurrentCredentials();
+    } catch (rollbackError) {
+      console.error('[Backup] Falha também ao restaurar a cópia de segurança:', rollbackError);
+    }
+    throw err;
+  }
+
+  // A cópia só é necessária para rollback durante esta operação. Mantê-la
+  // indefinidamente deixaria versões sensíveis antigas espalhadas no disco.
+  try { fs.unlinkSync(safetyCopy); } catch { /* a cópia pode ser necessária para recuperação manual */ }
 
   // Reinicia o app para garantir que toda a UI releia os dados restaurados.
   setTimeout(() => { app.relaunch(); app.exit(0); }, 800);
@@ -154,7 +204,7 @@ export function registerBackupHandlers(): void {
     return { imported: true };
   });
 
-  ipcMain.handle('backup:exportIncremental', async () => {
+  ipcMain.handle('backup:exportIncremental', async (_event, payload?: { password?: string }) => {
     const { filePath } = await dialog.showSaveDialog({
       title: 'Exportar backup incremental',
       defaultPath: incrementalBackupFileName(),
@@ -162,12 +212,12 @@ export function registerBackupHandlers(): void {
     });
     if (!filePath) return null;
 
-    const result = exportIncrementalBackup(getLastIncrementalBackupAt(), filePath);
-    setLastIncrementalBackupAt(sqliteNow());
+    const result = exportPortableIncrementalBackup(getLastIncrementalBackupAt('portable'), filePath, payload?.password ?? '');
+    setLastIncrementalBackupAt(incrementalCursorNow(), 'portable');
     return result;
   });
 
-  ipcMain.handle('backup:importIncremental', async () => {
+  ipcMain.handle('backup:importIncremental', async (_event, payload?: { password?: string }) => {
     const { filePaths } = await dialog.showOpenDialog({
       title: 'Importar backup incremental',
       filters: [{ name: 'Patch incremental Fina', extensions: ['finpatch'] }],
@@ -176,7 +226,7 @@ export function registerBackupHandlers(): void {
     const filePath = filePaths?.[0];
     if (!filePath) return { imported: false };
 
-    importIncrementalPatch(filePath);
+    importIncrementalPatch(filePath, payload?.password);
     return { imported: true };
   });
 }

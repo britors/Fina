@@ -44,7 +44,7 @@ export function adjustBalance(accountId: string, delta: number): number {
 // Transferências movem dinheiro entre duas contas: debita a origem e credita o
 // destino, em vez de simplesmente desaparecer como uma despesa comum — não
 // afetam fatura (liquidação, não gasto novo).
-function applyBalanceEffect(
+export function applyBalanceEffect(
   tx: {
     id?: string;
     account_id: string;
@@ -218,8 +218,42 @@ function insertTransaction(
          data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null, data.is_mei_revenue ? 1 : 0,
          data.installment_group_id ?? null, data.installment_index ?? null, data.installment_total ?? null, data.paid_by_member_id ?? null);
   replaceTransactionPayments(id, payments);
-  if (categories.length) replaceTransactionCategories(id, categories);
+  replaceTransactionCategories(id, categories);
   if (memberSplits.length) replaceTransactionMemberSplits(id, memberSplits);
+}
+
+// Ponto único para integrações que criam lançamentos já confirmados. Mantém
+// as tabelas auxiliares e o saldo da conta sincronizados com o fluxo normal da
+// tela de Lançamentos.
+export function insertConfirmedTransaction(input: {
+  account_id: string;
+  category_id: string;
+  description: string;
+  amount: number;
+  type: 'income' | 'expense';
+  date: string;
+  notes?: string | null;
+}): string {
+  const data: TransactionInput = {
+    account_id: input.account_id,
+    to_account_id: null,
+    category_id: input.category_id,
+    description: input.description,
+    amount: input.amount,
+    type: input.type,
+    date: input.date,
+    status: 'confirmed',
+    notes: input.notes ?? null,
+    recurring: 0,
+    owner: null,
+    is_mei_revenue: 0,
+  };
+  const payments = normalizePayments(data);
+  const categories = normalizeCategories(data);
+  const id = randomUUID();
+  insertTransaction(data, id, input.account_id, payments, categories);
+  applyBalanceEffect({ ...data, id, payments }, 1);
+  return id;
 }
 
 function splitInstallmentAmounts(amount: number, installments: number): number[] {
@@ -403,6 +437,7 @@ function getFilteredMonthlyHistory(filters: ExpenseAnalyticsFilters): object[] {
   }
   if (filters.owner) { clauses.push('t.owner = ?'); params.push(filters.owner); }
   if (filters.status) { clauses.push('t.status = ?'); params.push(filters.status); }
+  else clauses.push("t.status = 'confirmed'");
   if (filters.subcategoryId) {
     clauses.push("t.type='expense'", 't.category_id = ?'); params.push(filters.subcategoryId);
   } else if (filters.rootCategoryId) {
@@ -566,7 +601,7 @@ export function registerTransactionHandlers(): void {
           applyBalanceEffect({ ...old, payments: oldPayments }, -1);
         }
         replaceTransactionPayments(id, payments);
-        if (categories.length) replaceTransactionCategories(id, categories);
+        replaceTransactionCategories(id, categories);
         replaceTransactionMemberSplits(id, memberSplits);
         if (isConfirmed) {
           // Aplica o novo efeito
@@ -602,9 +637,10 @@ export function registerTransactionHandlers(): void {
       SELECT
         COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END), 0) as income,
         COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expense
-      FROM transactions
-      WHERE CAST(strftime('%m', date) AS INTEGER) = ?
-        AND CAST(strftime('%Y', date) AS INTEGER) = ?
+        FROM transactions
+        WHERE CAST(strftime('%m', date) AS INTEGER) = ?
+          AND CAST(strftime('%Y', date) AS INTEGER) = ?
+          AND status = 'confirmed'
     `).get(month, year) as { income: number; expense: number };
     return { ...row, balance: row.income - row.expense };
   });
@@ -643,6 +679,7 @@ export function registerTransactionHandlers(): void {
         FROM transactions
         WHERE CAST(strftime('%m', date) AS INTEGER) = ?
           AND CAST(strftime('%Y', date) AS INTEGER) = ?
+          AND status = 'confirmed'
       `).get(m, y) as { income: number; expense: number };
       rows.push({ label, ...row });
     }
@@ -661,7 +698,7 @@ export function registerTransactionHandlers(): void {
         COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END), 0) as income,
         COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expense
       FROM transactions
-      WHERE date >= ? AND date <= ?
+      WHERE date >= ? AND date <= ? AND status = 'confirmed'
     `).get(dateFrom, dateTo) as { income: number; expense: number };
     return { ...row, balance: row.income - row.expense };
   });

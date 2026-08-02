@@ -36,7 +36,7 @@ export async function runAIAction(opts: AIActionOptions): Promise<void> {
   openModal({
     title: opts.title,
     body: `
-      <p style="color:var(--text-2);line-height:1.6;margin-bottom:14px">${opts.consentText}</p>
+      <p style="color:var(--text-2);line-height:1.6;margin-bottom:14px">${esc(opts.consentText)}</p>
       <label style="display:flex;align-items:flex-start;gap:10px;color:var(--text-2)">
         <input type="checkbox" id="ai-action-consent" style="margin-top:3px;accent-color:var(--accent)">
         <span>Confirmo o envio do resumo agregado para ${settings.provider === 'openai' ? 'OpenAI' : 'Google/Gemini'}.</span>

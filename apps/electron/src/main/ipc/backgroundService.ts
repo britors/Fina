@@ -45,13 +45,23 @@ function isEnabledWindows(): boolean {
   }
 }
 
+function quoteSystemdArg(value: string): string {
+  return `"${value.replace(/["\\$]/g, '\\$&').replace(/`/g, '\\`')}"`;
+}
+
+function quoteWindowsArg(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
 function enableLinux(): void {
   const { exec, args } = backgroundCommand();
-  const execLine = [exec, ...args].map(part => `"${part}"`).join(' ');
+  const execLine = [exec, ...args].map(quoteSystemdArg).join(' ');
   const dir = linuxUnitDir();
   fs.mkdirSync(dir, { recursive: true });
 
-  fs.writeFileSync(path.join(dir, 'fina-background.service'), [
+  const serviceFile = path.join(dir, 'fina-background.service');
+  const timerFile = path.join(dir, LINUX_UNIT_NAME);
+  fs.writeFileSync(serviceFile, [
     '[Unit]',
     'Description=Fina - recorrências e alertas em segundo plano',
     '',
@@ -59,9 +69,10 @@ function enableLinux(): void {
     'Type=oneshot',
     `ExecStart=${execLine}`,
     '',
-  ].join('\n'));
+  ].join('\n'), { mode: 0o600 });
+  fs.chmodSync(serviceFile, 0o600);
 
-  fs.writeFileSync(path.join(dir, LINUX_UNIT_NAME), [
+  fs.writeFileSync(timerFile, [
     '[Unit]',
     'Description=Executa periodicamente as tarefas em segundo plano do Fina',
     '',
@@ -73,7 +84,8 @@ function enableLinux(): void {
     '[Install]',
     'WantedBy=timers.target',
     '',
-  ].join('\n'));
+  ].join('\n'), { mode: 0o600 });
+  fs.chmodSync(timerFile, 0o600);
 
   execFileSync('systemctl', ['--user', 'daemon-reload']);
   execFileSync('systemctl', ['--user', 'enable', '--now', LINUX_UNIT_NAME]);
@@ -95,7 +107,7 @@ function disableLinux(): void {
 
 function enableWindows(): void {
   const { exec, args } = backgroundCommand();
-  const commandLine = [exec, ...args].map(part => `"${part}"`).join(' ');
+  const commandLine = [exec, ...args].map(quoteWindowsArg).join(' ');
   execFileSync('schtasks', ['/create', '/tn', WINDOWS_TASK_NAME, '/tr', commandLine, '/sc', 'hourly', '/f']);
 }
 

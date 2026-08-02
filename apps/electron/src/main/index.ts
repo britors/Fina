@@ -2,7 +2,8 @@ import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electro
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
-import { openDatabase, runMigrations, closeDatabase, dbPath, needsUnlock } from './database';
+import { fileURLToPath } from 'url';
+import { openDatabase, runMigrations, closeDatabase, dbPath, needsUnlock, finalizePragmas } from './database';
 import { registerUnlockHandler, registerSecurityHandlers } from './ipc/security';
 import { registerAccountHandlers } from './ipc/accounts';
 import { registerTransactionHandlers } from './ipc/transactions';
@@ -67,6 +68,42 @@ function loadAppIcon(): Electron.NativeImage | undefined {
   return undefined;
 }
 
+function isTrustedRendererUrl(url: string): boolean {
+  if (!url.startsWith('file://')) return false;
+  try {
+    const filePath = path.resolve(fileURLToPath(url));
+    const rendererRoot = path.resolve(path.join(__dirname, '../renderer'));
+    return filePath === rendererRoot || filePath.startsWith(rendererRoot + path.sep);
+  } catch {
+    return false;
+  }
+}
+
+function assertTrustedIpcSender(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): void {
+  const url = event.senderFrame?.url ?? event.sender.getURL();
+  if (!isTrustedRendererUrl(url)) throw new Error('Origem IPC não autorizada.');
+}
+
+// Todos os handlers registrados pelos módulos passam por esta validação,
+// inclusive os que forem adicionados no futuro.
+function hardenIpc(): void {
+  const originalHandle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = ((channel: string, listener: (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
+    originalHandle(channel, (event, ...args) => {
+      assertTrustedIpcSender(event);
+      return listener(event, ...args);
+    });
+  }) as typeof ipcMain.handle;
+}
+
+function hardenWindow(w: BrowserWindow): BrowserWindow {
+  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  w.webContents.on('will-navigate', (event, url) => {
+    if (!isTrustedRendererUrl(url)) event.preventDefault();
+  });
+  return w;
+}
+
 function createSplash(): BrowserWindow {
   const w = new BrowserWindow({
     width: 700,
@@ -78,10 +115,10 @@ function createSplash(): BrowserWindow {
     skipTaskbar: true,
     transparent: false,
     backgroundColor: '#0C1A14',
-    webPreferences: { contextIsolation: true, nodeIntegration: false },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   w.loadFile(path.join(__dirname, '../renderer/splash.html'));
-  return w;
+  return hardenWindow(w);
 }
 
 function createUnlockWindow(): BrowserWindow {
@@ -99,10 +136,11 @@ function createUnlockWindow(): BrowserWindow {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
   w.loadFile(path.join(__dirname, '../renderer/unlock.html'));
-  return w;
+  return hardenWindow(w);
 }
 
 function createMainWindow(): BrowserWindow {
@@ -120,6 +158,7 @@ function createMainWindow(): BrowserWindow {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
   w.loadFile(path.join(__dirname, '../renderer/index.html'));
@@ -128,7 +167,7 @@ function createMainWindow(): BrowserWindow {
     w.webContents.openDevTools({ mode: 'detach' });
   }
 
-  return w;
+  return hardenWindow(w);
 }
 
 function registerHandlers(): void {
@@ -173,7 +212,7 @@ function registerHandlers(): void {
     BrowserWindow.fromWebContents(e.sender)?.minimize();
   });
   ipcMain.handle('window:toggleMaximize', (e) => {
-    const win = BrowserWindow.fromWebContents(e.sender);
+  const win = BrowserWindow.fromWebContents(e.sender);
     if (!win) return;
     win.isMaximized() ? win.unmaximize() : win.maximize();
   });
@@ -226,7 +265,8 @@ function registerHandlers(): void {
     })
   );
 
-  ipcMain.on('shell:openExternal', (_e, url: string) => {
+  ipcMain.on('shell:openExternal', (event, url: string) => {
+    assertTrustedIpcSender(event);
     if (typeof url === 'string' && url.startsWith('https://')) {
       shell.openExternal(url);
     }
@@ -253,12 +293,16 @@ app.whenReady().then(async () => {
   const splash = createSplash();
   const t0 = Date.now();
 
+  hardenIpc();
   registerUnlockHandler();
 
   try {
     openDatabase();
   } catch (err) {
     console.error('[DB] Erro na inicialização:', err);
+    dialog.showErrorBox('Não foi possível abrir o banco de dados', 'Verifique as permissões e o caminho configurado para o banco do Fina.');
+    app.quit();
+    return;
   }
 
   // Enquanto a janela de desbloqueio ou a splash estiverem de pé, nunca deixe
@@ -272,8 +316,15 @@ app.whenReady().then(async () => {
     unlockWin = createUnlockWindow();
     if (!splash.isDestroyed()) splash.destroy();
     await new Promise<void>(resolve => {
-      ipcMain.once('security:unlocked', () => resolve());
+      ipcMain.once('security:unlocked', event => {
+        assertTrustedIpcSender(event);
+        resolve();
+      });
     });
+  } else {
+    // A conexão SQLite é nova a cada abertura. Não dependa de uma PRAGMA
+    // gravada por uma migration anterior para manter integridade referencial.
+    finalizePragmas();
   }
 
   try {
@@ -318,6 +369,12 @@ app.on('before-quit', () => {
     if (sync.enabled && sync.folder) pushSync(sync.folder);
   } catch (err) {
     console.error('[Sync] Falha ao enviar sincronização ao fechar:', err);
+    dialog.showMessageBoxSync({
+      type: 'warning',
+      title: 'Sincronização não enviada',
+      message: 'As alterações locais não foram enviadas para a pasta sincronizada. Receba a versão remota antes de enviar novamente.',
+      buttons: ['Entendi'],
+    });
   }
   closeDatabase();
 });

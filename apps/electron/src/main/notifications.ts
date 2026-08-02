@@ -5,6 +5,7 @@ import tls from 'node:tls';
 import http from 'node:http';
 import https from 'node:https';
 import { getDb } from './database';
+import { getLocalSecret } from './localSecrets';
 
 function getSetting(key: string, fallback = 'true'): string {
   const row = getDb().prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined;
@@ -70,7 +71,9 @@ function smtpConfig(): SmtpConfig | null {
     port,
     secure: getSetting('smtp_secure', 'false') === 'true',
     user: getSetting('smtp_user', '').trim(),
-    pass: getSetting('smtp_pass', ''),
+    // A senha nunca é lida do banco: instalações antigas são migradas para
+    // o cofre do sistema ao abrir as configurações.
+    pass: getLocalSecret('smtp_pass') ?? '',
     from,
     to,
   };

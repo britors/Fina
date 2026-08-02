@@ -90,7 +90,7 @@ export async function render(el: HTMLElement): Promise<void> {
     const selected = simulator.querySelector<HTMLInputElement>('input[name="decision-scenario"]:checked')?.value ?? 'reserve';
     const result = scenarioResult({ reserveMonths, avgExpense, activeDebts, openGoals }, amount, selected);
     const output = simulator.querySelector<HTMLElement>('[data-simulator-result]');
-    if (output) output.innerHTML = `<strong>${result.title}</strong><div style="margin-top:4px;color:var(--text-2)">${result.body}</div>`;
+    if (output) output.innerHTML = `<strong>${esc(result.title)}</strong><div style="margin-top:4px;color:var(--text-2)">${esc(result.body)}</div>`;
   };
   amountInput?.addEventListener('input', refreshSimulation);
   simulator?.querySelectorAll('input[name="decision-scenario"]').forEach(input => input.addEventListener('change', refreshSimulation));
@@ -202,11 +202,11 @@ function decisionCard(d: Decision, index: number): string {
         </div>
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-            <strong>${d.title}</strong>
+            <strong>${esc(d.title)}</strong>
             <span class="badge" style="color:${color};background:${color}18">${d.priority}</span>
           </div>
-          <div style="font-size:0.82rem;color:var(--text-2)">${d.body}</div>
-          <div style="font-size:0.76rem;color:var(--text-3);margin-top:4px">${d.impact}</div>
+          <div style="font-size:0.82rem;color:var(--text-2)">${esc(d.body)}</div>
+          <div style="font-size:0.76rem;color:var(--text-3);margin-top:4px">${esc(d.impact)}</div>
         </div>
         <button type="button" class="btn btn-secondary btn-sm btn-explain-decision" data-index="${index}"><i class="ti ti-sparkles"></i> Detalhar com IA</button>
         <a href="#${d.route}" class="btn btn-primary btn-sm">Abrir</a>
@@ -217,6 +217,15 @@ function decisionCard(d: Decision, index: number): string {
 
 function priorityWeight(priority: Decision['priority']): number {
   return priority === 'Alta' ? 0 : priority === 'Média' ? 1 : 2;
+}
+
+function esc(value: string | null | undefined): string {
+  return (value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function avg(values: number[]): number {

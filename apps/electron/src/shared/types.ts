@@ -33,6 +33,8 @@ export interface Account {
   color: string | null;
   currency: AccountCurrency;
   original_balance: number | null;
+  opening_balance_brl?: number | null;
+  remote_balance?: number | null;
   closing_day: number | null;
   due_day: number | null;
   openfinance_provider?: string | null;

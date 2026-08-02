@@ -17,7 +17,7 @@ function backfillFromLegacySetting(): void {
   const names = (setting?.value ?? '').split(',').map(v => v.trim()).filter(Boolean);
   if (names.length === 0) return;
 
-  const insert = db.prepare('INSERT INTO family_members (id, name) VALUES (?,?)');
+  const insert = db.prepare("INSERT INTO family_members (id, name, updated_at) VALUES (?, ?, datetime('now'))");
   db.transaction(() => {
     for (const name of names) insert.run(randomUUID(), name);
   })();
@@ -63,14 +63,14 @@ export function registerFamilyMemberHandlers(): void {
     const name = data.name.trim();
     if (!name) throw new Error('Informe o nome do membro.');
     const id = randomUUID();
-    getDb().prepare('INSERT INTO family_members (id, name) VALUES (?,?)').run(id, name);
+    getDb().prepare("INSERT INTO family_members (id, name, updated_at) VALUES (?, ?, datetime('now'))").run(id, name);
     return getDb().prepare('SELECT * FROM family_members WHERE id = ?').get(id);
   });
 
   ipcMain.handle('familyMembers:update', (_e, { id, name }: { id: string; name: string }) => {
     const trimmed = name.trim();
     if (!trimmed) throw new Error('Informe o nome do membro.');
-    getDb().prepare('UPDATE family_members SET name = ? WHERE id = ?').run(trimmed, id);
+    getDb().prepare("UPDATE family_members SET name = ?, updated_at = datetime('now') WHERE id = ?").run(trimmed, id);
     return getDb().prepare('SELECT * FROM family_members WHERE id = ?').get(id);
   });
 

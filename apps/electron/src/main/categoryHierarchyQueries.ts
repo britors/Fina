@@ -46,6 +46,7 @@ export function buildExpenseAnalyticsWhere(
   }
   if (filters.owner) { clauses.push('t.owner = ?'); params.push(filters.owner); }
   if (filters.status) { clauses.push('t.status = ?'); params.push(filters.status); }
+  else clauses.push("t.status = 'confirmed'");
   if (includeCategory && filters.subcategoryId) {
     clauses.push('(t.category_id = ? OR EXISTS (SELECT 1 FROM transaction_categories tc WHERE tc.transaction_id = t.id AND tc.category_id = ?))');
     params.push(filters.subcategoryId, filters.subcategoryId);
@@ -62,7 +63,7 @@ export const EXPENSES_BY_ROOT_MONTH_SQL = `
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
   JOIN categories root ON root.id = COALESCE(c.parent_id, c.id)
-  WHERE t.type = 'expense'
+  WHERE t.type = 'expense' AND t.status = 'confirmed'
     AND CAST(strftime('%m', t.date) AS INTEGER) = ?
     AND CAST(strftime('%Y', t.date) AS INTEGER) = ?
   GROUP BY root.id, root.name, root.color
@@ -75,7 +76,7 @@ export const EXPENSES_BY_ROOT_RANGE_SQL = `
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
   JOIN categories root ON root.id = COALESCE(c.parent_id, c.id)
-  WHERE t.type = 'expense' AND t.date >= ? AND t.date <= ?
+  WHERE t.type = 'expense' AND t.status = 'confirmed' AND t.date >= ? AND t.date <= ?
   GROUP BY root.id, root.name, root.color
   ORDER BY total DESC
 `;
@@ -87,6 +88,7 @@ export const CATEGORY_SPENT_MONTH_SQL = `
   JOIN categories c ON c.id = tc.category_id
   WHERE (c.id = ? OR c.parent_id = ?)
     AND t.type = 'expense'
+    AND t.status = 'confirmed'
     AND CAST(strftime('%m', t.date) AS INTEGER) = ?
     AND CAST(strftime('%Y', t.date) AS INTEGER) = ?
 `;
@@ -100,7 +102,8 @@ export const EXPENSE_SUBCATEGORY_BREAKDOWN_SQL = `
   FROM transactions t
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
-  WHERE t.type = 'expense'
+    WHERE t.type = 'expense'
+    AND t.status = 'confirmed'
     AND (c.id = ? OR c.parent_id = ?)
     AND t.date >= ? AND t.date <= ?
   GROUP BY c.id, c.name, c.color
@@ -117,7 +120,7 @@ export const EXPENSE_CATEGORY_DETAILS_SQL = `
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
   JOIN categories root ON root.id = COALESCE(c.parent_id, c.id)
-  WHERE t.type = 'expense' AND t.date >= ? AND t.date <= ?
+  WHERE t.type = 'expense' AND t.status = 'confirmed' AND t.date >= ? AND t.date <= ?
   GROUP BY root.id, root.name, root.color
   ORDER BY total DESC
 `;
@@ -129,7 +132,7 @@ export const EXPENSE_MONTHLY_ROOT_SERIES_SQL = `
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
   JOIN categories root ON root.id = COALESCE(c.parent_id, c.id)
-  WHERE t.type = 'expense' AND t.date >= ? AND t.date <= ?
+  WHERE t.type = 'expense' AND t.status = 'confirmed' AND t.date >= ? AND t.date <= ?
   GROUP BY month, root.id, root.name, root.color
   ORDER BY month, total DESC
 `;
@@ -142,7 +145,8 @@ export const EXPENSE_MONTHLY_SUBCATEGORY_SERIES_SQL = `
   FROM transactions t
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
-  WHERE t.type = 'expense'
+    WHERE t.type = 'expense'
+    AND t.status = 'confirmed'
     AND (c.id = ? OR c.parent_id = ?)
     AND t.date >= ? AND t.date <= ?
   GROUP BY month, c.id, c.name, c.color
