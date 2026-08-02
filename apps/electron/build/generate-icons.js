@@ -1,6 +1,6 @@
 // Gera build/icons/<size>x<size>.png (tema hicolor, usado pelo linux.icon do
 // electron-builder para o .deb/.rpm), build/icon.png (512x512, fallback em
-// pixmaps) e build/icon.ico (256x256, Windows) a partir de build/icon.svg
+// pixmaps) e build/icon.ico (256x256, Windows) a partir do logo da capivara.
 // Dependências: @resvg/resvg-js, png-to-ico  (npm run generate-icons)
 const { Resvg }  = require('@resvg/resvg-js');
 const pngToIco   = require('png-to-ico');
@@ -21,8 +21,13 @@ function renderPng(svg, size) {
 }
 
 async function main() {
-  const svgPath = path.join(__dirname, 'icon.svg');
-  const svg     = fs.readFileSync(svgPath);
+  const logoPath = path.join(__dirname, '../../../logo/fina_logo_capivara.png');
+  const logoData = fs.readFileSync(logoPath).toString('base64');
+  const svg = Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="2720" height="2720" viewBox="0 0 2720 2720">
+      <image href="data:image/png;base64,${logoData}" width="2720" height="2720" preserveAspectRatio="xMidYMid meet"/>
+    </svg>
+  `);
 
   const iconsDir = path.join(__dirname, 'icons');
   fs.mkdirSync(iconsDir, { recursive: true });

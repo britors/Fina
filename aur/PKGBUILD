@@ -1,7 +1,7 @@
 # Maintainer: Rodrigo Brito <rodrigo@w3ti.com.br>
 pkgname=fina
-pkgver=17.2.0
-pkgrel=2
+pkgver=18.0.0
+pkgrel=1
 pkgdesc="Gerenciador de finanças pessoais"
 arch=('x86_64')
 url="https://github.com/britors/Fina"
@@ -18,7 +18,7 @@ prepare() {
   local _electron_version
   _electron_version=$(electron38 --version | sed 's/^v//')
   npx @electron/rebuild -f -w better-sqlite3-multiple-ciphers -v "$_electron_version"
-  # gera build/icon.png e build/icons/ a partir do SVG (não versionados no tarball)
+  # gera build/icon.png e build/icons/ a partir do logo (não versionados no tarball)
   npm run generate-icons
 }
 
