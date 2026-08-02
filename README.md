@@ -100,21 +100,52 @@ yay -S fina
 paru -S fina
 ```
 
-### Linux — openSUSE Leap, Fedora e Ubuntu/Debian
+### Linux — openSUSE Tumbleweed e Leap 16.0 (OBS)
 
-Nenhuma está nos repositórios oficiais ainda (nem OBS, nem Copr, nem PPA). O
-instalador de conveniência serve as três — ele detecta a distro via
-`/etc/os-release` e baixa o pacote certo (`.rpm` ou `.deb`) da release mais
-recente:
+O Fina está publicado no [openSUSE Build Service (OBS)](https://build.opensuse.org/project/show/home:rodrigosbrito:fina), no projeto
+`home:rodrigosbrito:fina`. O pacote `fina` tem build aprovado para `x86_64`
+em openSUSE Tumbleweed e openSUSE Leap 16.0. Adicione o repositório
+correspondente à sua versão:
+
+#### openSUSE Tumbleweed
+
+```bash
+sudo zypper addrepo --refresh \
+  https://download.opensuse.org/repositories/home:/rodrigosbrito:/fina/openSUSE_Tumbleweed/home:rodrigosbrito:fina.repo \
+  fina-obs
+sudo zypper refresh
+sudo zypper install fina
+```
+
+#### openSUSE Leap 16.0
+
+```bash
+sudo zypper addrepo --refresh \
+  https://download.opensuse.org/repositories/home:/rodrigosbrito:/fina/openSUSE_Leap_16.0/home:rodrigosbrito:fina.repo \
+  fina-obs
+sudo zypper refresh
+sudo zypper install fina
+```
+
+O repositório OBS é o método recomendado para essas duas versões. O pacote
+é atualizado quando uma nova release do Fina é publicada. Outras versões do
+openSUSE não estão incluídas nesse repositório; use o RPM da [release mais
+recente](https://github.com/britors/Fina/releases/latest) ou o instalador de
+conveniência abaixo.
+
+### Linux — Fedora e Ubuntu/Debian
+
+O instalador de conveniência detecta a distro via `/etc/os-release` e baixa o
+pacote correto (`.rpm` ou `.deb`) da release mais recente:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/britors/Fina/main/scripts/install.sh | sudo bash
 ```
 
-Em openSUSE e Fedora instala o `.rpm` via `zypper --allow-unsigned-rpm` /
-`dnf install --nogpgcheck` (o RPM ainda não é assinado, sem chave GPG
-configurada). Em Ubuntu/Debian instala o `.deb` via `apt-get install`
-(assim as dependências são resolvidas normalmente, ao contrário de `dpkg -i`).
+No Fedora instala o `.rpm` via `dnf install --nogpgcheck`. Em Ubuntu/Debian
+instala o `.deb` via `apt-get install`, para que as dependências sejam
+resolvidas normalmente. No openSUSE Tumbleweed e no Leap 16.0, use o
+repositório OBS acima.
 
 Para travar numa versão específica: `FINA_VERSION=v17.2.0 sudo -E bash
 install.sh` (baixe o script primeiro se for usar essa variante).
@@ -145,6 +176,14 @@ em segundo plano", se estiver ativo:
 curl -fsSL https://raw.githubusercontent.com/britors/Fina/main/scripts/uninstall.sh | sudo bash
 ```
 
+Se o Fina foi instalado pelo OBS, remova o pacote e, se desejar, o
+repositório:
+
+```bash
+sudo zypper remove fina
+sudo zypper removerepo fina-obs
+```
+
 Por padrão os seus dados (`~/.config/Fina`: banco de dados, segredos de
 IA/Open Finance etc.) são preservados. Para apagá-los também, use `--purge`:
 
@@ -168,7 +207,8 @@ Acesse: **[github.com/britors/Fina/releases](https://github.com/britors/Fina/rel
 | --- | --- | --- |
 | Arch Linux | AUR (`fina`) | PKGBUILD — build from source |
 | Debian / Ubuntu | `.deb` | GitHub Actions → electron-builder |
-| Fedora / openSUSE | `.rpm` | GitHub Actions → electron-builder |
+| openSUSE Tumbleweed / Leap 16.0 | `fina` | OBS (`home:rodrigosbrito:fina`) |
+| Fedora | `.rpm` | GitHub Actions → electron-builder |
 | Windows 10/11 | `.exe` (NSIS) | GitHub Actions → electron-builder |
 
 ### Criar um release
