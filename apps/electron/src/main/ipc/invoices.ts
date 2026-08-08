@@ -81,6 +81,7 @@ export function registerInvoiceHandlers(): void {
   ipcMain.handle('invoices:create', (_e, data: { account_id: string; amount: number; closing_date: string; due_date: string; status?: CreditCardInvoiceStatus }) => {
     if (!Number.isFinite(data.amount) || data.amount < 0) throw new Error('Informe um valor válido para a fatura.');
     if (!data.closing_date || !data.due_date) throw new Error('Informe as datas de fechamento e vencimento.');
+    if (data.status === 'paid') throw new Error('Para marcar a fatura como paga, informe a conta debitada no fluxo de pagamento.');
     const id = randomUUID();
     try {
       getDb().prepare(
@@ -95,6 +96,10 @@ export function registerInvoiceHandlers(): void {
   ipcMain.handle('invoices:update', (_e, data: { id: string; amount: number; closing_date: string; due_date: string; status: CreditCardInvoiceStatus }) => {
     if (!Number.isFinite(data.amount) || data.amount < 0) throw new Error('Informe um valor válido para a fatura.');
     if (!data.closing_date || !data.due_date) throw new Error('Informe as datas de fechamento e vencimento.');
+    const existing = getInvoice(data.id);
+    if (data.status === 'paid' && existing?.status !== 'paid') {
+      throw new Error('Para marcar a fatura como paga, informe a conta debitada no fluxo de pagamento.');
+    }
     try {
       getDb().prepare(
         `UPDATE credit_card_invoices SET amount=?, closing_date=?, due_date=?, status=?, updated_at=datetime('now') WHERE id=?`
