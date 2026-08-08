@@ -455,14 +455,28 @@ function openInvoiceFormModal(account: Account, invoice: CreditCardInvoice | nul
       const amount  = moneyInputValue(document.getElementById('f-inv-amount') as HTMLInputElement);
       const status  = (document.getElementById('f-inv-status')  as HTMLSelectElement).value as CreditCardInvoiceStatus;
       if (!closing || !due || isNaN(amount)) { showAlert('Preencha todos os campos.'); return false; }
+      const requiresPayment = status === 'paid' && invoice?.status !== 'paid';
+      // A fatura só passa efetivamente para "Paga" depois que o lançamento
+      // de transferência é salvo. Se o usuário cancelar a etapa seguinte,
+      // ela continua pendente e nenhum saldo fica inconsistente.
+      const persistedStatus = requiresPayment ? (invoice?.status ?? 'closed') : status;
+      let savedInvoice: CreditCardInvoice;
       try {
-        if (invoice) { await invoke('invoices:update', { id: invoice.id, amount, closing_date: closing, due_date: due, status }); }
-        else         { await invoke('invoices:create', { account_id: account.id, amount, closing_date: closing, due_date: due, status }); }
+        savedInvoice = invoice
+          ? await invoke<CreditCardInvoice>('invoices:update', { id: invoice.id, amount, closing_date: closing, due_date: due, status: persistedStatus })
+          : await invoke<CreditCardInvoice>('invoices:create', { account_id: account.id, amount, closing_date: closing, due_date: due, status: persistedStatus });
       } catch (err) {
         showAlert(err instanceof Error ? err.message : 'Não foi possível salvar a fatura.');
         return false;
       }
       onSaved();
+      if (requiresPayment) {
+        // Abre a segunda etapa depois que este modal terminar de fechar, para
+        // preservar o foco no seletor obrigatório da conta debitada.
+        void openPayInvoiceModal(account.id, onSaved, savedInvoice).catch(err => {
+          showAlert(err instanceof Error ? err.message : 'Não foi possível iniciar o pagamento da fatura.');
+        });
+      }
     },
   });
   attachMoneyMask(overlay.querySelector('#f-inv-amount'));

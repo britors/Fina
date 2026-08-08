@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency, formatDate, calculateMonthlySummary, isPixEligibleAccountType } from '../../shared/utils';
+import { formatCurrency, formatDate, calculateMonthlySummary, isCreditLikeAccountType, isPixEligibleAccountType, isVoucherAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
@@ -332,7 +332,9 @@ interface TxDraft {
 // valor já vem pré-preenchido e, ao salvar com sucesso, a fatura é marcada
 // como paga.
 export async function openPayInvoiceModal(cardAccountId: string, onDone: () => void, invoice?: CreditCardInvoice): Promise<void> {
-  if (accounts.length === 0) accounts = await invoke<Account[]>('accounts:list');
+  // Recarrega para incluir contas criadas ou removidas desde a última visita
+  // à tela de lançamentos. A origem precisa ser escolhida explicitamente.
+  accounts = await invoke<Account[]>('accounts:list');
   if (categories.length === 0) categories = await invoke<Category[]>('categories:list');
   const handleDone = invoice
     ? async () => { await invoke('invoices:markPaid', invoice.id); onDone(); }
@@ -362,11 +364,11 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Valor (R$)</label>
-          <input class="form-ctrl" id="f-amount" type="text" inputmode="decimal" placeholder="0,00" value="${formatMoneyValue(tx?.amount ?? draft?.amount)}">
+          <input class="form-ctrl" id="f-amount" type="text" inputmode="decimal" placeholder="0,00" value="${formatMoneyValue(tx?.amount ?? draft?.amount)}" ${draft?.toAccountId && draft.amount != null ? 'readonly' : ''}>
         </div>
         <div class="form-group">
           <label class="form-label">Tipo</label>
-          <select class="form-ctrl" id="f-type">
+          <select class="form-ctrl" id="f-type" ${draft?.toAccountId ? 'disabled' : ''}>
             <option value="expense"  ${initialType === 'expense'  ? 'selected' : ''}>Despesa</option>
             <option value="income"   ${initialType === 'income'   ? 'selected' : ''}>Receita</option>
             <option value="transfer" ${initialType === 'transfer' ? 'selected' : ''}>Transferência</option>
@@ -374,9 +376,10 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         </div>
       </div>
       <div class="form-group" id="single-account-group" style="display:${initialType === 'transfer' ? '' : 'none'}">
-        <label class="form-label">Conta ou cartão de origem</label>
+        <label class="form-label">${draft?.toAccountId ? 'Conta debitada' : 'Conta ou cartão de origem'}</label>
         <select class="form-ctrl" id="f-account">
-          ${accounts.map(a => `<option value="${a.id}" ${(tx?.account_id ?? draft?.account_id) === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+          ${draft?.toAccountId ? '<option value="">— Selecione a conta debitada —</option>' : ''}
+          ${accounts.filter(a => a.id !== draft?.toAccountId && (!draft?.toAccountId || (!isCreditLikeAccountType(a.type) && !isVoucherAccountType(a.type)))).map(a => `<option value="${a.id}" ${(tx?.account_id ?? draft?.account_id) === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
         </select>
       </div>
       <div id="f-category-hint"></div>
@@ -406,7 +409,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
       </div>
       <div class="form-group" id="f-to-account-group" style="display:${initialType === 'transfer' ? '' : 'none'}">
         <label class="form-label">Conta ou cartão de destino</label>
-        <select class="form-ctrl" id="f-to-account">
+        <select class="form-ctrl" id="f-to-account" ${draft?.toAccountId ? 'disabled' : ''}>
           <option value="">— Selecione —</option>
           ${accounts.map(a => `<option value="${a.id}" ${(tx?.to_account_id ?? draft?.toAccountId) === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
         </select>
@@ -418,7 +421,7 @@ function openTxModal(tx: TransactionWithDetails | null, onDone: () => void, draf
         </div>
         <div class="form-group">
           <label class="form-label">Status</label>
-          <select class="form-ctrl" id="f-status">
+          <select class="form-ctrl" id="f-status" ${draft?.toAccountId ? 'disabled' : ''}>
             <option value="confirmed" ${(tx?.status ?? draft?.status) === 'confirmed' ? 'selected' : ''}>Confirmado</option>
             <option value="pending"   ${(tx?.status ?? draft?.status) === 'pending'   ? 'selected' : ''}>Pendente</option>
           </select>
