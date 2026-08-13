@@ -37,6 +37,7 @@ import { render as renderManual       } from './pages/manual';
 import { render as renderDocumentos   } from './pages/documentos';
 import { setActiveRoute               } from './components/sidebar';
 import { setTopbar, setTopbarActions  } from './components/topbar';
+import { locale, t } from './i18n';
 
 interface Route {
   title: string | (() => string);
@@ -50,11 +51,11 @@ function greeting(): string {
 }
 
 function monthLabel(): string {
-  return new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  return new Date().toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 }
 
 function fullDateLabel(): string {
-  return new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return new Date().toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 const ROUTES: Record<string, Route> = {
@@ -104,8 +105,8 @@ export function initRouter(content: HTMLElement): void {
 
     setActiveRoute(key);
     setTopbar(
-      typeof route.title    === 'function' ? route.title()    : route.title,
-      typeof route.subtitle === 'function' ? route.subtitle() : route.subtitle,
+      t(typeof route.title    === 'function' ? route.title()    : route.title),
+      route.subtitle ? t(typeof route.subtitle === 'function' ? route.subtitle() : route.subtitle) : undefined,
     );
 
     content.innerHTML = '';
@@ -116,7 +117,7 @@ export function initRouter(content: HTMLElement): void {
     } catch (err) {
       const alert = document.createElement('div');
       alert.className = 'alert alert-error';
-      alert.textContent = `Erro ao carregar página: ${err instanceof Error ? err.message : String(err)}`;
+      alert.textContent = `${t('Erro ao carregar página:')} ${err instanceof Error ? err.message : String(err)}`;
       content.replaceChildren(alert);
     }
   }

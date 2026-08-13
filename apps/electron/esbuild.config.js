@@ -46,7 +46,7 @@ function copyAssets() {
 async function buildTests() {
   await esbuild.build({
     ...shared,
-    entryPoints: ['tests/accounts.test.ts', 'tests/transactions.test.ts', 'tests/invoices.test.ts', 'tests/klavi.test.ts', 'tests/belvo.test.ts', 'tests/categories.test.ts', 'tests/categoryQueries.test.ts', 'tests/migrations.test.ts', 'tests/debts.test.ts', 'tests/family.test.ts', 'tests/irpf.test.ts'],
+    entryPoints: ['tests/accounts.test.ts', 'tests/transactions.test.ts', 'tests/invoices.test.ts', 'tests/klavi.test.ts', 'tests/belvo.test.ts', 'tests/categories.test.ts', 'tests/categoryQueries.test.ts', 'tests/migrations.test.ts', 'tests/debts.test.ts', 'tests/family.test.ts', 'tests/irpf.test.ts', 'tests/i18n.test.ts'],
     outdir: 'out/tests',
     platform: 'node',
     format: 'cjs',

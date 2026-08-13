@@ -4,8 +4,10 @@ import { initRouter  } from './router';
 import { invoke } from './api';
 import { applyAccent, applyTheme } from './theme';
 import { applyInitialSidebarState } from './components/layoutPrefs';
+import { initializeI18n } from './i18n';
 
 applyInitialSidebarState();
+initializeI18n();
 
 interface FocusSnapshot {
   el: HTMLElement | null;
