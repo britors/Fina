@@ -104,8 +104,9 @@ describe('calculateBudgetPercentage', () => {
 });
 
 describe('formatDate', () => {
-  test('converte YYYY-MM-DD para DD/MM/YYYY', () => {
-    assert.equal(formatDate('2026-05-28'), '28/05/2026');
+  test('formata YYYY-MM-DD conforme o locale da apresentação', () => {
+    assert.equal(formatDate('2026-05-28', 'pt-BR'), '28/05/2026');
+    assert.equal(formatDate('2026-05-28', 'en-US'), '5/28/2026');
   });
 
   test('retorna string vazia para entrada vazia', () => {

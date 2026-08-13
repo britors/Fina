@@ -1,3 +1,4 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
@@ -98,7 +99,7 @@ export async function render(el: HTMLElement): Promise<void> {
       btn.addEventListener('click', async () => {
         const m = members.find(x => x.id === btn.dataset.id);
         if (!m) return;
-        if (!await showConfirm(`Excluir "${m.name}"? Rateios já lançados com esse membro serão removidos.`, { danger: true, okLabel: 'Excluir' })) return;
+        if (!await showConfirm(td("Excluir \"{value}\"? Rateios já lançados com esse membro serão removidos.", [m.name]), { danger: true, okLabel: 'Excluir' })) return;
         await invoke('familyMembers:delete', m.id);
         await load();
         renderPage();

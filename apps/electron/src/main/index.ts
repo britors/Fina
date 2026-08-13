@@ -43,6 +43,7 @@ import { generateRecurrences } from './recurrences';
 import { runAutoBackup, startAutoBackupScheduler } from './autobackup';
 import { runBackgroundTasksAndExit } from './backgroundRunner';
 import { registerBackgroundServiceHandlers } from './ipc/backgroundService';
+import { localizeDialogOptions, localizeMainText, resolveMainLocale } from './i18n';
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -117,7 +118,7 @@ function createSplash(): BrowserWindow {
     backgroundColor: '#0C1A14',
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
-  w.loadFile(path.join(__dirname, '../renderer/splash.html'));
+  w.loadFile(path.join(__dirname, '../renderer/splash.html'), { query: { locale: resolveMainLocale() } });
   return hardenWindow(w);
 }
 
@@ -139,7 +140,7 @@ function createUnlockWindow(): BrowserWindow {
       sandbox: true,
     },
   });
-  w.loadFile(path.join(__dirname, '../renderer/unlock.html'));
+  w.loadFile(path.join(__dirname, '../renderer/unlock.html'), { query: { locale: resolveMainLocale() } });
   return hardenWindow(w);
 }
 
@@ -161,7 +162,7 @@ function createMainWindow(): BrowserWindow {
       sandbox: true,
     },
   });
-  w.loadFile(path.join(__dirname, '../renderer/index.html'));
+  w.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { locale: resolveMainLocale() } });
 
   if (process.env.NODE_ENV === 'development') {
     w.webContents.openDevTools({ mode: 'detach' });
@@ -253,16 +254,16 @@ function registerHandlers(): void {
   }));
 
   ipcMain.handle('dialog:openFile', () =>
-    dialog.showOpenDialog({
+    dialog.showOpenDialog(localizeDialogOptions({
       filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] }],
       properties: ['openFile'],
-    })
+    }))
   );
   ipcMain.handle('dialog:openDocument', () =>
-    dialog.showOpenDialog({
+    dialog.showOpenDialog(localizeDialogOptions({
       filters: [{ name: 'Documentos financeiros', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'csv'] }],
       properties: ['openFile', 'multiSelections'],
-    })
+    }))
   );
 
   ipcMain.on('shell:openExternal', (event, url: string) => {
@@ -300,7 +301,7 @@ app.whenReady().then(async () => {
     openDatabase();
   } catch (err) {
     console.error('[DB] Erro na inicialização:', err);
-    dialog.showErrorBox('Não foi possível abrir o banco de dados', 'Verifique as permissões e o caminho configurado para o banco do Fina.');
+    dialog.showErrorBox(localizeMainText('Não foi possível abrir o banco de dados'), localizeMainText('Verifique as permissões e o caminho configurado para o banco do Fina.'));
     app.quit();
     return;
   }
@@ -369,12 +370,12 @@ app.on('before-quit', () => {
     if (sync.enabled && sync.folder) pushSync(sync.folder);
   } catch (err) {
     console.error('[Sync] Falha ao enviar sincronização ao fechar:', err);
-    dialog.showMessageBoxSync({
+    dialog.showMessageBoxSync(localizeDialogOptions({
       type: 'warning',
       title: 'Sincronização não enviada',
       message: 'As alterações locais não foram enviadas para a pasta sincronizada. Receba a versão remota antes de enviar novamente.',
       buttons: ['Entendi'],
-    });
+    }));
   }
   closeDatabase();
 });

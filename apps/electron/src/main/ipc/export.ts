@@ -2,13 +2,17 @@ import { ipcMain, dialog, BrowserWindow } from 'electron';
 import { writeFileSync } from 'node:fs';
 import { getDb } from '../database';
 import { categoryOrChildPredicate } from '../categoryHierarchyQueries';
+import { formatMainDate, formatMainNumber, resolveMainLocale } from '../i18n';
+import { localizeDialogOptions } from '../i18n';
+import { localizeMainHtml } from '../i18n';
+import { localizeMainText } from '../i18n';
 
 function esc(s: string | null | undefined): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function fmtBrl(n: number): string {
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return formatMainNumber(n, { style: 'currency', currency: 'BRL' });
 }
 
 export function registerExportHandlers(): void {
@@ -18,13 +22,13 @@ export function registerExportHandlers(): void {
     month?: number; year?: number; dateFrom?: string; dateTo?: string; account_id?: string; type?: string;
     category_id?: string; owner?: string; status?: string;
   } = {}) => {
-    const { filePath } = await dialog.showSaveDialog({
+    const { filePath } = await dialog.showSaveDialog(localizeDialogOptions({
       title: 'Exportar transações',
       defaultPath: filters.dateFrom || filters.dateTo
         ? `transacoes-${filters.dateFrom ?? ''}${filters.dateFrom && filters.dateTo ? '_a_' : ''}${filters.dateTo ?? ''}.csv`
         : `transacoes-${filters.year ?? new Date().getFullYear()}-${String(filters.month ?? new Date().getMonth() + 1).padStart(2, '0')}.csv`,
       filters: [{ name: 'CSV', extensions: ['csv'] }],
-    });
+    }));
     if (!filePath) return null;
 
     let q = `
@@ -69,10 +73,10 @@ export function registerExportHandlers(): void {
 
     const rows = getDb().prepare(q).all(...params) as Record<string, unknown>[];
 
-    const typeLabel = (t: string) => t === 'income' ? 'Receita' : t === 'expense' ? 'Despesa' : 'Transferência';
-    const statusLabel = (s: string) => s === 'confirmed' ? 'Confirmado' : 'Pendente';
+    const typeLabel = (t: string) => localizeMainText(t === 'income' ? 'Receita' : t === 'expense' ? 'Despesa' : 'Transferência');
+    const statusLabel = (s: string) => localizeMainText(s === 'confirmed' ? 'Confirmado' : 'Pendente');
 
-    const header = 'Data,Descrição,Categoria,Subcategoria,Conta,Tipo,Valor,Status,Observações';
+    const header = localizeMainText('Data,Descrição,Categoria,Subcategoria,Conta,Tipo,Valor,Status,Observações');
     const lines = rows.map(r => [
       r.date, `"${String(r.description).replace(/"/g, '""')}"`,
       `"${String(r.category).replace(/"/g, '""')}"`,
@@ -98,11 +102,11 @@ export function registerExportHandlers(): void {
     const year = filters.year ?? now.getFullYear();
     const dateFrom = filters.dateFrom ?? `${year}-${String(month).padStart(2, '0')}-01`;
     const dateTo = filters.dateTo ?? `${year}-${String(month).padStart(2, '0')}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
-    const { filePath } = await dialog.showSaveDialog({
+    const { filePath } = await dialog.showSaveDialog(localizeDialogOptions({
       title: 'Exportar relatório PDF',
       defaultPath: `relatorio-${dateFrom.slice(0, 7)}-a-${dateTo.slice(0, 7)}.pdf`,
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
-    });
+    }));
     if (!filePath) return null;
 
     const db = getDb();
@@ -146,10 +150,10 @@ export function registerExportHandlers(): void {
     `).all(...params) as { date: string; description: string; category: string; account: string; type: string; amount: number; status: string }[];
 
     const userName = (db.prepare(`SELECT value FROM app_settings WHERE key='user_name'`).get() as { value: string } | undefined)?.value ?? 'Usuário';
-    const periodName = `${new Date(dateFrom + 'T12:00').toLocaleDateString('pt-BR')} a ${new Date(dateTo + 'T12:00').toLocaleDateString('pt-BR')}`;
+    const periodName = `${formatMainDate(`${dateFrom}T12:00`)} a ${formatMainDate(`${dateTo}T12:00`)}`;
     const balance = summary.income - summary.expense;
 
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+    const html = `<!DOCTYPE html><html lang="${resolveMainLocale()}"><head><meta charset="UTF-8">
 <style>
   body { font-family: Arial, sans-serif; font-size: 12px; color: #1a1a1a; margin: 0; padding: 24px; }
   h1 { font-size: 20px; margin-bottom: 4px; }
@@ -186,7 +190,7 @@ export function registerExportHandlers(): void {
   <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta</th><th>Valor</th></tr></thead>
   <tbody>
     ${txs.map(t => `<tr>
-      <td>${new Date(t.date + 'T12:00').toLocaleDateString('pt-BR')}</td>
+      <td>${formatMainDate(`${t.date}T12:00`)}</td>
       <td>${esc(t.description)}</td>
       <td>${esc(t.category)}</td>
       <td>${esc(t.account)}</td>
@@ -199,7 +203,7 @@ export function registerExportHandlers(): void {
 </body></html>`;
 
     const win = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true } });
-    await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(localizeMainHtml(html))}`);
     const pdfBuf = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
     win.destroy();
     writeFileSync(filePath, pdfBuf);

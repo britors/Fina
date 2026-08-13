@@ -1,10 +1,12 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
+import { isBrazilLocale, locale } from '../i18n';
 import { formatCurrency, formatDate, getDaysUntilDue, isCreditLikeAccountType } from '../../shared/utils';
 import { createDonut, createAreaChart } from '../components/charts';
 import type { Account, Bill, Receivable, TransactionWithDetails, MonthlySummary, ForecastPoint, EndOfMonthForecast, InvestmentSummary, Goal, MarketQuote, ConsolidatedBalance, CashFlowForecast } from '../../shared/types';
 
 function monthLabel(month: number, year: number): string {
-  return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+  return new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'short', year: '2-digit' });
 }
 
 export async function render(el: HTMLElement): Promise<void> {
@@ -43,8 +45,12 @@ export async function render(el: HTMLElement): Promise<void> {
       invoke<Goal[]>('goals:list'),
       invoke<{ total_debt: number }>('debts:getSummary'),
       invoke<MarketQuote[]>('market:getQuotes'),
-      invoke<ConsolidatedBalance>('openFinance:getConsolidatedBalance'),
-      invoke<CashFlowForecast>('openFinance:getCashFlowForecast', 8),
+      isBrazilLocale
+        ? invoke<ConsolidatedBalance>('openFinance:getConsolidatedBalance')
+        : Promise.resolve({ total: 0, byInstitution: [] } as ConsolidatedBalance),
+      isBrazilLocale
+        ? invoke<CashFlowForecast>('openFinance:getCashFlowForecast', 8)
+        : Promise.resolve({ weeks: [], factors: [] } as CashFlowForecast),
     ]);
     if (expenseRootId && !rootExpenses.some(category => category.id === expenseRootId)) expenseRootId = '';
     const expenses = expenseRootId
@@ -206,7 +212,7 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
     </div>
 
-    ${consolidatedBalance.byInstitution.length > 0 ? `
+    ${isBrazilLocale && consolidatedBalance.byInstitution.length > 0 ? `
       <!-- Open Finance: saldo consolidado -->
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">Open Finance — saldo consolidado</div>
@@ -373,8 +379,8 @@ export async function render(el: HTMLElement): Promise<void> {
                 const noChg = q.change_pct === 0;
                 const color = noChg ? 'var(--text-2)' : up ? 'var(--accent)' : 'var(--danger)';
                 const priceStr = q.currency === '%'
-                  ? `${q.price.toFixed(2)}% a.a.`
-                  : q.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                  ? td("{value}% a.a.", [q.price.toFixed(2)])
+                  : q.price.toLocaleString(locale, { style: 'currency', currency: 'BRL' });
                 return `<div style="padding:10px 20px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
                   <span style="font-size:0.85rem;font-weight:500">${esc(q.label)}</span>
                   <div style="text-align:right">
@@ -422,7 +428,7 @@ function billDueBadge(dueDate: string, status: string): string {
   if (status === 'overdue') return `<span class="badge badge-overdue">Vencido</span>`;
   const days = getDaysUntilDue(dueDate);
   const cls = days <= 3 ? 'badge-warn' : 'badge-ok';
-  const label = days === 0 ? 'Hoje' : days === 1 ? 'Amanhã' : `Em ${days} dias`;
+  const label = days === 0 ? 'Hoje' : days === 1 ? 'Amanhã' : td("Em {value} dias", [days]);
   return `<span class="badge ${cls}">${label}</span>`;
 }
 
@@ -431,7 +437,7 @@ function receivableDueBadge(dueDate: string, status: string): string {
   if (status === 'overdue')  return `<span class="badge badge-overdue">Vencido</span>`;
   const days = getDaysUntilDue(dueDate);
   const cls = days <= 3 ? 'badge-warn' : 'badge-ok';
-  const label = days === 0 ? 'Hoje' : days === 1 ? 'Amanhã' : `Em ${days} dias`;
+  const label = days === 0 ? 'Hoje' : days === 1 ? 'Amanhã' : td("Em {value} dias", [days]);
   return `<span class="badge ${cls}">${label}</span>`;
 }
 

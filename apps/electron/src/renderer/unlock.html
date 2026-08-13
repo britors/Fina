@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en-US">
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self';">
@@ -69,11 +69,11 @@
       <circle cx="80" cy="97" r="6" fill="#0C2E22"/>
     </svg>
   </div>
-  <div class="title">Banco de dados protegido</div>
-  <div class="sub">Digite a senha mestre para destravar seus dados financeiros.</div>
+  <div class="title" data-i18n="Banco de dados protegido"></div>
+  <div class="sub" data-i18n="Digite a senha mestre para destravar seus dados financeiros."></div>
   <form id="unlock-form">
-    <input type="password" id="password" placeholder="Senha mestre" autofocus>
-    <button type="submit" id="submit-btn">Desbloquear</button>
+    <input type="password" id="password" data-i18n-placeholder="Senha mestre" autofocus>
+    <button type="submit" id="submit-btn" data-i18n="Desbloquear"></button>
     <div class="error" id="error"></div>
   </form>
 

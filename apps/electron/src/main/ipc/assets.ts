@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import type { Asset, AssetReminder, AssetReminderWithAsset } from '../../shared/types';
 import { getDaysUntilDue, isCreditLikeAccountType } from '../../shared/utils';
+import { formatMainDate } from '../i18n';
 
 type CreatePayload = Omit<Asset, 'id' | 'created_at' | 'updated_at'>;
 type CreateReminderPayload = Omit<AssetReminder, 'id' | 'dismissed_at' | 'created_at' | 'updated_at'>;
@@ -74,7 +75,7 @@ export function registerAssetHandlers(): void {
       const accountBalance = currentAccountBalance - net;
       result.push({
         month: `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`,
-        label: cursor.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+        label: formatMainDate(cursor, { month: 'short', year: '2-digit' }),
         account_balance: accountBalance,
         net_worth: accountBalance + investmentsTotal + assetsTotal - debtsTotal,
       });

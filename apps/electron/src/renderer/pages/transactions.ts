@@ -1,4 +1,6 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
+import { isBrazilLocale, locale } from '../i18n';
 import { formatCurrency, formatDate, calculateMonthlySummary, isCreditLikeAccountType, isPixEligibleAccountType, isVoucherAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
@@ -23,7 +25,7 @@ interface OcrResult {
 }
 
 function monthLabel(month: number, year: number): string {
-  return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+  return new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'short', year: '2-digit' });
 }
 
 export async function render(el: HTMLElement): Promise<void> {
@@ -66,7 +68,7 @@ export async function render(el: HTMLElement): Promise<void> {
   categories = loadedCategories;
   familyEnabled = settings.family_mode === 'true';
   familyMembers = (settings.family_members ?? '').split(',').map(v => v.trim()).filter(Boolean);
-  meiEnabled = settings.mei_enabled === 'true';
+  meiEnabled = isBrazilLocale && settings.mei_enabled === 'true';
   familyMembersList = familyEnabled ? await invoke<FamilyMember[]>('familyMembers:list') : [];
 
   setTopbarActions(`
@@ -622,7 +624,7 @@ async function openBatchPromptModal(onDone: () => void): Promise<void> {
     body: `
       <div class="form-group">
         <label class="form-label">Cole ou descreva os lançamentos</label>
-        <textarea class="form-ctrl" id="ai-batch-prompt" rows="5" placeholder="Ex: Pix mercado 82,90 ontem; Uber 31 hoje; aluguel 1200 dia 10"></textarea>
+        <textarea class="form-ctrl" id="ai-batch-prompt" rows="5" placeholder="${isBrazilLocale ? 'Ex: Pix mercado 82,90 ontem; Uber 31 hoje; aluguel 1200 dia 10' : 'Ex: Mercado 82,90 ontem; Uber 31 hoje; aluguel 1200 dia 10'}"></textarea>
       </div>
       <div style="background:rgba(239,159,39,.08);border:1px solid rgba(239,159,39,.25);border-radius:8px;padding:12px;font-size:0.8rem;color:var(--text-2);line-height:1.6;margin-bottom:12px">
         A IA vai gerar uma prévia editável. Nenhum lançamento será salvo até você revisar e confirmar os itens selecionados.
@@ -722,7 +724,7 @@ function openBatchReviewModal(batch: AITransactionBatchDraft, onDone: () => void
         showAlert('Selecione ao menos um lançamento para salvar.');
         return false;
       }
-      if (!await showConfirm(`Salvar ${rows.length} lançamento${rows.length !== 1 ? 's' : ''} revisado${rows.length !== 1 ? 's' : ''}?`, { okLabel: 'Salvar' })) return false;
+      if (!await showConfirm(td("Salvar {value} lançamento{value} revisado{value}?", [rows.length, rows.length !== 1 ? 's' : '', rows.length !== 1 ? 's' : '']), { okLabel: 'Salvar' })) return false;
 
       for (const row of rows) {
         const description = row.querySelector<HTMLInputElement>('.ai-batch-desc')!.value.trim();
@@ -903,7 +905,7 @@ function openImportModal(): void {
     });
 
     overlay.remove();
-    showAlert(`Importação concluída: ${result.imported} transações importadas, ${result.skipped} ignoradas.`);
+    showAlert(td("Importação concluída: {value} transações importadas, {value} ignoradas.", [result.imported, result.skipped]));
     await invoke('transactions:list', {});
   });
 }
@@ -936,7 +938,7 @@ function paymentAccountOptionsHtml(accountId: string, excludeCreditCard: boolean
 }
 
 function paymentRowHtml(accountId: string, amount: number, isPix = false, excludeCreditCard = false): string {
-  const pixEligible = accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
+  const pixEligible = isBrazilLocale && accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
   return `
     <div class="payment-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 64px 34px;gap:8px;align-items:center">
       <select class="form-ctrl payment-account">
@@ -961,7 +963,7 @@ function updatePaymentAccountOptions(overlay: HTMLElement, excludeCreditCard: bo
 
 function updatePaymentPixVisibility(row: HTMLElement): void {
   const accountId = row.querySelector<HTMLSelectElement>('.payment-account')!.value;
-  const pixEligible = accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
+  const pixEligible = isBrazilLocale && accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
   const label = row.querySelector<HTMLElement>('.payment-pix-label')!;
   const checkbox = row.querySelector<HTMLInputElement>('.payment-pix')!;
   label.style.display = pixEligible ? 'flex' : 'none';

@@ -1,4 +1,5 @@
 import { invoke } from '../api';
+import { locale } from '../i18n';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import type { BillWithCategory, ReceivableWithCategory, TransactionWithDetails } from '../../shared/types';
@@ -61,7 +62,7 @@ export async function render(el: HTMLElement): Promise<void> {
     const totalExpense = txs.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
     const totalBills = bills.filter(b => b.status !== 'paid').reduce((sum, b) => sum + b.amount, 0);
     const totalReceivables = receivables.filter(r => r.status !== 'received').reduce((sum, r) => sum + r.amount, 0);
-    const label = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const label = new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
     el.innerHTML = `
       <div class="filters" style="margin-bottom:16px">

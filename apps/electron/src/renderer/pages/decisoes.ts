@@ -1,3 +1,4 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
 import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
 import { runAIAction } from '../components/aiConsent';
@@ -122,17 +123,17 @@ function scenarioResult(data: { reserveMonths: number; avgExpense: number; activ
     const debt = [...data.activeDebts].sort((a, b) => b.interest_rate - a.interest_rate)[0];
     if (!debt) return { title: 'Sem dívidas ativas', body: 'Direcione esse valor para reserva ou metas.' };
     const months = debt.installment_amount + amount > 0 ? Math.ceil(debt.outstanding_balance / (debt.installment_amount + amount)) : 0;
-    return { title: `Priorizar ${debt.description}`, body: `${formatCurrency(amount)} extras por mês reduzem o saldo de ${formatCurrency(debt.outstanding_balance)} em aproximadamente ${months} meses, antes dos juros.` };
+    return { title: `Priorizar ${debt.description}`, body: td("{value} extras por mês reduzem o saldo de {value} em aproximadamente {value} meses, antes dos juros.", [formatCurrency(amount), formatCurrency(debt.outstanding_balance), months]) };
   }
   if (scenario === 'goal') {
     const goal = [...data.openGoals].sort((a, b) => (a.target_date ?? '9999').localeCompare(b.target_date ?? '9999'))[0];
     if (!goal) return { title: 'Nenhuma meta aberta', body: 'Crie uma meta para simular seu próximo objetivo.' };
     const remaining = Math.max(0, goal.target_amount - goal.current_amount);
     const months = amount > 0 ? Math.ceil(remaining / amount) : 0;
-    return { title: `Acelerar ${goal.name}`, body: `${formatCurrency(amount)} por mês completa ${formatCurrency(remaining)} restantes em aproximadamente ${months || '—'} meses.` };
+    return { title: `Acelerar ${goal.name}`, body: td("{value} por mês completa {value} restantes em aproximadamente {value} meses.", [formatCurrency(amount), formatCurrency(remaining), months || '—']) };
   }
   const addedMonths = data.avgExpense > 0 ? amount / data.avgExpense : 0;
-  return { title: 'Fortalecer a reserva', body: `${formatCurrency(amount)} mensais adicionam ${addedMonths.toFixed(1)} mês de despesas por aporte e levam a reserva estimada para ${(data.reserveMonths + addedMonths).toFixed(1)} meses após um ano.` };
+  return { title: 'Fortalecer a reserva', body: td("{value} mensais adicionam {value} mês de despesas por aporte e levam a reserva estimada para {value} meses após um ano.", [formatCurrency(amount), addedMonths.toFixed(1), (data.reserveMonths + addedMonths).toFixed(1)]) };
 }
 
 function buildDecisions(data: {
@@ -147,7 +148,7 @@ function buildDecisions(data: {
   if (data.available < 0) {
     decisions.push({
       title: 'Recuperar margem mensal',
-      body: `A média recente está negativa em ${formatCurrency(Math.abs(data.available))}.`,
+      body: td("A média recente está negativa em {value}.", [formatCurrency(Math.abs(data.available))]),
       impact: 'Evita consumir reserva ou ampliar dívidas.',
       route: 'plano-mensal',
       priority: 'Alta',
@@ -156,7 +157,7 @@ function buildDecisions(data: {
   if (data.debtCommitment > 0.35) {
     decisions.push({
       title: 'Priorizar renegociação de dívidas',
-      body: `${(data.debtCommitment * 100).toFixed(0)}% da renda está comprometida com parcelas.`,
+      body: td("{value}% da renda está comprometida com parcelas.", [(data.debtCommitment * 100).toFixed(0)]),
       impact: 'Reduz pressão mensal e risco de atraso.',
       route: 'renegociacao',
       priority: 'Alta',
@@ -165,7 +166,7 @@ function buildDecisions(data: {
   if (data.reserveMonths < 3) {
     decisions.push({
       title: 'Fortalecer reserva de emergência',
-      body: `A reserva cobre ${data.reserveMonths.toFixed(1)} meses de despesas.`,
+      body: td("A reserva cobre {value} meses de despesas.", [data.reserveMonths.toFixed(1)]),
       impact: 'Aumenta proteção contra imprevistos.',
       route: 'reserva',
       priority: data.reserveMonths < 1 ? 'Alta' : 'Média',
@@ -174,7 +175,7 @@ function buildDecisions(data: {
   if (data.overBudgets.length > 0) {
     decisions.push({
       title: 'Ajustar orçamentos excedidos',
-      body: `${data.overBudgets.length} categoria${data.overBudgets.length !== 1 ? 's' : ''} acima do limite.`,
+      body: td("{value} categoria{value} acima do limite.", [data.overBudgets.length, data.overBudgets.length !== 1 ? 's' : '']),
       impact: 'Melhora previsibilidade do mês atual.',
       route: 'budget',
       priority: 'Média',
@@ -183,7 +184,7 @@ function buildDecisions(data: {
   if (data.available > 0 && data.openGoals.length > 0) {
     decisions.push({
       title: 'Direcionar sobra para metas',
-      body: `${data.openGoals.length} meta${data.openGoals.length !== 1 ? 's' : ''} ainda em aberto.`,
+      body: td("{value} meta{value} ainda em aberto.", [data.openGoals.length, data.openGoals.length !== 1 ? 's' : '']),
       impact: 'Transforma sobra em avanço concreto.',
       route: 'goals',
       priority: 'Baixa',

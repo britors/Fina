@@ -6,6 +6,7 @@ import { isCreditLikeAccountType, isPixEligibleAccountType } from '../../shared/
 import { attachToInvoice, adjustInvoiceAmount } from '../invoices';
 import { buildExpenseAnalyticsWhere, categoryOrChildPredicate, transactionCategoryOrChildPredicate, EXPENSES_BY_ROOT_MONTH_SQL, EXPENSES_BY_ROOT_RANGE_SQL, EXPENSE_CATEGORY_DETAILS_SQL, EXPENSE_MONTHLY_ROOT_SERIES_SQL, EXPENSE_MONTHLY_SUBCATEGORY_SERIES_SQL, EXPENSE_SUBCATEGORY_BREAKDOWN_SQL } from '../categoryHierarchyQueries';
 import type { ExpenseAnalyticsFilters } from '../categoryHierarchyQueries';
+import { formatMainDate } from '../i18n';
 
 const JOIN = `
   SELECT t.*, a.name as account_name,
@@ -461,7 +462,7 @@ function getFilteredMonthlyHistory(filters: ExpenseAnalyticsFilters): object[] {
     const row = byMonth.get(key);
     result.push({
       month: key,
-      label: cursor.toLocaleDateString('pt-BR', { month: 'short' }),
+      label: formatMainDate(cursor, { month: 'short' }),
       income: row?.income ?? 0,
       expense: row?.expense ?? 0,
     });
@@ -671,7 +672,7 @@ export function registerTransactionHandlers(): void {
       d.setMonth(d.getMonth() - i);
       const m = d.getMonth() + 1;
       const y = d.getFullYear();
-      const label = d.toLocaleDateString('pt-BR', { month: 'short' });
+      const label = formatMainDate(d, { month: 'short' });
       const row = getDb().prepare(`
         SELECT
           COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END), 0) as income,

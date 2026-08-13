@@ -6,6 +6,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { getDb } from './database';
 import { getLocalSecret } from './localSecrets';
+import { localizeMainText } from './i18n';
 
 function getSetting(key: string, fallback = 'true'): string {
   const row = getDb().prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined;
@@ -35,6 +36,8 @@ function logSent(type: string, refId: string): void {
 }
 
 function notify(title: string, body: string): void {
+  title = localizeMainText(title);
+  body = localizeMainText(body);
   if (Notification.isSupported()) {
     new Notification({ title, body, silent: false }).show();
   }

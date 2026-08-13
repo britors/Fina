@@ -1,3 +1,4 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
 import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
 import type { Account, BudgetWithProgress, Category, Debt } from '../../shared/types';
@@ -46,31 +47,31 @@ export async function render(el: HTMLElement): Promise<void> {
       label: 'Sobra mensal',
       value: clampScore(savingsRate / 0.2, 25),
       max: 25,
-      detail: `${(savingsRate * 100).toFixed(0)}% da renda média`,
+      detail: td("{value}% da renda média", [(savingsRate * 100).toFixed(0)]),
     },
     {
       label: 'Reserva',
       value: clampScore(reserveMonths / 6, 25),
       max: 25,
-      detail: `${reserveMonths.toFixed(1)} meses de despesas`,
+      detail: td("{value} meses de despesas", [reserveMonths.toFixed(1)]),
     },
     {
       label: 'Dívidas',
       value: clampScore(1 - debtCommitment / 0.35, 20),
       max: 20,
-      detail: `${(debtCommitment * 100).toFixed(0)}% da renda em parcelas`,
+      detail: td("{value}% da renda em parcelas", [(debtCommitment * 100).toFixed(0)]),
     },
     {
       label: 'Orçamento',
       value: clampScore(1 - overBudgets / Math.max(1, budgets.length), 15),
       max: 15,
-      detail: overBudgets === 0 ? 'sem orçamento excedido' : `${overBudgets} orçamento${overBudgets !== 1 ? 's' : ''} excedido${overBudgets !== 1 ? 's' : ''}`,
+      detail: overBudgets === 0 ? 'sem orçamento excedido' : td("{value} orçamento{value} excedido{value}", [overBudgets, overBudgets !== 1 ? 's' : '', overBudgets !== 1 ? 's' : '']),
     },
     {
       label: 'Flexibilidade',
       value: clampScore(variableShare / 0.35, 15),
       max: 15,
-      detail: `${formatCurrency(variable)} em despesas variáveis`,
+      detail: td("{value} em despesas variáveis", [formatCurrency(variable)]),
     },
   ];
 

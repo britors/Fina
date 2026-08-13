@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getDb } from '../database';
+import { resolveMainLocale } from '../i18n';
 import type {
   Account,
   AIBillDraft,
@@ -296,13 +297,19 @@ function financialSummary(): object {
 }
 
 function systemInstruction(): string {
+  const responseLanguage = ({
+    'en-US': 'English (United States)',
+    'pt-BR': 'português do Brasil',
+    'es-ES': 'español de España',
+    'zh-CN': '简体中文',
+  } as const)[resolveMainLocale()];
   return [
     'Você é um assistente financeiro educacional dentro do Fina.',
     'Use apenas os dados agregados fornecidos.',
     'Não invente dados e não peça informações sensíveis.',
     'Não prometa resultados financeiros.',
     'Não forneça consultoria financeira, fiscal, jurídica ou de investimento personalizada.',
-    'Responda em português do Brasil, com linguagem simples, prática e prudente.',
+    `Responda em ${responseLanguage}, com linguagem simples, prática e prudente.`,
     'Inclua um lembrete curto de que a resposta é informativa e deve ser conferida pelo usuário.',
   ].join('\n');
 }

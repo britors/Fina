@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { getDb } from '../database';
 import type { RadarSignal } from '../../shared/types';
+import { formatMainDate, formatMainNumber } from '../i18n';
 
 type FlowRow = { date: string; delta: number };
 
@@ -123,12 +124,12 @@ function radarSignals(): RadarSignal[] {
 }
 
 function formatMoney(value: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+  return formatMainNumber(value, { style: 'currency', currency: 'BRL' });
 }
 
 function formatDate(value: string): string {
   if (!value) return 'a próxima janela';
-  return new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR');
+  return formatMainDate(`${value}T00:00:00`);
 }
 
 export function registerRadarHandlers(): void {

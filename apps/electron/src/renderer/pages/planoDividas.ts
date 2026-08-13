@@ -1,3 +1,4 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
@@ -50,9 +51,9 @@ export async function render(el: HTMLElement): Promise<void> {
 
     el.innerHTML = `
       <div class="grid-3" style="margin-bottom:20px">
-        ${metricCard('Total em dívidas', formatCurrency(totalDebt), `${debts.length} dívida${debts.length !== 1 ? 's' : ''} ativa${debts.length !== 1 ? 's' : ''}`, 'ti-receipt', 'var(--danger)')}
+        ${metricCard('Total em dívidas', formatCurrency(totalDebt), td("{value} dívida{value} ativa{value}", [debts.length, debts.length !== 1 ? 's' : '', debts.length !== 1 ? 's' : '']), 'ti-receipt', 'var(--danger)')}
         ${metricCard('Parcelas mínimas', formatCurrency(monthlyMinimum), 'Compromisso mensal atual', 'ti-calendar-dollar', 'var(--warning)')}
-        ${metricCard('Economia projetada', formatCurrency(interestSavings), `${monthsSaved} mês${monthsSaved !== 1 ? 'es' : ''} antes`, 'ti-pig-money', 'var(--accent)')}
+        ${metricCard('Economia projetada', formatCurrency(interestSavings), td("{value} mês{value} antes", [monthsSaved, monthsSaved !== 1 ? 'es' : '']), 'ti-pig-money', 'var(--accent)')}
       </div>
 
       <div class="card" style="margin-bottom:20px">

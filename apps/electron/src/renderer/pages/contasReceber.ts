@@ -1,4 +1,6 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
+import { isBrazilLocale } from '../i18n';
 import { formatCurrency, formatDate, getDaysUntilDue, isPixEligibleAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
@@ -160,7 +162,7 @@ function receivableSection(title: string, receivables: ReceivableWithCategory[],
           <tbody>
             ${receivables.map(r => {
               const days = getDaysUntilDue(r.due_date);
-              const statusLabel = r.status === 'received' ? 'Recebido' : r.status === 'overdue' ? 'Vencido' : days === 0 ? 'Hoje' : `Em ${days}d`;
+              const statusLabel = r.status === 'received' ? 'Recebido' : r.status === 'overdue' ? 'Vencido' : days === 0 ? 'Hoje' : td("Em {value}d", [days]);
               const badgeCls = r.status === 'received' ? 'badge-confirmed' : r.status === 'overdue' ? 'badge-overdue' : days <= 3 ? 'badge-pending' : 'badge-ok';
               return `<tr>
                 <td><div class="desc-main">${esc(r.description)}</div></td>
@@ -441,7 +443,7 @@ function paymentRowsHtml(payments: PaymentSplit[], prefix = 'receivable'): strin
 }
 
 function paymentRowHtml(accountId: string, amount: number, prefix = 'receivable', isPix = false): string {
-  const pixEligible = accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
+  const pixEligible = isBrazilLocale && accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
   return `
     <div class="${prefix}-payment-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 64px 34px;gap:8px;align-items:center">
       <select class="form-ctrl ${prefix}-payment-account">
@@ -459,7 +461,7 @@ function paymentRowHtml(accountId: string, amount: number, prefix = 'receivable'
 
 function updatePaymentPixVisibility(row: HTMLElement, prefix: string): void {
   const accountId = row.querySelector<HTMLSelectElement>(`.${prefix}-payment-account`)!.value;
-  const pixEligible = accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
+  const pixEligible = isBrazilLocale && accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
   const label = row.querySelector<HTMLElement>(`.${prefix}-payment-pix-label`)!;
   const checkbox = row.querySelector<HTMLInputElement>(`.${prefix}-payment-pix`)!;
   label.style.display = pixEligible ? 'flex' : 'none';

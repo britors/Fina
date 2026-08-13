@@ -1,4 +1,6 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
+import { locale } from '../i18n';
 import { formatCurrency, formatDate, accountTypeLabel, isCreditLikeAccountType, isVoucherAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
@@ -152,12 +154,12 @@ function accountCard(a: Account, cardState?: CreditCardInvoiceCardState, purchas
         </div>
       </div>
       <div class="account-name">${esc(a.name)}</div>
-      <div class="account-bal-label">${balanceLabel}${a.currency !== 'BRL' ? ` · convertido de ${CURRENCY_SYMBOLS[a.currency]}` : ''}</div>
+      <div class="account-bal-label">${balanceLabel}${a.currency !== 'BRL' ? td("· convertido de {value}", [CURRENCY_SYMBOLS[a.currency]]) : ''}</div>
       <div class="account-balance" style="color:${isNegative ? 'var(--danger)' : 'var(--text)'}">
         ${balanceValue}
       </div>
       ${a.currency !== 'BRL' && a.original_balance != null ? `
-        <div style="font-size:12px;color:var(--text-3);margin-top:2px">${CURRENCY_SYMBOLS[a.currency]} ${a.original_balance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        <div style="font-size:12px;color:var(--text-3);margin-top:2px">${CURRENCY_SYMBOLS[a.currency]} ${a.original_balance.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
       ` : ''}
       ${cardState ? `
         <div style="font-size:12px;color:var(--text-3);margin-top:6px">
@@ -172,7 +174,7 @@ function accountCard(a: Account, cardState?: CreditCardInvoiceCardState, purchas
         </div>
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-3);margin-top:4px">
           <span>Limite: ${formatCurrency(a.credit_limit)}</span>
-          <span>${isVoucher ? `Gasto: ${formatCurrency(usedLimit)}` : `Disponível: ${formatCurrency(a.credit_limit - usedLimit)}`}</span>
+          <span>${isVoucher ? `Gasto: ${formatCurrency(usedLimit)}` : td("Disponível: {value}", [formatCurrency(a.credit_limit - usedLimit)])}</span>
         </div>
       ` : ''}
       ${purchaseWindow ? `
@@ -180,7 +182,7 @@ function accountCard(a: Account, cardState?: CreditCardInvoiceCardState, purchas
           <i class="ti ti-calendar-time"></i>
           ${purchaseWindow.days_until_closing <= 0
             ? `Fatura fecha hoje — compras de hoje já entram na próxima fatura`
-            : `Fatura fecha em ${purchaseWindow.days_until_closing}d — comprar depois disso maximiza o prazo até ${formatDate(purchaseWindow.due_date)}`}
+            : td("Fatura fecha em {value}d — comprar depois disso maximiza o prazo até {value}", [purchaseWindow.days_until_closing, formatDate(purchaseWindow.due_date)])}
         </div>
       ` : ''}
       ${commitments.length > 0 ? `
@@ -190,7 +192,7 @@ function accountCard(a: Account, cardState?: CreditCardInvoiceCardState, purchas
       ` : ''}
       <div class="account-hr"></div>
       <div style="font-size:11px;color:var(--text-3);padding:0 2px">
-        Conta criada em ${new Date(a.created_at).toLocaleDateString('pt-BR')}
+        Conta criada em ${new Date(a.created_at).toLocaleDateString(locale)}
       </div>
     </div>
   `;

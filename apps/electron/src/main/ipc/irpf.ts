@@ -6,6 +6,10 @@ import { insertConfirmedTransaction } from './transactions';
 import { computeCapitalGains } from '../../shared/utils';
 import type { CapitalGainsOperation } from '../../shared/utils';
 import type { CapitalGainsReport, FiscalClassification } from '../../shared/types';
+import { formatMainDate, formatMainNumber, resolveMainLocale } from '../i18n';
+import { localizeDialogOptions } from '../i18n';
+import { localizeMainHtml } from '../i18n';
+import { localizeMainText } from '../i18n';
 
 export interface IRPFRendimento {
   category: string;
@@ -78,18 +82,18 @@ export function calculateCapitalGains(year: number): CapitalGainsReport {
 export function registerIRPFHandlers(): void {
 
   ipcMain.handle('irpf:exportCSV', async (_e, report: IRPFReport) => {
-    const { filePath } = await dialog.showSaveDialog({
+    const { filePath } = await dialog.showSaveDialog(localizeDialogOptions({
       title: 'Exportar dados IRPF (CSV)',
       defaultPath: `irpf-${report.year}-dados.csv`,
       filters: [{ name: 'CSV', extensions: ['csv'] }],
-    });
+    }));
     if (!filePath) return null;
 
     const lines: string[] = [];
-    const q = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
+    const q = (s: string) => `"${localizeMainText(String(s)).replace(/"/g, '""')}"`;
     const n = (v: number) => v.toFixed(2).replace('.', ',');
 
-    lines.push('FICHA;DESCRICAO;VALOR');
+    lines.push(localizeMainText('FICHA;DESCRICAO;VALOR'));
 
     lines.push('');
     lines.push(q('Ficha 1 — Rendimentos Tributáveis') + ';;');
@@ -226,16 +230,16 @@ export function registerIRPFHandlers(): void {
   });
 
   ipcMain.handle('irpf:exportPDF', async (_e, report: IRPFReport) => {
-    const { filePath } = await dialog.showSaveDialog({
+    const { filePath } = await dialog.showSaveDialog(localizeDialogOptions({
       title: 'Exportar Informe de Rendimentos',
       defaultPath: `informe-rendimentos-${report.year}.pdf`,
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
-    });
+    }));
     if (!filePath) return null;
 
     const html = buildHTML(report);
     const win  = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true } });
-    await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(localizeMainHtml(html))}`);
     const buf = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
     win.destroy();
     writeFileSync(filePath, buf);
@@ -348,23 +352,23 @@ export function registerIRPFHandlers(): void {
   ipcMain.handle('irpf:getCapitalGains', (_e, year: number): CapitalGainsReport => calculateCapitalGains(year));
 
   ipcMain.handle('irpf:downloadTemplate', async () => {
-    const { filePath } = await dialog.showSaveDialog({
+    const { filePath } = await dialog.showSaveDialog(localizeDialogOptions({
       title: 'Salvar modelo CSV do IRPF',
       defaultPath: 'irpf-modelo.csv',
       filters: [{ name: 'CSV', extensions: ['csv'] }],
-    });
+    }));
     if (!filePath) return null;
 
     const template = [
-      'FICHA;DESCRICAO;VALOR',
-      '"Rendimentos Tributáveis";"Salário";5000,00',
-      '"Rendimentos Tributáveis";"Freelance";1200,00',
-      '"Rendimentos Isentos";"Rendimento Poupança";80,00',
-      '"Deduções";"Saúde";450,00',
-      '"Deduções";"Educação";200,00',
-      '"Bens e Direitos";"Apartamento — Banco Itaú";280000,00',
-      '"Bens e Direitos";"Veículo — Fiat Uno";18000,00',
-      '"Dívidas";"Financiamento Imóvel — Caixa";150000,00',
+      localizeMainText('FICHA;DESCRICAO;VALOR'),
+      localizeMainText('"Rendimentos Tributáveis";"Salário";5000,00'),
+      localizeMainText('"Rendimentos Tributáveis";"Freelance";1200,00'),
+      localizeMainText('"Rendimentos Isentos";"Rendimento Poupança";80,00'),
+      localizeMainText('"Deduções";"Saúde";450,00'),
+      localizeMainText('"Deduções";"Educação";200,00'),
+      localizeMainText('"Bens e Direitos";"Apartamento — Banco Itaú";280000,00'),
+      localizeMainText('"Bens e Direitos";"Veículo — Fiat Uno";18000,00'),
+      localizeMainText('"Dívidas";"Financiamento Imóvel — Caixa";150000,00'),
     ].join('\n');
 
     writeFileSync(filePath, '﻿' + template, 'utf-8');
@@ -482,7 +486,7 @@ function labelAssetTipo(t: string): string {
 }
 
 function brl(n: number): string {
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return formatMainNumber(n, { style: 'currency', currency: 'BRL' });
 }
 
 function esc(s: string): string {
@@ -507,7 +511,7 @@ function buildHTML(r: IRPFReport): string {
       <tfoot><tr><td><strong>${totalLabel}</strong></td><td class="val total">${brl(total)}</td></tr></tfoot>
     </table>`;
 
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+  return `<!DOCTYPE html><html lang="${resolveMainLocale()}"><head><meta charset="UTF-8">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: Arial, sans-serif; font-size: 11px; color: #111; padding: 28px 32px; }
@@ -553,7 +557,7 @@ function buildHTML(r: IRPFReport): string {
 <div class="declarante">
   <div style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Declarante</div>
   <strong>${esc(r.user_name)}</strong>
-  <span style="color:#888;margin-left:12px;font-size:10px">Gerado em ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+  <span style="color:#888;margin-left:12px;font-size:10px">Gerado em ${formatMainDate(new Date(), { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
 </div>
 
 <div class="grid2">

@@ -1,0 +1,35 @@
+[
+  {
+    "pattern": "^(?:SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA|WITH)\\b",
+    "reason": "SQL interno, nunca apresentado ao usuário"
+  },
+  {
+    "pattern": "^\\[[^\\]]+\\]",
+    "reason": "mensagens de diagnóstico identificadas por subsistema"
+  },
+  {
+    "pattern": "^(?:[A-Z0-9_.:/@+%-]+|#[0-9a-f]{3,8}|https?://\\S+|[a-z]+(?:[A-Z][a-z0-9]+)+)$",
+    "caseSensitive": true,
+    "reason": "siglas, códigos, símbolos, URLs e identificadores técnicos"
+  },
+  {
+    "pattern": "^(?:data lançamento|descrição|histórico|valor|crédito|débito|entrada|saída)$",
+    "reason": "aliases técnicos de cabeçalhos aceitos pelo importador CSV"
+  },
+  {
+    "pattern": "^(?:português do Brasil|español de España|Responda em \\{value\\}, com linguagem simples, prática e prudente\\.)$",
+    "reason": "instrução interna de idioma enviada ao modelo de IA, não renderizada na interface"
+  },
+  {
+    "pattern": "^(?:\\(\\[\\\\s\\\\S\\]\\*\\?\\)|\\{value\\}|&#x[0-9A-Fa-f]+;)$",
+    "reason": "fragmentos técnicos de regex, placeholders isolados e entidades HTML de controles"
+  },
+  {
+    "pattern": "^(?:SQLite \\(better-sqlite3\\)|Electron \\+ TypeScript|Rodrigo Brito|ChatGPT / OpenAI|Gemini / Google)$",
+    "reason": "nomes próprios e nomes oficiais de tecnologias/produtos"
+  },
+  {
+    "pattern": "^(?:[.#][a-z0-9_-]+|(?:CASE WHEN|CAST\\(|strftime\\(|date\\(|printf\\().*)$",
+    "reason": "seletores CSS e fragmentos de expressões SQL internas"
+  }
+]

@@ -1,4 +1,5 @@
 import { invoke } from '../api';
+import { isBrazilLocale, locale, td } from '../i18n';
 import { formatCurrency } from '../../shared/utils';
 import { createBarChart, createDonut, createAreaChart } from '../components/charts';
 import { setTopbarActions } from '../components/topbar';
@@ -251,7 +252,7 @@ export async function render(el: HTMLElement): Promise<void> {
                 <div style="margin-top:12px">
                   ${expenses.map(e => {
                     const pct = donutTotal > 0 ? (e.total / donutTotal * 100).toFixed(0) : 0;
-                    return `<div data-cat-id="${e.id ?? ''}" title="Ver lançamentos de ${esc(e.name)}" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;cursor:pointer">
+                    return `<div data-cat-id="${e.id ?? ''}" title="${td('Ver lançamentos de {value}', [e.name])}" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;cursor:pointer">
                       <div style="width:8px;height:8px;border-radius:50%;background:${e.color};flex-shrink:0"></div>
                       <span style="flex:1;color:var(--text-2)">${esc(e.name)}</span>
                       <span style="font-weight:500">${pct}%</span>
@@ -298,8 +299,8 @@ export async function render(el: HTMLElement): Promise<void> {
           <div class="card-body">
             ${kindTotal === 0 ? '<div class="empty"><div class="empty-title">Sem dados</div></div>' : `
               <div style="display:flex;height:18px;border-radius:9px;overflow:hidden;margin-bottom:14px">
-                <div title="Essenciais: ${formatCurrency(essentialTotal)}" style="width:${essentialTotal/kindTotal*100}%;background:var(--warning)"></div>
-                <div title="Variáveis: ${formatCurrency(variableTotal)}" style="width:${variableTotal/kindTotal*100}%;background:var(--accent)"></div>
+                <div title="${td('Essenciais: {value}', [formatCurrency(essentialTotal)])}" style="width:${essentialTotal/kindTotal*100}%;background:var(--warning)"></div>
+                <div title="${td('Variáveis: {value}', [formatCurrency(variableTotal)])}" style="width:${variableTotal/kindTotal*100}%;background:var(--accent)"></div>
               </div>
               <div style="display:flex;justify-content:space-between;font-size:12px"><span>Essenciais</span><strong>${(essentialTotal/kindTotal*100).toFixed(1)}%</strong></div>
               <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:8px"><span>Variáveis</span><strong>${(variableTotal/kindTotal*100).toFixed(1)}%</strong></div>
@@ -324,7 +325,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="card">
           <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
             <span>Despesas por conta</span>
-            ${paymentMethodTotal > 0 ? `<span style="font-size:11px;color:var(--text-2)" title="${formatCurrency(pixTotal)} pagos via Pix">${pixPct.toFixed(1)}% via Pix</span>` : ''}
+            ${isBrazilLocale && paymentMethodTotal > 0 ? `<span style="font-size:11px;color:var(--text-2)" title="${formatCurrency(pixTotal)} pagos via Pix">${pixPct.toFixed(1)}% via Pix</span>` : ''}
           </div><div class="card-hr"></div>
           <div class="card-body">
             ${analytics.accountBreakdown.length === 0 ? '<div class="empty"><div class="empty-title">Sem despesas no recorte</div></div>' : analytics.accountBreakdown.map(account => {
@@ -385,7 +386,7 @@ export async function render(el: HTMLElement): Promise<void> {
                 const total = rows.reduce((sum, row) => sum + row.total, 0);
                 const maxTotal = Math.max(...seriesMonths.map(key => monthlyCategorySeries.filter(row => row.month === key).reduce((sum, row) => sum + row.total, 0)), 1);
                 const height = Math.max(4, total / maxTotal * 145);
-                const label = new Date(`${monthKey}-01T12:00`).toLocaleDateString('pt-BR', { month: 'short' });
+                const label = new Date(`${monthKey}-01T12:00`).toLocaleDateString(locale, { month: 'short' });
                 return `<div style="flex:1;min-width:54px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
                   <div title="${formatCurrency(total)}" style="width:34px;height:${height}px;display:flex;flex-direction:column-reverse;border-radius:5px 5px 2px 2px;overflow:hidden;background:var(--surface2)">
                     ${rows.map(row => `<div data-cat-id="${row.id ?? ''}" data-month="${monthKey}" title="${esc(row.name)}: ${formatCurrency(row.total)}" style="height:${total > 0 ? row.total / total * 100 : 0}%;background:${row.color};min-height:1px;cursor:pointer"></div>`).join('')}
@@ -413,8 +414,8 @@ export async function render(el: HTMLElement): Promise<void> {
                   <strong style="color:${variation == null ? 'var(--text-3)' : variation > 0 ? 'var(--danger)' : 'var(--accent)'}">${variation == null ? 'Novo' : `${variation > 0 ? '+' : ''}${variation.toFixed(0)}%`}</strong>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:3px">
-                  <div title="Período atual: ${formatCurrency(category.total)}" style="height:7px;width:${(category.total / max) * 100}%;background:${category.color};border-radius:4px"></div>
-                  <div title="${comparisonMode === 'yoy' ? 'Mesmo período ano anterior' : 'Período anterior'}: ${formatCurrency(previous)}" style="height:5px;width:${(previous / max) * 100}%;background:var(--border-strong);border-radius:4px"></div>
+                  <div title="${td('Período atual: {value}', [formatCurrency(category.total)])}" style="height:7px;width:${(category.total / max) * 100}%;background:${category.color};border-radius:4px"></div>
+                  <div title="${comparisonMode === 'yoy' ? td('Mesmo período ano anterior: {value}', [formatCurrency(previous)]) : td('Período anterior: {value}', [formatCurrency(previous)])}" style="height:5px;width:${(previous / max) * 100}%;background:var(--border-strong);border-radius:4px"></div>
                 </div>
               </div>`;
             }).join('')}
@@ -436,9 +437,9 @@ export async function render(el: HTMLElement): Promise<void> {
                   : (() => {
                       const pct = category.total / budget.budgeted * 100;
                       const color = pct >= 100 ? 'var(--danger)' : pct >= 80 ? 'var(--warning)' : 'var(--text)';
-                      return `<span title="Orçado ${formatCurrency(budget.budgeted)} em ${budget.budgeted_months} mês(es)" style="color:${color};font-weight:600">${pct.toFixed(0)}%</span>`;
+                      return `<span title="${td('Orçado {value} em {value} mês(es)', [formatCurrency(budget.budgeted), budget.budgeted_months])}" style="color:${color};font-weight:600">${pct.toFixed(0)}%</span>`;
                     })();
-                return `<tr data-cat-id="${category.id ?? ''}" title="Ver lançamentos de ${esc(category.name)}" style="cursor:pointer">
+                return `<tr data-cat-id="${category.id ?? ''}" title="${td('Ver lançamentos de {value}', [category.name])}" style="cursor:pointer">
                   <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${category.color};margin-right:6px"></span>${esc(category.name)}</td>
                   <td>${formatCurrency(category.total)}</td>
                   <td>${participation.toFixed(1)}%</td>
@@ -481,7 +482,7 @@ export async function render(el: HTMLElement): Promise<void> {
                 <div style="margin-top:12px">
                   ${incomeCategoryDetails.map(c => {
                     const pct = incomeDonutTotal > 0 ? (c.total / incomeDonutTotal * 100).toFixed(0) : 0;
-                    return `<div data-cat-id="${c.id ?? ''}" title="Ver lançamentos de ${esc(c.name)}" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;cursor:pointer">
+                    return `<div data-cat-id="${c.id ?? ''}" title="${td('Ver lançamentos de {value}', [c.name])}" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;cursor:pointer">
                       <div style="width:8px;height:8px;border-radius:50%;background:${c.color};flex-shrink:0"></div>
                       <span style="flex:1;color:var(--text-2)">${esc(c.name)}</span>
                       <span style="font-weight:500">${pct}%</span>
@@ -501,7 +502,7 @@ export async function render(el: HTMLElement): Promise<void> {
               <thead><tr><th>Categoria</th><th>Total</th><th>Participação</th><th>Qtd.</th><th>Média</th><th>Maior</th></tr></thead>
               <tbody>${incomeCategoryDetails.map(category => {
                 const participation = incomeDonutTotal > 0 ? category.total / incomeDonutTotal * 100 : 0;
-                return `<tr data-cat-id="${category.id ?? ''}" title="Ver lançamentos de ${esc(category.name)}" style="cursor:pointer">
+                return `<tr data-cat-id="${category.id ?? ''}" title="${td('Ver lançamentos de {value}', [category.name])}" style="cursor:pointer">
                   <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${category.color};margin-right:6px"></span>${esc(category.name)}</td>
                   <td>${formatCurrency(category.total)}</td>
                   <td>${participation.toFixed(1)}%</td>

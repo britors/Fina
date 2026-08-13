@@ -76,7 +76,7 @@ export function createAreaChart(data: AreaPoint[], width = 560, height = 160): s
   // Marcadores de data (início, meio, fim)
   const ticks = [0, Math.floor((data.length - 1) / 2), data.length - 1].map(i => {
     const d = data[i];
-    const label = new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const label = new Date(d.date + 'T12:00:00').toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
     return `<text x="${xPos(i).toFixed(1)}" y="${height - 4}" text-anchor="middle" font-size="9" fill="#6B7280" font-family="Inter,system-ui">${label}</text>`;
   });
 
@@ -141,3 +141,4 @@ export function createBarChart(data: BarPair[], width = 560, height = 200): stri
     ${bars.join('')}
   </svg>`;
 }
+import { locale } from '../i18n';

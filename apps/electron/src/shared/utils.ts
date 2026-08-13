@@ -1,14 +1,22 @@
 import type { Account, Transaction, MonthlySummary, AccountType, TransactionType, CapitalGainsMonth, CapitalGainsReport, InvestmentType, FamilySettlementTransfer } from './types';
 
-export function formatCurrency(amount: number, locale = 'pt-BR', currency = 'BRL'): string {
+function presentationLocale(): string {
+  if (typeof navigator !== 'undefined') {
+    const candidate = navigator.languages?.[0] || navigator.language;
+    if (candidate) return candidate;
+  }
+  return 'en-US';
+}
+
+export function formatCurrency(amount: number, locale = presentationLocale(), currency = 'BRL'): string {
   const normalized = Object.is(amount, -0) || Math.abs(amount) < 0.005 ? 0 : amount;
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(normalized);
 }
 
-export function formatDate(dateStr: string): string {
+export function formatDate(dateStr: string, locale = presentationLocale()): string {
   if (!dateStr) return '';
-  const [year, month, day] = dateStr.split('T')[0].split('-');
-  return `${day}/${month}/${year}`;
+  const isoDate = dateStr.split('T')[0];
+  return new Intl.DateTimeFormat(locale).format(new Date(`${isoDate}T00:00:00`));
 }
 
 export function todayIso(): string {
