@@ -89,6 +89,13 @@ async function build() {
       platform: 'browser',
       format: 'iife',
     },
+    {
+      ...shared,
+      entryPoints: ['src/renderer/splash.ts'],
+      outfile: 'out/renderer/splash.js',
+      platform: 'browser',
+      format: 'iife',
+    },
   ];
 
   if (isWatch) {

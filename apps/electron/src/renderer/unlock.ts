@@ -1,4 +1,7 @@
 import { invoke, send } from './api';
+import { initializeI18n, t } from './i18n';
+
+initializeI18n();
 
 const form = document.getElementById('unlock-form') as HTMLFormElement;
 const input = document.getElementById('password') as HTMLInputElement;
@@ -14,7 +17,7 @@ form.addEventListener('submit', async (e) => {
     if (ok) {
       send('security:unlocked');
     } else {
-      errorEl.textContent = 'Senha incorreta. Tente novamente.';
+      errorEl.textContent = t('Senha incorreta. Tente novamente.');
       input.value = '';
       input.focus();
     }

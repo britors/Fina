@@ -88,6 +88,17 @@ const entries: readonly Translation[] = [
   ['Guia de uso do Fina', 'Fina user guide', 'Guía de uso de Fina', 'Fina 使用指南'],
   ['Comprovantes e arquivos financeiros locais', 'Receipts and local financial files', 'Comprobantes y archivos financieros locales', '收据与本地财务文件'],
   ['Erro ao carregar página:', 'Could not load page:', 'No se pudo cargar la página:', '无法加载页面：'],
+  ['FINANÇAS PESSOAIS', 'PERSONAL FINANCE', 'FINANZAS PERSONALES', '个人财务'],
+  ['Banco de dados protegido', 'Protected database', 'Base de datos protegida', '受保护的数据库'],
+  ['Digite a senha mestre para destravar seus dados financeiros.', 'Enter the master password to unlock your financial data.', 'Introduce la contraseña maestra para desbloquear tus datos financieros.', '请输入主密码以解锁您的财务数据。'],
+  ['Senha mestre', 'Master password', 'Contraseña maestra', '主密码'],
+  ['Desbloquear', 'Unlock', 'Desbloquear', '解锁'],
+  ['Fina — Desbloquear', 'Fina — Unlock', 'Fina — Desbloquear', 'Fina — 解锁'],
+  ['Senha incorreta. Tente novamente.', 'Incorrect password. Try again.', 'Contraseña incorrecta. Inténtalo de nuevo.', '密码错误，请重试。'],
+  ['Aviso', 'Notice', 'Aviso', '提示'],
+  ['Confirmar', 'Confirm', 'Confirmar', '确认'],
+  ['Cancelar', 'Cancel', 'Cancelar', '取消'],
+  ['Salvar', 'Save', 'Guardar', '保存'],
 ];
 
 const supported: readonly AppLocale[] = ['en-US', 'pt-BR', 'es-ES', 'zh-CN'];
@@ -155,6 +166,7 @@ function translateAttributes(element: Element): void {
 export function initializeI18n(): void {
   assertCatalogIntegrity();
   document.documentElement.lang = locale;
+  document.title = t(document.title);
   translateTree(document);
   new MutationObserver(records => {
     for (const record of records) record.addedNodes.forEach(translateTree);
