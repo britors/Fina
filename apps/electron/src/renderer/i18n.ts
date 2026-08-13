@@ -1,4 +1,7 @@
+import autoCatalog from './i18n-auto.json';
+
 export type AppLocale = 'en-US' | 'pt-BR' | 'es-ES' | 'zh-CN';
+export type I18nValues = Readonly<Record<string, string | number>>;
 
 type Translation = readonly [source: string, en: string, es: string, zh: string];
 
@@ -99,6 +102,16 @@ const entries: readonly Translation[] = [
   ['Confirmar', 'Confirm', 'Confirmar', '确认'],
   ['Cancelar', 'Cancel', 'Cancelar', '取消'],
   ['Salvar', 'Save', 'Guardar', '保存'],
+  ['Cofre local', 'Local vault', 'Bóveda local', '本地保险库'],
+  ['Seus comprovantes ficam no computador e não são enviados a terceiros.', 'Your receipts stay on this computer and are not sent to third parties.', 'Tus comprobantes permanecen en este equipo y no se envían a terceros.', '您的凭证保存在此电脑上，不会发送给第三方。'],
+  ['Importar documentos', 'Import documents', 'Importar documentos', '导入文档'],
+  ['{count} documento', '{count} document', '{count} documento', '{count} 个文档'],
+  ['{count} documentos', '{count} documents', '{count} documentos', '{count} 个文档'],
+  ['Nenhum documento', 'No documents', 'No hay documentos', '暂无文档'],
+  ['Importe um comprovante para começar.', 'Import a receipt to get started.', 'Importa un comprobante para comenzar.', '导入凭证以开始使用。'],
+  ['Abrir', 'Open', 'Abrir', '打开'],
+  ['Remover', 'Remove', 'Eliminar', '移除'],
+  ['Remover este documento do cofre?', 'Remove this document from the vault?', '¿Eliminar este documento de la bóveda?', '从保险库中移除此文档？'],
 ];
 
 const supported: readonly AppLocale[] = ['en-US', 'pt-BR', 'es-ES', 'zh-CN'];
@@ -117,33 +130,138 @@ export function resolveLocale(candidates: readonly string[]): AppLocale {
 const browserLocales = typeof navigator === 'undefined'
   ? []
   : (navigator.languages.length ? navigator.languages : [navigator.language]);
-export const locale: AppLocale = resolveLocale(browserLocales);
+const operatingSystemLocale = typeof location === 'undefined'
+  ? null
+  : new URLSearchParams(location.search).get('locale');
+export const locale: AppLocale = resolveLocale([
+  ...(operatingSystemLocale ? [operatingSystemLocale] : []),
+  ...browserLocales,
+]);
+export function supportsPix(target: AppLocale = locale): boolean {
+  return target === 'pt-BR';
+}
+export const isBrazilLocale = supportsPix();
 const index = new Map(entries.map(row => [row[0], row]));
+type AutoMessage = Record<AppLocale, string>;
+for (const [source, translations] of Object.entries(autoCatalog as Record<string, AutoMessage>)) {
+  if (!index.has(source)) index.set(source, [
+    translations['pt-BR'], translations['en-US'], translations['es-ES'], translations['zh-CN'],
+  ]);
+}
+const renderedTemplates = [...index.entries()]
+  .filter(([source]) => source.includes('{value}'))
+  .map(([source]) => ({ source, regex: new RegExp(`^${source.split('{value}').map(escapeRegex).join('(.+?)')}$`) }));
+const keyedSources = {
+  'documents.vault.title': 'Cofre local',
+  'documents.vault.description': 'Seus comprovantes ficam no computador e não são enviados a terceiros.',
+  'documents.import': 'Importar documentos',
+  'documents.count.one': '{count} documento',
+  'documents.count.other': '{count} documentos',
+  'documents.empty.title': 'Nenhum documento',
+  'documents.empty.description': 'Importe um comprovante para começar.',
+  'documents.open': 'Abrir',
+  'documents.remove': 'Remover',
+  'documents.remove.confirm': 'Remover este documento do cofre?',
+} as const;
+export type MessageKey = keyof typeof keyedSources;
+export const messageKeys = Object.freeze(Object.keys(keyedSources) as MessageKey[]);
 
 export function assertCatalogIntegrity(): void {
-  if (index.size !== entries.length) throw new Error('duplicate i18n source key');
+  if (new Set(entries.map(row => row[0])).size !== entries.length) throw new Error('duplicate i18n source key');
   for (const row of entries) {
     if (row.length !== 4 || row.some(value => !value.trim())) throw new Error(`incomplete i18n entry: ${row[0]}`);
+  }
+  for (const [key, source] of Object.entries(keyedSources)) {
+    if (!index.has(source)) throw new Error(`i18n key references missing message: ${key}`);
+  }
+  for (const [source, translations] of Object.entries(autoCatalog as Record<string, AutoMessage>)) {
+    if (!source.trim() || supported.some(target => !translations[target]?.trim())) {
+      throw new Error(`incomplete generated i18n entry: ${source}`);
+    }
   }
   if (!supported.includes(locale)) throw new Error(`unsupported resolved locale: ${locale}`);
 }
 
-export function t(source: string): string {
-  return translateFor(locale, source);
+export function t(source: string, values: I18nValues = {}): string {
+  return translateFor(locale, source, values);
 }
 
-export function translateFor(target: AppLocale, source: string): string {
-  if (target === 'pt-BR') return source;
+export function tk(key: MessageKey, values: I18nValues = {}): string {
+  return translateKeyFor(locale, key, values);
+}
+
+export function translateKeyFor(target: AppLocale, key: MessageKey, values: I18nValues = {}): string {
+  const source = keyedSources[key];
+  if (!source) throw new Error(`unknown i18n key: ${key}`);
+  const translated = translateFor(target, source, values);
+  if (!translated || translated === key) throw new Error(`i18n key rendered as text: ${key}`);
+  return translated;
+}
+
+export function tpk(one: MessageKey, other: MessageKey, count: number): string {
+  const key = new Intl.PluralRules(locale).select(count) === 'one' ? one : other;
+  return tk(key, { count });
+}
+
+/** Translate a catalogued message and interpolate named values.
+ * Values are escaped by default so the result is safe to insert in HTML.
+ */
+export function translateFor(target: AppLocale, source: string, values: I18nValues = {}, escape = true): string {
+  const message = lookupFor(target, source);
+  return message.replace(/\{([A-Za-z][\w]*)\}/g, (_match, name: string) => {
+    const value = values[name];
+    if (value == null) throw new Error(`missing i18n interpolation value: ${name}`);
+    return escape ? escapeHtml(String(value)) : String(value);
+  });
+}
+
+function lookupFor(target: AppLocale, source: string): string {
   const row = index.get(source);
-  if (!row) return source; // New strings remain usable until the coverage gate rejects them.
-  return target === 'es-ES' ? row[2] : target === 'zh-CN' ? row[3] : row[1];
+  // Missing keys have one deterministic fallback. The coverage gate makes this
+  // path a development-time error; production never falls back to Portuguese.
+  return !row ? source : target === 'pt-BR' ? row[0]
+    : target === 'es-ES' ? row[2] : target === 'zh-CN' ? row[3] : row[1];
+}
+
+export function tp(
+  singular: string,
+  plural: string,
+  count: number,
+  values: I18nValues = {},
+): string {
+  const form = new Intl.PluralRules(locale).select(count) === 'one' ? singular : plural;
+  return translateFor(locale, form, { ...values, count });
+}
+
+/** Explicit translation for legacy template literals while they receive
+ * semantic keys. Each value replaces one {value} marker and is HTML-escaped.
+ */
+export function td(source: string, values: readonly (string | number)[]): string {
+  let message = lookupFor(locale, source);
+  for (const value of values) message = message.replace('{value}', escapeHtml(String(value)));
+  if (message.includes('{value}')) throw new Error(`missing i18n template values: ${source}`);
+  return message;
+}
+
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>'"]/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
+  })[char]!);
+}
+
+export function formatNumber(value: number, options?: Intl.NumberFormatOptions): string {
+  return new Intl.NumberFormat(locale, options).format(value);
+}
+
+export function formatDate(value: Date | number | string, options?: Intl.DateTimeFormatOptions): string {
+  return new Intl.DateTimeFormat(locale, options).format(new Date(value));
 }
 
 function translateTextNode(node: Text): void {
   const value = node.data;
   const trimmed = value.trim();
   if (!trimmed) return;
-  const translated = t(trimmed);
+  const translated = translateRendered(trimmed);
   if (translated !== trimmed) node.data = value.replace(trimmed, translated);
 }
 
@@ -159,14 +277,36 @@ function translateTree(root: Node): void {
 function translateAttributes(element: Element): void {
   for (const attribute of ['placeholder', 'title', 'aria-label']) {
     const value = element.getAttribute(attribute);
-    if (value) element.setAttribute(attribute, t(value));
+    if (value) element.setAttribute(attribute, translateRendered(value));
   }
+}
+
+function translateRendered(value: string): string {
+  if (index.has(value)) return t(value);
+  for (const template of renderedTemplates) {
+    const match = value.match(template.regex);
+    if (!match) continue;
+    let translated = lookupFor(locale, template.source);
+    for (const captured of match.slice(1)) translated = translated.replace('{value}', captured);
+    return translated;
+  }
+  return value;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function initializeI18n(): void {
   assertCatalogIntegrity();
   document.documentElement.lang = locale;
   document.title = t(document.title);
+  document.querySelectorAll<HTMLElement>('[data-i18n]').forEach(element => {
+    element.textContent = t(element.dataset.i18n!);
+  });
+  document.querySelectorAll<HTMLElement>('[data-i18n-placeholder]').forEach(element => {
+    element.setAttribute('placeholder', t(element.dataset.i18nPlaceholder!));
+  });
   translateTree(document);
   new MutationObserver(records => {
     for (const record of records) record.addedNodes.forEach(translateTree);

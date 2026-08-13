@@ -1,4 +1,6 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
+import { locale } from '../i18n';
 import { setTopbarActions } from '../components/topbar';
 import type { MarketQuote } from '../../shared/types';
 
@@ -54,7 +56,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
     const stale = quotes.some(q => q.stale);
     const lastUpdate = quotes[0]?.updated_at
-      ? new Date(quotes[0].updated_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      ? new Date(quotes[0].updated_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
       : null;
 
     el.innerHTML = `
@@ -76,8 +78,8 @@ export async function render(el: HTMLElement): Promise<void> {
           const priceStr = q.currency === '%'
             ? `${q.price.toFixed(2)}%`
             : q.currency === 'BRL'
-              ? q.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-              : q.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              ? q.price.toLocaleString(locale, { style: 'currency', currency: 'BRL' })
+              : q.price.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
           return `<div class="stat-card" style="display:flex;flex-direction:column;gap:8px">
             <div style="display:flex;align-items:center;gap:8px">
@@ -111,8 +113,8 @@ export async function render(el: HTMLElement): Promise<void> {
               const noChg = q.change_pct === 0;
               const color = noChg ? 'var(--text-2)' : up ? 'var(--accent)' : 'var(--danger)';
               const priceStr = q.currency === '%'
-                ? `${q.price.toFixed(2)}% a.a.`
-                : q.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                ? td("{value}% a.a.", [q.price.toFixed(2)])
+                : q.price.toLocaleString(locale, { style: 'currency', currency: 'BRL' });
               return `<tr>
                 <td>
                   <div style="font-weight:500">${esc(q.label)}</div>

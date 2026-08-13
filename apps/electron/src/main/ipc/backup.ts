@@ -1,4 +1,5 @@
 import { ipcMain, dialog, app } from 'electron';
+import { localizeDialogOptions } from '../i18n';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import Database from 'better-sqlite3-multiple-ciphers';
@@ -172,11 +173,11 @@ export function restoreFromFile(filePath: string): void {
 
 export function registerBackupHandlers(): void {
   ipcMain.handle('backup:export', async () => {
-    const { filePath } = await dialog.showSaveDialog({
+    const { filePath } = await dialog.showSaveDialog(localizeDialogOptions({
       title: 'Exportar backup',
       defaultPath: backupFileName(),
       filters: [{ name: 'Backup Fina', extensions: ['fin'] }],
-    });
+    }));
     if (!filePath) return null;
 
     performBackup(filePath);
@@ -184,19 +185,19 @@ export function registerBackupHandlers(): void {
   });
 
   ipcMain.handle('backup:chooseFolder', async () => {
-    const { filePaths } = await dialog.showOpenDialog({
+    const { filePaths } = await dialog.showOpenDialog(localizeDialogOptions({
       title: 'Escolher pasta',
       properties: ['openDirectory', 'createDirectory'],
-    });
+    }));
     return filePaths?.[0] ?? null;
   });
 
   ipcMain.handle('backup:import', async () => {
-    const { filePaths } = await dialog.showOpenDialog({
+    const { filePaths } = await dialog.showOpenDialog(localizeDialogOptions({
       title: 'Importar backup',
       filters: [{ name: 'Backup Fina', extensions: ['fin'] }],
       properties: ['openFile'],
-    });
+    }));
     const filePath = filePaths?.[0];
     if (!filePath) return { imported: false };
 
@@ -205,11 +206,11 @@ export function registerBackupHandlers(): void {
   });
 
   ipcMain.handle('backup:exportIncremental', async (_event, payload?: { password?: string }) => {
-    const { filePath } = await dialog.showSaveDialog({
+    const { filePath } = await dialog.showSaveDialog(localizeDialogOptions({
       title: 'Exportar backup incremental',
       defaultPath: incrementalBackupFileName(),
       filters: [{ name: 'Patch incremental Fina', extensions: ['finpatch'] }],
-    });
+    }));
     if (!filePath) return null;
 
     const result = exportPortableIncrementalBackup(getLastIncrementalBackupAt('portable'), filePath, payload?.password ?? '');
@@ -218,11 +219,11 @@ export function registerBackupHandlers(): void {
   });
 
   ipcMain.handle('backup:importIncremental', async (_event, payload?: { password?: string }) => {
-    const { filePaths } = await dialog.showOpenDialog({
+    const { filePaths } = await dialog.showOpenDialog(localizeDialogOptions({
       title: 'Importar backup incremental',
       filters: [{ name: 'Patch incremental Fina', extensions: ['finpatch'] }],
       properties: ['openFile'],
-    });
+    }));
     const filePath = filePaths?.[0];
     if (!filePath) return { imported: false };
 

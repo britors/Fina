@@ -1,4 +1,6 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
+import { isBrazilLocale } from '../i18n';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { createBarChart } from '../components/charts';
@@ -78,7 +80,7 @@ export async function render(el: HTMLElement): Promise<void> {
         </div>
 
         <div class="grid-3">
-          ${metricCard('Total recebido', formatCurrency(totalIncome), `${history.length} meses no período`, 'ti-arrow-down-left', 'var(--accent)')}
+          ${metricCard('Total recebido', formatCurrency(totalIncome), td("{value} meses no período", [history.length]), 'ti-arrow-down-left', 'var(--accent)')}
           ${metricCard('Total gasto', formatCurrency(totalExpense), expenseChangePct !== null ? `${expenseChangePct >= 0 ? '+' : ''}${expenseChangePct.toFixed(0)}% vs. ${year - 1}` : 'sem comparação', 'ti-arrow-up-right', 'var(--danger)')}
           ${metricCard('Sobra do período', formatCurrency(saved), saved >= 0 ? 'no azul' : 'no vermelho', 'ti-piggy-bank', saved >= 0 ? 'var(--accent)' : 'var(--danger)')}
         </div>
@@ -129,7 +131,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
         <div class="grid-3">
           ${topWeekday ? metricCard('Dia da semana que mais gasta', WEEKDAY_LABEL[topWeekday.weekday], formatCurrency(topWeekday.total), 'ti-calendar', 'var(--warning)') : ''}
-          ${metricCard('Gasto via Pix', formatCurrency(pixTotal), totalExpense > 0 ? `${((pixTotal / totalExpense) * 100).toFixed(0)}% do total` : '—', 'ti-qrcode', 'var(--accent)')}
+          ${isBrazilLocale ? metricCard('Gasto via Pix', formatCurrency(pixTotal), totalExpense > 0 ? td("{value}% do total", [((pixTotal / totalExpense) * 100).toFixed(0)]) : '—', 'ti-qrcode', 'var(--accent)') : ''}
           ${netWorthChange !== null ? metricCard('Variação de patrimônio', `${netWorthChange >= 0 ? '+' : ''}${formatCurrency(netWorthChange)}`, 'no ano', 'ti-trending-up', netWorthChange >= 0 ? 'var(--accent)' : 'var(--danger)') : ''}
         </div>
       </div>

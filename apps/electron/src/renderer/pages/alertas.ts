@@ -1,3 +1,4 @@
+import { isBrazilLocale, td } from '../i18n';
 import { invoke } from '../api';
 import { formatCurrency, formatDate, getCurrentYearMonth, isCreditLikeAccountType } from '../../shared/utils';
 import type { Account, AnomalyType, BalanceDropAlert, BillPriceIncrease, ReceivablePriceIncrease, BudgetWithProgress, Debt, SpendingAnomaly, RadarSignal } from '../../shared/types';
@@ -31,7 +32,7 @@ export async function render(el: HTMLElement): Promise<void> {
     invoke<BillPriceIncrease[]>('bills:getPriceIncreases'),
     invoke<ReceivablePriceIncrease[]>('receivables:getPriceIncreases'),
     invoke<SpendingAnomaly[]>('anomalies:list'),
-    invoke<BalanceDropAlert[]>('openFinance:getBalanceDropAlerts'),
+    isBrazilLocale ? invoke<BalanceDropAlert[]>('openFinance:getBalanceDropAlerts') : Promise.resolve([]),
     invoke<RadarSignal[]>('radar:list'),
   ]);
 
@@ -59,7 +60,7 @@ export async function render(el: HTMLElement): Promise<void> {
       ${metricCard('Oportunidades', String(counts.info), 'Ações preventivas', 'ti-bulb', 'var(--accent)')}
     </div>
 
-    ${balanceDrops.length > 0 ? `
+    ${isBrazilLocale && balanceDrops.length > 0 ? `
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">Quedas de saldo em contas conectadas</div>
         <div class="card-hr"></div>
@@ -149,7 +150,7 @@ function buildAlerts(
     alerts.push({
       level: 'danger',
       title: 'O mês médio está fechando negativo',
-      body: `Pela média recente, faltam ${formatCurrency(Math.abs(monthlyBalance))} para a renda cobrir as despesas.`,
+      body: td("Pela média recente, faltam {value} para a renda cobrir as despesas.", [formatCurrency(Math.abs(monthlyBalance))]),
       action: 'Revise categorias variáveis e use o Plano mensal para recuperar margem.',
       icon: 'ti-trending-down',
     });
@@ -159,7 +160,7 @@ function buildAlerts(
     alerts.push({
       level: 'danger',
       title: 'Dívidas comprometem parte alta da renda',
-      body: `${debtCommitment.toFixed(0)}% da renda média está comprometida com parcelas.`,
+      body: td("{value}% da renda média está comprometida com parcelas.", [debtCommitment.toFixed(0)]),
       action: 'Abra o Plano de saída e simule pagamento extra ou renegociação.',
       icon: 'ti-receipt',
     });
@@ -167,7 +168,7 @@ function buildAlerts(
     alerts.push({
       level: 'warning',
       title: 'Comprometimento com dívidas em atenção',
-      body: `${debtCommitment.toFixed(0)}% da renda média está indo para parcelas.`,
+      body: td("{value}% da renda média está indo para parcelas.", [debtCommitment.toFixed(0)]),
       action: 'Evite novas dívidas e acompanhe a evolução mensal.',
       icon: 'ti-alert-circle',
     });
@@ -177,7 +178,7 @@ function buildAlerts(
     alerts.push({
       level: 'warning',
       title: 'Reserva de emergência baixa',
-      body: `O saldo em contas cobre cerca de ${reserveMonths.toFixed(1)} mês de despesas.`,
+      body: td("O saldo em contas cobre cerca de {value} mês de despesas.", [reserveMonths.toFixed(1)]),
       action: 'Use a tela Reserva para definir uma contribuição mensal.',
       icon: 'ti-shield',
     });
@@ -187,16 +188,16 @@ function buildAlerts(
     if (budget.percentage >= 100) {
       alerts.push({
         level: 'danger',
-        title: `Orçamento excedido em ${budget.category_name}`,
-        body: `${formatCurrency(budget.spent)} gastos de ${formatCurrency(budget.limit_amount)} planejados.`,
+        title: td("Orçamento excedido em {value}", [budget.category_name]),
+        body: td("{value} gastos de {value} planejados.", [formatCurrency(budget.spent), formatCurrency(budget.limit_amount)]),
         action: 'Revise os lançamentos da categoria ou ajuste o limite se o gasto for recorrente.',
         icon: 'ti-target-off',
       });
     } else if (budget.percentage >= 80) {
       alerts.push({
         level: 'warning',
-        title: `Orçamento quase no limite em ${budget.category_name}`,
-        body: `${budget.percentage.toFixed(0)}% do limite mensal já foi usado.`,
+        title: td("Orçamento quase no limite em {value}", [budget.category_name]),
+        body: td("{value}% do limite mensal já foi usado.", [budget.percentage.toFixed(0)]),
         action: 'Reduza novos gastos nessa categoria até o próximo mês.',
         icon: 'ti-target',
       });
@@ -206,8 +207,8 @@ function buildAlerts(
   for (const inc of priceIncreases) {
     alerts.push({
       level: 'warning',
-      title: `Assinatura "${inc.description}" aumentou de preço`,
-      body: `Subiu de ${formatCurrency(inc.previous_amount)} para ${formatCurrency(inc.new_amount)}.`,
+      title: td("Assinatura \"{value}\" aumentou de preço", [inc.description]),
+      body: td("Subiu de {value} para {value}.", [formatCurrency(inc.previous_amount), formatCurrency(inc.new_amount)]),
       action: 'Avalie se o novo valor ainda vale a pena ou se é hora de cancelar/renegociar.',
       icon: 'ti-trending-up',
     });
@@ -216,8 +217,8 @@ function buildAlerts(
   for (const inc of receivablePriceIncreases) {
     alerts.push({
       level: 'info',
-      title: `Recebimento fixo "${inc.description}" aumentou de valor`,
-      body: `Subiu de ${formatCurrency(inc.previous_amount)} para ${formatCurrency(inc.new_amount)}.`,
+      title: td("Recebimento fixo \"{value}\" aumentou de valor", [inc.description]),
+      body: td("Subiu de {value} para {value}.", [formatCurrency(inc.previous_amount), formatCurrency(inc.new_amount)]),
       action: 'Confirme se o novo valor está correto antes da próxima ocorrência.',
       icon: 'ti-trending-up',
     });
@@ -229,8 +230,8 @@ function buildAlerts(
     if (previous <= 0 || cat.total < previous * 1.5 || cat.total - previous < 100) continue;
     alerts.push({
       level: 'info',
-      title: `Gasto em ${cat.name} cresceu`,
-      body: `Subiu de ${formatCurrency(previous)} para ${formatCurrency(cat.total)} em relação ao mês anterior.`,
+      title: td("Gasto em {value} cresceu", [cat.name]),
+      body: td("Subiu de {value} para {value} em relação ao mês anterior.", [formatCurrency(previous), formatCurrency(cat.total)]),
       action: 'Verifique se foi um gasto pontual ou uma nova tendência.',
       icon: 'ti-chart-line',
     });
@@ -240,7 +241,7 @@ function buildAlerts(
     alerts.push({
       level: 'info',
       title: 'Há margem positiva no orçamento',
-      body: `A sobra média recente é de ${formatCurrency(monthlyBalance)}.`,
+      body: td("A sobra média recente é de {value}.", [formatCurrency(monthlyBalance)]),
       action: 'Considere direcionar parte para reserva, quitação de dívidas ou investimentos.',
       icon: 'ti-pig-money',
     });

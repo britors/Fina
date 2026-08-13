@@ -1,12 +1,12 @@
 function centsToDisplay(cents: number): string {
-  return (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (cents / 100).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Formata um valor numérico vindo do banco de dados para o texto inicial
 // de um campo com máscara monetária (ex.: 1234.5 → "1.234,50").
 export function formatMoneyValue(amount?: number | null): string {
   if (amount == null) return '';
-  return amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return amount.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Aplica a máscara de moeda brasileira a um <input type="text">: os dígitos
@@ -31,3 +31,4 @@ export function moneyInputValue(input: HTMLInputElement | null): number {
   const value = parseInt(digits, 10) / 100;
   return raw.includes('-') ? -value : value;
 }
+import { locale } from '../i18n';

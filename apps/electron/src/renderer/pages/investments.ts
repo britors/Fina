@@ -5,6 +5,7 @@ import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../component
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { createDonut } from '../components/charts';
 import type { Investment, InvestmentOperation, InvestmentSummary, InvestmentType } from '../../shared/types';
+import { isBrazilLocale } from '../i18n';
 
 const TYPE_META: Record<InvestmentType, { label: string; icon: string; color: string }> = {
   renda_fixa:     { label: 'Renda Fixa',     icon: 'ti-building-bank',  color: '#1D9E75' },
@@ -287,9 +288,9 @@ async function openOperationsModal(inv: Investment): Promise<void> {
           <button class="btn btn-ghost btn-sm modal-close"><i class="ti ti-x"></i></button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
-          <div style="font-size:0.78rem;color:var(--text-3);line-height:1.5">
+          ${isBrazilLocale ? `<div style="font-size:0.78rem;color:var(--text-3);line-height:1.5">
             Registre aqui compras e vendas para o Fina calcular o custo médio e o ganho de capital em IRPF &gt; Ganho de capital (DARF).
-          </div>
+          </div>` : ''}
           <table class="table">
             <thead><tr><th>DATA</th><th>TIPO</th><th style="text-align:right">QTD</th><th style="text-align:right">PREÇO UNIT.</th><th style="text-align:right">TAXAS</th><th></th></tr></thead>
             <tbody>

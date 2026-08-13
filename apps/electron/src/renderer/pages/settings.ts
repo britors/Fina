@@ -1,4 +1,6 @@
+import { td } from '../i18n';
 import { invoke, send, on } from '../api';
+import { isBrazilLocale, locale } from '../i18n';
 import { setTopbarActions } from '../components/topbar';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { applyAccent, applyTheme } from '../theme';
@@ -59,7 +61,7 @@ export async function render(el: HTMLElement): Promise<void> {
     { id: 'family',        label: 'Família/Casal'     },
     { id: 'categories',    label: 'Categorias'        },
     { id: 'ai',            label: 'IA'                },
-    { id: 'openfinance',   label: 'Open Finance'      },
+    ...(isBrazilLocale ? [{ id: 'openfinance', label: 'Open Finance' }] : []),
     { id: 'data',          label: 'Dados e backup'    },
     { id: 'security',      label: 'Segurança'         },
     { id: 'about',         label: 'Sobre'             },
@@ -402,10 +404,10 @@ function renderNotifications(el: HTMLElement, s: Settings): void {
 function renderFamily(el: HTMLElement, s: Settings): void {
   el.innerHTML = `
     <div id="family-subsection"></div>
-    <div id="mei-subsection" style="margin-top:28px"></div>
+    ${isBrazilLocale ? '<div id="mei-subsection" style="margin-top:28px"></div>' : ''}
   `;
   renderFamilySubsection(el.querySelector('#family-subsection')!, s);
-  renderMeiSubsection(el.querySelector('#mei-subsection')!, s);
+  if (isBrazilLocale) renderMeiSubsection(el.querySelector('#mei-subsection')!, s);
 }
 
 function renderFamilySubsection(el: HTMLElement, s: Settings): void {
@@ -597,7 +599,7 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
     </div>
     ${sync.remoteNewer ? `
       <div class="empty" style="margin:12px 0;padding:16px;text-align:left">
-        <p style="margin:0"><i class="ti ti-refresh"></i> Há uma versão mais recente na pasta sincronizada${sync.remoteMtime ? ` (${new Date(sync.remoteMtime).toLocaleString('pt-BR')})` : ''}. Clique em "Receber" para importá-la.</p>
+        <p style="margin:0"><i class="ti ti-refresh"></i> Há uma versão mais recente na pasta sincronizada${sync.remoteMtime ? ` (${new Date(sync.remoteMtime).toLocaleString(locale)})` : ''}. Clique em "Receber" para importá-la.</p>
       </div>
     ` : ''}
     <div style="display:flex;gap:8px;margin-top:12px">
@@ -626,7 +628,7 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
 
   el.querySelector('#btn-export')?.addEventListener('click', async () => {
     const savedPath = await invoke<string | null>('backup:export');
-    if (savedPath) showAlert(`Backup salvo em:\n${savedPath}`);
+    if (savedPath) showAlert(td("Backup salvo em: {value}", [savedPath]));
   });
 
   el.querySelector('#btn-export-incremental')?.addEventListener('click', async () => {
@@ -636,7 +638,7 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
       const result = await invoke<{ file_path: string; table_counts: Record<string, number> } | null>('backup:exportIncremental', { password });
       if (!result) return;
       const total = Object.values(result.table_counts).reduce((s, n) => s + n, 0);
-      showAlert(`Patch incremental salvo em:\n${result.file_path}\n\n${total} linha(s) alterada(s) desde o último export incremental.`);
+      showAlert(td("Patch incremental salvo em: {value} {value} linha(s) alterada(s) desde o último export incremental.", [result.file_path, total]));
     } catch (err) {
       showAlert(err instanceof Error ? err.message : 'Não foi possível exportar o patch incremental.');
     }
@@ -933,14 +935,14 @@ function renderAutoUpdateBox(el: HTMLElement, status: UpdateStatus | null): void
       break;
 
     case 'available':
-      el.innerHTML = row(`Nova versão disponível: v${status.version}`, btn('Baixar agora', 'btn-update', { primary: true }));
+      el.innerHTML = row(td('Nova versão disponível: v{value}', [status.version ?? '']), btn('Baixar agora', 'btn-update', { primary: true }));
       el.querySelector('#btn-update')?.addEventListener('click', () => void invoke('updater:download'));
       break;
 
     case 'downloading': {
       const pct = Math.round(status.percent ?? 0);
       el.innerHTML = `
-        ${row(`Baixando atualização… ${pct}%`, '')}
+        ${row(td("Baixando atualização… {value}%", [pct]), '')}
         <div class="prog-track"><div class="prog-fill prog-ok" style="width:${pct}%"></div></div>
       `;
       break;
@@ -1004,13 +1006,13 @@ function renderManualUpdateBox(el: HTMLElement): void {
     }
 
     if (info.hasUpdate) {
-      sub.textContent = `Nova versão disponível: v${info.latestVersion}`;
+      sub.textContent = td("Nova versão disponível: v{value}", [info.latestVersion]);
       btn.textContent = 'Baixar atualização';
       btn.disabled = false;
       btn.className = 'btn btn-primary btn-sm';
       btn.onclick = () => send('shell:openExternal', info.releaseUrl);
     } else {
-      sub.textContent = `Você está na versão mais recente (v${info.currentVersion}).`;
+      sub.textContent = td("Você está na versão mais recente (v{value}).", [info.currentVersion]);
       btn.textContent = 'Atualizado';
       btn.disabled = true;
     }
@@ -1109,7 +1111,7 @@ type OpenFinanceSettings = {
 
 const OPEN_FINANCE_PROVIDERS: { id: OpenFinanceProvider; name: string; description: string; auth: 'client' | 'apikey' }[] = [
   { id: 'pluggy', name: 'Pluggy', description: 'API Open Finance para contas, saldos, transações, investimentos e pagamentos.', auth: 'client' },
-  { id: 'belvo',  name: 'Belvo',  description: 'Dados bancários, enriquecimento, recorrências, verificação de conta/renda e Pix.', auth: 'client' },
+  { id: 'belvo',  name: 'Belvo',  description: isBrazilLocale ? 'Dados bancários, enriquecimento, recorrências, verificação de conta/renda e Pix.' : 'Dados bancários, enriquecimento, recorrências e verificação de conta/renda.', auth: 'client' },
   { id: 'klavi',  name: 'Klavi',  description: 'Open Finance para crédito, risco, inteligência de mercado e pagamentos. Autentica com Access Key + Secret Key.', auth: 'client' },
 ];
 
@@ -1321,15 +1323,15 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
           apiKey,
           connectionId,
         });
-        showAlert(`Credenciais da ${provider.name} salvas.`);
+        showAlert(td("Credenciais da {value} salvas.", [provider.name]));
         renderOpenFinance(el);
       } catch (err) {
-        showAlert(err instanceof Error ? err.message : `Não foi possível salvar as credenciais da ${provider.name}.`);
+        showAlert(err instanceof Error ? err.message : td("Não foi possível salvar as credenciais da {value}.", [provider.name]));
       }
     });
 
     el.querySelector(`#of-clear-${provider.id}`)?.addEventListener('click', async () => {
-      if (!await showConfirm(`Remover as credenciais salvas da ${provider.name}?`, { danger: true, okLabel: 'Remover' })) return;
+      if (!await showConfirm(td("Remover as credenciais salvas da {value}?", [provider.name]), { danger: true, okLabel: 'Remover' })) return;
       openFinance = await invoke<OpenFinanceSettings>('openFinance:clearProviderSecrets', provider.id);
       renderOpenFinance(el);
     });
@@ -1339,7 +1341,7 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
         await invoke('openFinance:testProvider', provider.id);
         showAlert(`${provider.name} respondeu corretamente.`);
       } catch (err) {
-        showAlert(err instanceof Error ? err.message : `Não foi possível testar ${provider.name}.`);
+        showAlert(err instanceof Error ? err.message : td("Não foi possível testar {value}.", [provider.name]));
       }
     });
 
@@ -1355,12 +1357,12 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
           `${provider.name} sincronizado.`,
           `Contas criadas: ${result.accountsCreated}`,
           `Contas atualizadas: ${result.accountsUpdated}`,
-          `Lançamentos importados: ${result.transactionsImported}`,
+          td("Lançamentos importados: {value}", [result.transactionsImported]),
           `Duplicados ignorados: ${result.transactionsSkipped}`,
         ].join('\n'));
         renderOpenFinance(el);
       } catch (err) {
-        showAlert(err instanceof Error ? err.message : `Não foi possível sincronizar ${provider.name}.`);
+        showAlert(err instanceof Error ? err.message : td("Não foi possível sincronizar {value}.", [provider.name]));
       }
     });
   });
@@ -1397,7 +1399,7 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
     try {
       const result = await invoke<{ requestId: string }>('openFinance:klaviRequestReport');
       openFinance = await invoke<OpenFinanceSettings>('openFinance:getSettings');
-      showAlert(`Relatório solicitado à Klavi (id ${result.requestId}). Assim que ele for entregue (webhook ou console.klavi.ai), cole o JSON no campo abaixo e clique em "Importar relatório".`);
+      showAlert(td("Relatório solicitado à Klavi (id {value}). Assim que ele for entregue (webhook ou console.klavi.ai), cole o JSON no campo abaixo e clique em \"Importar relatório\".", [result.requestId]));
       renderOpenFinance(el);
     } catch (err) {
       showAlert(err instanceof Error ? err.message : 'Não foi possível solicitar o relatório à Klavi.');
@@ -1413,7 +1415,7 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
         'Relatório da Klavi importado.',
         `Contas criadas: ${result.accountsCreated}`,
         `Contas atualizadas: ${result.accountsUpdated}`,
-        `Lançamentos importados: ${result.transactionsImported}`,
+        td("Lançamentos importados: {value}", [result.transactionsImported]),
         `Duplicados ignorados: ${result.transactionsSkipped}`,
       ].join('\n'));
       renderOpenFinance(el);
@@ -1436,13 +1438,15 @@ async function renderOpenFinance(el: HTMLElement): Promise<void> {
     try {
       const result = await invoke<{ status: string; institutionName: string }>('openFinance:belvoCheckConnection');
       if (result.status === 'valid') {
-        showAlert(`Conexão confirmada${result.institutionName ? ` com ${result.institutionName}` : ''}. Já pode sincronizar.`);
+        showAlert(result.institutionName
+          ? td('Conexão confirmada com {value}. Já pode sincronizar.', [result.institutionName])
+          : td('Conexão confirmada. Já pode sincronizar.', []));
         openFinance = await invoke<OpenFinanceSettings>('openFinance:getSettings');
         renderOpenFinance(el);
       } else if (result.status === 'not_found') {
         showAlert('Nenhuma conexão encontrada ainda. Conclua a autorização no My Belvo Portal e tente de novo.');
       } else {
-        showAlert(`Conexão com status "${result.status}". Conclua a autorização no My Belvo Portal e tente de novo.`);
+        showAlert(td("Conexão com status \"{value}\". Conclua a autorização no My Belvo Portal e tente de novo.", [result.status]));
       }
     } catch (err) {
       showAlert(err instanceof Error ? err.message : 'Não foi possível verificar a conexão na Belvo.');

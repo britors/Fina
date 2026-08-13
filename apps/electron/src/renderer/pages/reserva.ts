@@ -1,3 +1,4 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
 import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
 import type { Account } from '../../shared/types';
@@ -26,7 +27,7 @@ export async function render(el: HTMLElement): Promise<void> {
       <div class="grid-3" style="margin-bottom:20px">
         ${metricCard('Despesa média', formatCurrency(avgExpense), 'Últimos 3 meses', 'ti-arrow-down-right', 'var(--danger)')}
         ${metricCard('Saldo em contas', formatCurrency(liquidBalance), 'Sem cartão de crédito', 'ti-wallet', 'var(--accent)')}
-        ${metricCard('Reserva ideal', formatCurrency(targetAmount), `${targetMonths} meses de despesas`, 'ti-shield', 'var(--warning)')}
+        ${metricCard('Reserva ideal', formatCurrency(targetAmount), td("{value} meses de despesas", [targetMonths]), 'ti-shield', 'var(--warning)')}
       </div>
 
       <div class="card" style="margin-bottom:20px">

@@ -1,4 +1,6 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
+import { locale } from '../i18n';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { openModal } from '../components/modal';
@@ -245,9 +247,9 @@ async function openPixPaymentModal(onDone: () => void): Promise<void> {
       if (!await showConfirm([
         'Confirmar registro desta tentativa Pix em modo sandbox?',
         '',
-        `Destinatário: ${recipient_name || 'não informado'}`,
+        td("Destinatário: {value}", [recipient_name || 'não informado']),
         `Chave: ${maskDisplayKey(validation.normalizedKey)}`,
-        `Valor: ${formatCurrency(amount)}`,
+        td("Valor: {value}", [formatCurrency(amount)]),
       ].join('\n'), { okLabel: 'Confirmar' })) return false;
 
       try {
@@ -445,7 +447,7 @@ function detailRow(label: string, value: string): string {
 function formatDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  return date.toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' });
 }
 
 function keyTypeLabel(type: string): string {

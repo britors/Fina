@@ -37,7 +37,7 @@ import { render as renderManual       } from './pages/manual';
 import { render as renderDocumentos   } from './pages/documentos';
 import { setActiveRoute               } from './components/sidebar';
 import { setTopbar, setTopbarActions  } from './components/topbar';
-import { locale, t } from './i18n';
+import { isBrazilLocale, locale, t } from './i18n';
 
 interface Route {
   title: string | (() => string);
@@ -100,7 +100,9 @@ const ROUTES: Record<string, Route> = {
 
 export function initRouter(content: HTMLElement): void {
   async function navigate(hash: string): Promise<void> {
-    const key   = hash.replace(/^#/, '') || 'dashboard';
+    const requestedKey = hash.replace(/^#/, '') || 'dashboard';
+    const brazilOnlyRoutes = new Set(['pix', 'irpf', 'mei', 'openfinance']);
+    const key = !isBrazilLocale && brazilOnlyRoutes.has(requestedKey) ? 'dashboard' : requestedKey;
     const route = ROUTES[key] ?? ROUTES.dashboard;
 
     setActiveRoute(key);

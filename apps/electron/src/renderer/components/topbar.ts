@@ -1,10 +1,11 @@
 import { invoke } from '../api';
 import { isSidebarCollapsed, setSidebarCollapsed } from './layoutPrefs';
+import { t } from '../i18n';
 
 export function initTopbar(el: HTMLElement): void {
   el.innerHTML = `
     <div class="topbar-left" style="-webkit-app-region:no-drag">
-      <button class="tb-menu-toggle" id="tb-menu-toggle" type="button" title="Mostrar/ocultar menu"><i class="ti ti-menu-2"></i></button>
+      <button class="tb-menu-toggle" id="tb-menu-toggle" type="button" title="${t('Mostrar/ocultar menu')}"><i class="ti ti-menu-2"></i></button>
       <div class="topbar-info">
         <div class="topbar-title"  id="topbar-title"></div>
         <div class="topbar-subtitle" id="topbar-subtitle"></div>
@@ -13,9 +14,9 @@ export function initTopbar(el: HTMLElement): void {
     <div class="topbar-right" style="-webkit-app-region:no-drag">
       <div class="topbar-actions" id="topbar-actions"></div>
       <div class="win-controls">
-        <button class="wc-btn" id="wc-min"   title="Minimizar">&#x2013;</button>
-        <button class="wc-btn" id="wc-max"   title="Maximizar">&#x25A1;</button>
-        <button class="wc-btn wc-close" id="wc-close" title="Fechar">&#x2715;</button>
+        <button class="wc-btn" id="wc-min"   title="${t('Minimizar')}">&#x2013;</button>
+        <button class="wc-btn" id="wc-max"   title="${t('Maximizar')}">&#x25A1;</button>
+        <button class="wc-btn wc-close" id="wc-close" title="${t('Fechar')}">&#x2715;</button>
       </div>
     </div>
   `;

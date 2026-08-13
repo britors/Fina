@@ -1,4 +1,6 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
+import { isBrazilLocale } from '../i18n';
 import { formatCurrency, formatDate, getDaysUntilDue, isPixEligibleAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
@@ -146,7 +148,7 @@ export async function render(el: HTMLElement): Promise<void> {
       const warnings = data.valid ? [] : ['Os dígitos verificadores da linha digitável não bateram — confira valor e vencimento com atenção antes de salvar.'];
       openBillModal(null, renderPage, {
         target: 'bill',
-        explanation: `Dados extraídos da linha digitável (banco ${data.bank_code ?? '—'}) via OCR local. Revise antes de salvar.`,
+        explanation: td("Dados extraídos da linha digitável (banco {value}) via OCR local. Revise antes de salvar.", [data.bank_code ?? '—']),
         warnings,
         description: data.beneficiario ?? 'Boleto',
         amount: data.amount ?? undefined,
@@ -226,7 +228,7 @@ function billSection(title: string, bills: BillWithCategory[], isOverdue: boolea
           <tbody>
             ${bills.map(b => {
               const days = getDaysUntilDue(b.due_date);
-              const statusLabel = b.status === 'paid' ? 'Pago' : b.status === 'overdue' ? 'Vencido' : days === 0 ? 'Hoje' : `Em ${days}d`;
+              const statusLabel = b.status === 'paid' ? 'Pago' : b.status === 'overdue' ? 'Vencido' : days === 0 ? 'Hoje' : td("Em {value}d", [days]);
               const badgeCls = b.status === 'paid' ? 'badge-confirmed' : b.status === 'overdue' ? 'badge-overdue' : days <= 3 ? 'badge-pending' : 'badge-ok';
               return `<tr>
                 <td><div class="desc-main">${esc(b.description)}</div></td>
@@ -506,7 +508,7 @@ function paymentRowsHtml(payments: PaymentSplit[], prefix = 'bill'): string {
 }
 
 function paymentRowHtml(accountId: string, amount: number, prefix = 'bill', isPix = false): string {
-  const pixEligible = accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
+  const pixEligible = isBrazilLocale && accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
   return `
     <div class="${prefix}-payment-row" style="display:grid;grid-template-columns:minmax(0,1fr) 150px 64px 34px;gap:8px;align-items:center">
       <select class="form-ctrl ${prefix}-payment-account">
@@ -524,7 +526,7 @@ function paymentRowHtml(accountId: string, amount: number, prefix = 'bill', isPi
 
 function updatePaymentPixVisibility(row: HTMLElement, prefix: string): void {
   const accountId = row.querySelector<HTMLSelectElement>(`.${prefix}-payment-account`)!.value;
-  const pixEligible = accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
+  const pixEligible = isBrazilLocale && accountId ? isPixEligibleAccountType(accounts.find(a => a.id === accountId)?.type ?? '') : false;
   const label = row.querySelector<HTMLElement>(`.${prefix}-payment-pix-label`)!;
   const checkbox = row.querySelector<HTMLInputElement>(`.${prefix}-payment-pix`)!;
   label.style.display = pixEligible ? 'flex' : 'none';

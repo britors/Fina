@@ -1,4 +1,6 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
+import { locale } from '../i18n';
 import { formatCurrency, calculateBudgetPercentage } from '../../shared/utils';
 import { openModal } from '../components/modal';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
@@ -26,7 +28,7 @@ export async function render(el: HTMLElement): Promise<void> {
       invoke<Record<string, string>>('settings:getAll'),
       showAll ? Promise.resolve([] as TransactionWithDetails[]) : invoke<TransactionWithDetails[]>('transactions:list', { dateFrom: `${year}-${String(month).padStart(2, '0')}-01`, dateTo: `${year}-${String(month).padStart(2, '0')}-31`, type: 'expense', limit: 5000 }),
     ]);
-    const periodLabel = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const periodLabel = new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
     const totalCarried = budgets.reduce((s, b) => s + b.carried_in, 0);
     const totalLimit = budgets.reduce((s, b) => s + b.limit_amount, 0) + totalCarried;
@@ -53,7 +55,7 @@ export async function render(el: HTMLElement): Promise<void> {
           <div class="stat-card">
             <div class="stat-label">Orçamento total</div>
             <div class="stat-value">${formatCurrency(totalLimit)}</div>
-            <div class="stat-sub">${totalCarried > 0 ? `Inclui ${formatCurrency(totalCarried)} de envelopes trazidos do mês anterior` : `Definido para ${periodLabel}`}</div>
+            <div class="stat-sub">${totalCarried > 0 ? td("Inclui {value} de envelopes trazidos do mês anterior", [formatCurrency(totalCarried)]) : td("Definido para {value}", [periodLabel])}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Gasto até agora</div>
@@ -170,7 +172,7 @@ function budgetRow(b: BudgetWithProgress, showPeriod = false): string {
   const cls = exceeded ? 'prog-over' : pct > 80 ? 'prog-warn' : 'prog-ok';
   const badgeCls = exceeded ? 'badge-exceeded' : pct > 80 ? 'badge-warn' : 'badge-ok';
   const badgeLabel = exceeded ? 'Excedido' : pct > 80 ? 'Atenção' : 'No limite';
-  const periodLabel = new Date(b.year, b.month - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+  const periodLabel = new Date(b.year, b.month - 1, 1).toLocaleDateString(locale, { month: 'short', year: 'numeric' });
 
   return `
     <div class="budget-row ${exceeded ? 'exceeded' : ''}">
@@ -181,7 +183,7 @@ function budgetRow(b: BudgetWithProgress, showPeriod = false): string {
           </div>
           <div>
             <div class="budget-row-name">${esc(b.category_name)}${showPeriod ? ` <span style="font-weight:400;color:var(--text-3);text-transform:capitalize">· ${periodLabel}</span>` : ''}</div>
-            ${b.carry_over ? `<div class="budget-row-spent"><i class="ti ti-repeat"></i> Envelope: mantém saldo para o próximo mês${b.carried_in > 0 ? ` · +${formatCurrency(b.carried_in)} trazido do mês anterior` : ''}</div>` : ''}
+            ${b.carry_over ? `<div class="budget-row-spent"><i class="ti ti-repeat"></i> Envelope: mantém saldo para o próximo mês${b.carried_in > 0 ? td("· +{value} trazido do mês anterior", [formatCurrency(b.carried_in)]) : ''}</div>` : ''}
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:12px">

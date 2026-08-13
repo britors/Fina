@@ -1,3 +1,4 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
 import { formatDate } from '../../shared/utils';
 import { showAlert, showConfirm } from '../components/alertDialog';
@@ -199,7 +200,7 @@ function quickQuestions(preview: SummaryPreview): string[] {
     'Como está minha situação financeira geral esse mês?',
   ];
   if (topCategory) {
-    questions.splice(1, 0, `Como reduzir despesas em ${topCategory}?`);
+    questions.splice(1, 0, td("Como reduzir despesas em {value}?", [topCategory]));
   }
   return questions;
 }

@@ -1,3 +1,4 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
 import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
 import type { Account, Debt, InvestmentSummary } from '../../shared/types';
@@ -88,8 +89,8 @@ export async function render(el: HTMLElement): Promise<void> {
     </div>
 
     <div class="grid-3" style="margin-bottom:20px">
-      ${metricCard('Comprometido com dívidas', `${debtCommitment.toFixed(0)}%`, `${formatCurrency(debtInstallments)}/mês`, 'ti-receipt', debtCommitment > 35 ? 'var(--danger)' : debtCommitment > 20 ? 'var(--warning)' : 'var(--accent)')}
-      ${metricCard('Reserva estimada', `${reserveMonths.toFixed(1)} meses`, `${formatCurrency(liquidBalance)} em contas`, 'ti-shield', reserveMonths < 1 ? 'var(--danger)' : reserveMonths < 3 ? 'var(--warning)' : 'var(--accent)')}
+      ${metricCard('Comprometido com dívidas', `${debtCommitment.toFixed(0)}%`, td("{value}/mês", [formatCurrency(debtInstallments)]), 'ti-receipt', debtCommitment > 35 ? 'var(--danger)' : debtCommitment > 20 ? 'var(--warning)' : 'var(--accent)')}
+      ${metricCard('Reserva estimada', `${reserveMonths.toFixed(1)} meses`, td("{value} em contas", [formatCurrency(liquidBalance)]), 'ti-shield', reserveMonths < 1 ? 'var(--danger)' : reserveMonths < 3 ? 'var(--warning)' : 'var(--accent)')}
       ${metricCard('Patrimônio líquido', formatCurrency(netWorth), 'Contas + bens + investimentos - dívidas', 'ti-building-bank', netWorth >= 0 ? 'var(--accent)' : 'var(--danger)')}
     </div>
 
@@ -194,7 +195,7 @@ function buildRecommendations(data: {
   if (data.monthlyBalance < 0) {
     recs.push({
       title: 'Corrija o saldo mensal',
-      body: `Você está gastando cerca de ${formatCurrency(Math.abs(data.monthlyBalance))} a mais do que recebe. Revise despesas variáveis primeiro.`,
+      body: td("Você está gastando cerca de {value} a mais do que recebe. Revise despesas variáveis primeiro.", [formatCurrency(Math.abs(data.monthlyBalance))]),
     });
   }
 
@@ -208,12 +209,12 @@ function buildRecommendations(data: {
   if (data.reserveMonths < 1 && data.avgExpense > 0) {
     recs.push({
       title: 'Comece uma reserva mínima',
-      body: `Busque pelo menos 1 mês de despesas guardado. Pela sua média, isso equivale a ${formatCurrency(data.avgExpense)}.`,
+      body: td("Busque pelo menos 1 mês de despesas guardado. Pela sua média, isso equivale a {value}.", [formatCurrency(data.avgExpense)]),
     });
   } else if (data.reserveMonths < 3 && data.avgExpense > 0) {
     recs.push({
       title: 'Fortaleça sua reserva',
-      body: `Para chegar a 3 meses de despesas, a reserva estimada deveria estar perto de ${formatCurrency(data.avgExpense * 3)}.`,
+      body: td("Para chegar a 3 meses de despesas, a reserva estimada deveria estar perto de {value}.", [formatCurrency(data.avgExpense * 3)]),
     });
   }
 

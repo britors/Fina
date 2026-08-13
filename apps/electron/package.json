@@ -1,6 +1,6 @@
 {
   "name": "fina",
-  "version": "18.0.2",
+  "version": "18.0.3",
   "description": "Gerenciador de finanças pessoais",
   "author": {
     "name": "Rodrigo Brito",
@@ -17,7 +17,8 @@
     "start": "electron .",
     "typecheck": "tsc --noEmit",
     "build:tests": "node esbuild.config.js --tests",
-    "test": "node esbuild.config.js --tests && node --test out/tests/accounts.test.js out/tests/transactions.test.js out/tests/invoices.test.js out/tests/klavi.test.js out/tests/belvo.test.js out/tests/categories.test.js out/tests/categoryQueries.test.js out/tests/migrations.test.js out/tests/debts.test.js out/tests/family.test.js out/tests/irpf.test.js out/tests/i18n.test.js",
+    "test:i18n-coverage": "node scripts/i18n-inventory.mjs --catalog-check --quiet && node scripts/i18n-inventory.mjs --migrated --check --quiet",
+    "test": "npm run test:i18n-coverage && node esbuild.config.js --tests && node --test out/tests/accounts.test.js out/tests/transactions.test.js out/tests/invoices.test.js out/tests/klavi.test.js out/tests/belvo.test.js out/tests/categories.test.js out/tests/categoryQueries.test.js out/tests/migrations.test.js out/tests/debts.test.js out/tests/family.test.js out/tests/irpf.test.js out/tests/i18n.test.js",
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:win": "npm run build && electron-builder --win",

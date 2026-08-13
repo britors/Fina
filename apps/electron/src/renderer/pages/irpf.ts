@@ -1,3 +1,4 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
@@ -302,7 +303,7 @@ async function openImportModal(): Promise<void> {
 
     const result = await invoke<{ imported: number }>('irpf:confirmImport', { preview: previewData, year: importYear, accountId });
     overlay.remove();
-    showAlert(`Importação concluída: ${result.imported} registros criados no Fina.`);
+    showAlert(td("Importação concluída: {value} registros criados no Fina.", [result.imported]));
   });
 }
 

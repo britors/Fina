@@ -1,4 +1,6 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
+import { locale } from '../i18n';
 import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
@@ -196,7 +198,7 @@ export async function render(el: HTMLElement): Promise<void> {
       btn.addEventListener('click', async () => {
         const g = goals.find(x => x.id === btn.dataset.id);
         if (!g) return;
-        if (!await showConfirm(`Excluir a meta "${g.name}"?`, { danger: true, okLabel: 'Excluir' })) return;
+        if (!await showConfirm(td("Excluir a meta \"{value}\"?", [g.name]), { danger: true, okLabel: 'Excluir' })) return;
         await invoke('goals:delete', g.id);
         await load();
         await renderPage();
@@ -459,5 +461,5 @@ function esc(s: string | null | undefined): string {
 }
 
 function fmtDate(iso: string): string {
-  return new Date(iso + 'T12:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return new Date(iso + 'T12:00').toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
 }

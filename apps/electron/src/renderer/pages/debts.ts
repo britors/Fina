@@ -1,4 +1,5 @@
 import { invoke } from '../api';
+import { locale } from '../i18n';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
@@ -389,5 +390,5 @@ function esc(s: string | null | undefined): string {
 }
 
 function fmtDate(iso: string): string {
-  return new Date(iso + 'T12:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return new Date(iso + 'T12:00').toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
 }

@@ -1,4 +1,6 @@
+import { td } from '../i18n';
 import { invoke } from '../api';
+import { locale } from '../i18n';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { showAlert, showConfirm } from '../components/alertDialog';
@@ -102,7 +104,7 @@ export async function render(el: HTMLElement): Promise<void> {
         'Sincronização concluída.',
         `Contas criadas: ${result.accountsCreated}`,
         `Contas atualizadas: ${result.accountsUpdated}`,
-        `Lançamentos importados: ${result.transactionsImported}`,
+        td("Lançamentos importados: {value}", [result.transactionsImported]),
         `Duplicados ignorados: ${result.transactionsSkipped}`,
       ].join('\n'));
       overview = await invoke<OpenFinanceOverview>('openFinance:getOverview');
@@ -125,7 +127,7 @@ function providerCard(provider: OpenFinanceProviderOverview): string {
           <span class="badge ${STATUS_BADGES[provider.status]}">${esc(provider.statusLabel)}</span>
         </div>
         <div style="font-size:0.78rem;color:var(--text-3)">
-          ${provider.connectionIdMasked ? `Conexão ${esc(provider.connectionIdMasked)}` : 'Sem identificador de conexão'}
+          ${provider.connectionIdMasked ? td("Conexão {value}", [esc(provider.connectionIdMasked)]) : 'Sem identificador de conexão'}
         </div>
       </div>
       <div class="card-hr"></div>
@@ -227,5 +229,5 @@ function esc(s?: string | null): string {
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  return date.toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' });
 }

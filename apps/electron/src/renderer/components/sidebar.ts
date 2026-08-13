@@ -1,4 +1,5 @@
 import { invoke } from '../api';
+import { escapeHtml, isBrazilLocale, t } from '../i18n';
 
 interface NavItem {
   route: string;
@@ -106,7 +107,7 @@ interface SearchEntry extends NavItem {
 }
 
 const SEARCH_INDEX: SearchEntry[] = NAV.flatMap(group =>
-  group.items.map(item => ({ ...item, group: group.label }))
+  group.items.filter(item => isBrazilLocale || !['pix', 'irpf', 'mei', 'openfinance'].includes(item.route)).map(item => ({ ...item, label: t(item.label), group: t(group.label) }))
 );
 
 function normalize(s: string): string {
@@ -137,7 +138,7 @@ function writeOpenGroup(groupId: string | null): void {
 }
 
 export async function initSidebar(el: HTMLElement): Promise<void> {
-  let userName = 'Usuário';
+  let userName = t('Usuário');
   try {
     const s = await invoke<Record<string, string>>('settings:getAll');
     userName = s.user_name ?? userName;
@@ -155,12 +156,12 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
         <img class="sidebar-brand-mark" src="assets/fina_logo_capivara.png" alt="Fina">
         <span class="sidebar-logo">fina</span>
       </div>
-      <span class="sidebar-sub">Finanças pessoais</span>
+      <span class="sidebar-sub">${t('Finanças pessoais')}</span>
     </div>
     <div class="sidebar-hr"></div>
     <div class="sidebar-search">
       <i class="ti ti-search sidebar-search-icon"></i>
-      <input type="text" class="sidebar-search-input" id="sidebar-search-input" placeholder="Buscar no menu... (Ctrl+K)" autocomplete="off">
+      <input type="text" class="sidebar-search-input" id="sidebar-search-input" placeholder="${t('Buscar no menu... (Ctrl+K)')}" autocomplete="off">
       <div class="sidebar-search-results" id="sidebar-search-results"></div>
     </div>
     <nav class="sidebar-nav">
@@ -169,15 +170,15 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
           <button class="nav-group" type="button" data-toggle-group="${group.id}" aria-expanded="${openGroup === group.id ? 'true' : 'false'}">
             <span class="nav-group-main">
               <i class="ti ${group.icon}"></i>
-              ${group.label}
+              ${t(group.label)}
             </span>
             <i class="ti ti-chevron-down nav-group-chevron"></i>
           </button>
           <div class="nav-subitems">
-          ${group.items.map(it => `
+          ${group.items.filter(it => isBrazilLocale || !['pix', 'irpf', 'mei', 'openfinance'].includes(it.route)).map(it => `
             <a class="nav-item" data-route="${it.route}" href="#${it.route}">
               <i class="ti ${it.icon}"></i>
-              ${it.label}
+              ${t(it.label)}
             </a>
           `).join('')}
           </div>
@@ -187,10 +188,10 @@ export async function initSidebar(el: HTMLElement): Promise<void> {
     <div class="sidebar-user">
       <div class="sidebar-user-hr"></div>
       <div class="user-row">
-        <div class="user-avatar">${initials}</div>
+        <div class="user-avatar">${escapeHtml(initials)}</div>
         <div>
-          <div class="user-name">${userName}</div>
-          <div class="user-sub">Conta pessoal</div>
+          <div class="user-name">${escapeHtml(userName)}</div>
+          <div class="user-sub">${t('Conta pessoal')}</div>
         </div>
       </div>
     </div>

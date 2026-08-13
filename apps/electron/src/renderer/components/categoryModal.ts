@@ -3,6 +3,7 @@ import { openModal } from './modal';
 import { showAlert } from './alertDialog';
 import type { Category, CategoryKind, CategoryType, FiscalClassification } from '../../shared/types';
 import { categoryOptions } from './categorySelect';
+import { isBrazilLocale } from '../i18n';
 
 const ICONS = [
   'ti-briefcase',   'ti-code',             'ti-building-bank', 'ti-cash',
@@ -75,13 +76,13 @@ export async function openCategoryModal(
           <option value="variable" ${initialKind !== 'essential' ? 'selected' : ''}>Variável</option>
         </select>
       </div>
-      <div class="form-group">
+      ${isBrazilLocale ? `<div class="form-group">
         <label class="form-label">Classificação fiscal (IRPF) <span style="color:var(--text-3)">(opcional)</span></label>
         <select class="form-ctrl" id="f-cat-fiscal" ${selectedParent ? 'disabled' : ''}>
           ${fiscalOptions(initialType, initialFiscal)}
         </select>
         <div style="font-size:11px;color:var(--text-3);margin-top:5px">Usado pelo informe auxiliar de IRPF para separar tributável, isento e dedutível. Deixe em "Automático" para o Fina inferir pelo nome da categoria.</div>
-      </div>
+      </div>` : ''}
       <div class="form-group">
         <label class="form-label">Cor</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -112,7 +113,8 @@ export async function openCategoryModal(
       const parent = categories.find(category => category.id === parent_id);
       const type = parent?.type ?? (document.getElementById('f-cat-type') as HTMLSelectElement).value as CategoryType;
       const kind = parent?.kind ?? (type === 'income' ? 'income' : (document.getElementById('f-cat-kind') as HTMLSelectElement).value as CategoryKind);
-      const fiscal_classification = parent?.fiscal_classification ?? ((document.getElementById('f-cat-fiscal') as HTMLSelectElement).value || null) as FiscalClassification | null;
+      const fiscalSelect = document.getElementById('f-cat-fiscal') as HTMLSelectElement | null;
+      const fiscal_classification = parent?.fiscal_classification ?? (fiscalSelect?.value || null) as FiscalClassification | null;
       if (!name) { showAlert('Informe o nome.'); return false; }
       const p = cat
         ? invoke('categories:update', { id: cat.id, name, icon: selIcon, color: selColor, type, kind, parent_id, fiscal_classification })
@@ -124,23 +126,24 @@ export async function openCategoryModal(
   overlay.querySelector<HTMLSelectElement>('#f-cat-type')?.addEventListener('change', e => {
     const type = (e.target as HTMLSelectElement).value as CategoryType;
     (overlay.querySelector('#f-cat-kind-group') as HTMLElement).style.display = type === 'income' ? 'none' : '';
-    (overlay.querySelector('#f-cat-fiscal') as HTMLSelectElement).innerHTML = fiscalOptions(type, null);
+    const fiscalSelect = overlay.querySelector<HTMLSelectElement>('#f-cat-fiscal');
+    if (fiscalSelect) fiscalSelect.innerHTML = fiscalOptions(type, null);
   });
 
   overlay.querySelector<HTMLSelectElement>('#f-cat-parent')?.addEventListener('change', e => {
     const parent = categories.find(category => category.id === (e.target as HTMLSelectElement).value);
     const typeSelect = overlay.querySelector<HTMLSelectElement>('#f-cat-type')!;
     const kindSelect = overlay.querySelector<HTMLSelectElement>('#f-cat-kind')!;
-    const fiscalSelect = overlay.querySelector<HTMLSelectElement>('#f-cat-fiscal')!;
+    const fiscalSelect = overlay.querySelector<HTMLSelectElement>('#f-cat-fiscal');
     typeSelect.disabled = !!parent;
     kindSelect.disabled = !!parent;
-    fiscalSelect.disabled = !!parent;
+    if (fiscalSelect) fiscalSelect.disabled = !!parent;
     if (parent) {
       typeSelect.value = parent.type;
       kindSelect.value = parent.kind;
-      fiscalSelect.innerHTML = fiscalOptions(parent.type, parent.fiscal_classification ?? null);
+      if (fiscalSelect) fiscalSelect.innerHTML = fiscalOptions(parent.type, parent.fiscal_classification ?? null);
     } else {
-      fiscalSelect.innerHTML = fiscalOptions(typeSelect.value as CategoryType, null);
+      if (fiscalSelect) fiscalSelect.innerHTML = fiscalOptions(typeSelect.value as CategoryType, null);
     }
     (overlay.querySelector('#f-cat-kind-group') as HTMLElement).style.display = typeSelect.value === 'income' ? 'none' : '';
   });
