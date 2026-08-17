@@ -93,6 +93,7 @@ const NAV: NavGroup[] = [
     icon: 'ti-settings',
     items: [
       { route: 'manual',   label: 'Manual',         icon: 'ti-book'     },
+      { route: 'mobile-sync', label: 'Sincronizar celular', icon: 'ti-device-mobile' },
       { route: 'settings', label: 'Configurações', icon: 'ti-settings' },
     ],
   },

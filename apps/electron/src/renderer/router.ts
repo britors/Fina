@@ -35,6 +35,7 @@ import { render as renderFamilia      } from './pages/familia';
 import { render as renderRetrospectiva } from './pages/retrospectiva';
 import { render as renderManual       } from './pages/manual';
 import { render as renderDocumentos   } from './pages/documentos';
+import { render as renderMobileSync   } from './pages/mobileSync';
 import { setActiveRoute               } from './components/sidebar';
 import { setTopbar, setTopbarActions  } from './components/topbar';
 import { isBrazilLocale, locale, t } from './i18n';
@@ -96,6 +97,7 @@ const ROUTES: Record<string, Route> = {
   retrospectiva: { title: 'Retrospectiva', subtitle: 'Seu ano financeiro resumido',                  render: renderRetrospectiva },
   manual:       { title: 'Manual',        subtitle: 'Guia de uso do Fina',                           render: renderManual       },
   documentos:   { title: 'Documentos',    subtitle: 'Comprovantes e arquivos financeiros locais',  render: renderDocumentos   },
+  'mobile-sync': { title: 'Sincronizar celular', subtitle: 'Pareie o Fina Mobile e receba os lançamentos da fila', render: renderMobileSync },
 };
 
 export function initRouter(content: HTMLElement): void {

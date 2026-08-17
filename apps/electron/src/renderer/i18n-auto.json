@@ -9664,5 +9664,47 @@
     "en-US": "Returns the database to plain text, without requiring a password.",
     "es-ES": "Devuelve la base de datos a texto sin formato, sin necesidad de contraseña.",
     "zh-CN": "将数据库返回为纯文本，无需密码。"
+  },
+  "Frame recebido excede o tamanho máximo permitido.": {
+    "pt-BR": "Frame recebido excede o tamanho máximo permitido.",
+    "en-US": "Received frame exceeds the maximum allowed size.",
+    "es-ES": "El frame recibido excede el tamaño máximo permitido.",
+    "zh-CN": "收到的数据帧超过了允许的最大大小。"
+  },
+  "Nenhuma rede local ativa foi encontrada. Conecte o computador a uma rede Wi-Fi ou cabeada.": {
+    "pt-BR": "Nenhuma rede local ativa foi encontrada. Conecte o computador a uma rede Wi-Fi ou cabeada.",
+    "en-US": "No active local network was found. Connect the computer to a Wi-Fi or wired network.",
+    "es-ES": "No se encontró ninguna red local activa. Conecta el equipo a una red Wi-Fi o cableada.",
+    "zh-CN": "未找到活动的本地网络。请将电脑连接到 Wi-Fi 或有线网络。"
+  },
+  "A sincronização com celular já está ativa.": {
+    "pt-BR": "A sincronização com celular já está ativa.",
+    "en-US": "Phone sync is already active.",
+    "es-ES": "La sincronización con el celular ya está activa.",
+    "zh-CN": "手机同步已处于活动状态。"
+  },
+  "Falha ao abrir o listener de sincronização.": {
+    "pt-BR": "Falha ao abrir o listener de sincronização.",
+    "en-US": "Failed to open the sync listener.",
+    "es-ES": "No se pudo abrir el listener de sincronización.",
+    "zh-CN": "打开同步监听器失败。"
+  },
+  "Sessão de pareamento expirada. Gere um novo QR code.": {
+    "pt-BR": "Sessão de pareamento expirada. Gere um novo QR code.",
+    "en-US": "Pairing session expired. Generate a new QR code.",
+    "es-ES": "La sesión de vinculación expiró. Genera un nuevo código QR.",
+    "zh-CN": "配对会话已过期。请生成新的二维码。"
+  },
+  "Número de tentativas excedido. Gere um novo QR code.": {
+    "pt-BR": "Número de tentativas excedido. Gere um novo QR code.",
+    "en-US": "Number of attempts exceeded. Generate a new QR code.",
+    "es-ES": "Se superó el número de intentos. Genera un nuevo código QR.",
+    "zh-CN": "尝试次数已超限。请生成新的二维码。"
+  },
+  "Código incorreto. Confira o código exibido no celular.": {
+    "pt-BR": "Código incorreto. Confira o código exibido no celular.",
+    "en-US": "Incorrect code. Check the code shown on the phone.",
+    "es-ES": "Código incorrecto. Verifica el código que aparece en el celular.",
+    "zh-CN": "验证码不正确。请核对手机上显示的验证码。"
   }
 }

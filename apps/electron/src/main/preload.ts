@@ -4,7 +4,7 @@ const ALLOWED_INVOKE_PREFIXES = [
   'accounts:', 'ai:', 'anomalies:', 'app:', 'assets:', 'backgroundService:',
   'backup:', 'bills:', 'budgets:', 'categories:', 'db:', 'debts:', 'dialog:',
   'documents:', 'export:', 'family:', 'familyMembers:', 'forecast:', 'goals:',
-  'import:', 'investments:', 'invoices:', 'irpf:', 'market:', 'mei:', 'ocr:',
+  'import:', 'investments:', 'invoices:', 'irpf:', 'market:', 'mei:', 'mobileSync:', 'ocr:',
   'openFinance:', 'pix:', 'radar:', 'receivables:', 'recurrenceDetection:',
   'security:', 'settings:', 'sync:', 'transactions:', 'updater:', 'weeklyReview:',
   'window:',
@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.send(channel, data);
   },
   on: (channel: string, cb: (...args: unknown[]) => void) => {
-    assertAllowed(channel, ['updater:status']);
+    assertAllowed(channel, ['updater:status', 'mobileSync:event']);
     ipcRenderer.on(channel, (_event, ...args) => cb(...args));
   },
 });

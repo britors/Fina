@@ -90,8 +90,20 @@ export interface Transaction {
   is_mei_revenue?: 0 | 1;
   openfinance_provider?: string | null;
   openfinance_id?: string | null;
+  mobile_device_id?: string | null;
+  mobile_client_id?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PairedDevice {
+  id: string;
+  name: string;
+  public_key: string;
+  owner: string | null;
+  paired_at: string;
+  last_sync_at: string | null;
+  revoked_at: string | null;
 }
 
 export interface PaymentSplit {

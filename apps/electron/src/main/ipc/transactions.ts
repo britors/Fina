@@ -213,11 +213,13 @@ function insertTransaction(
   const primaryCategoryId = categories[0]?.category_id ?? data.category_id;
   getDb().prepare(`
     INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, type, date, status,
-      notes, recurring, owner, is_mei_revenue, installment_group_id, installment_index, installment_total, paid_by_member_id)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      notes, recurring, owner, is_mei_revenue, installment_group_id, installment_index, installment_total, paid_by_member_id,
+      mobile_device_id, mobile_client_id)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(id, primaryAccountId, data.to_account_id ?? null, primaryCategoryId, data.description, data.amount, data.type, data.date, data.status,
          data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null, data.is_mei_revenue ? 1 : 0,
-         data.installment_group_id ?? null, data.installment_index ?? null, data.installment_total ?? null, data.paid_by_member_id ?? null);
+         data.installment_group_id ?? null, data.installment_index ?? null, data.installment_total ?? null, data.paid_by_member_id ?? null,
+         data.mobile_device_id ?? null, data.mobile_client_id ?? null);
   replaceTransactionPayments(id, payments);
   replaceTransactionCategories(id, categories);
   if (memberSplits.length) replaceTransactionMemberSplits(id, memberSplits);
@@ -234,6 +236,9 @@ export function insertConfirmedTransaction(input: {
   type: 'income' | 'expense';
   date: string;
   notes?: string | null;
+  owner?: string | null;
+  mobile_device_id?: string | null;
+  mobile_client_id?: string | null;
 }): string {
   const data: TransactionInput = {
     account_id: input.account_id,
@@ -246,8 +251,10 @@ export function insertConfirmedTransaction(input: {
     status: 'confirmed',
     notes: input.notes ?? null,
     recurring: 0,
-    owner: null,
+    owner: input.owner ?? null,
     is_mei_revenue: 0,
+    mobile_device_id: input.mobile_device_id ?? null,
+    mobile_client_id: input.mobile_client_id ?? null,
   };
   const payments = normalizePayments(data);
   const categories = normalizeCategories(data);

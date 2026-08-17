@@ -18,5 +18,8 @@
     "dist:linux": "npm --workspace fina run dist:linux",
     "dist:win": "npm --workspace fina run dist:win",
     "generate-icons": "npm --workspace fina run generate-icons"
+  },
+  "allowScripts": {
+    "better-sqlite3-multiple-ciphers@12.11.1": true
   }
 }

@@ -21,6 +21,8 @@ import { registerExportHandlers } from './ipc/export';
 import { registerBackupHandlers } from './ipc/backup';
 import { registerSyncHandlers } from './ipc/sync';
 import { getSyncStatus, pushSync } from './sync';
+import { registerMobileSyncHandlers } from './ipc/mobileSync';
+import { setMobileSyncWindow } from './mobileSync';
 import { registerGoalHandlers } from './ipc/goals';
 import { registerFamilyMemberHandlers } from './ipc/familyMembers';
 import { registerWeeklyReviewHandlers } from './ipc/weeklyReview';
@@ -205,6 +207,7 @@ function registerHandlers(): void {
   registerSecurityHandlers();
   registerBackgroundServiceHandlers();
   registerSyncHandlers();
+  registerMobileSyncHandlers();
 
   ipcMain.handle('db:path', () => dbPath());
   ipcMain.handle('app:version', () => app.getVersion());
@@ -344,6 +347,7 @@ app.whenReady().then(async () => {
 
   const win = createMainWindow();
   initUpdater(win);
+  setMobileSyncWindow(win);
   win.once('ready-to-show', () => {
     win.show();
     if (!splash.isDestroyed()) splash.destroy();
