@@ -100,11 +100,11 @@ yay -S fina
 paru -S fina
 ```
 
-### Linux — openSUSE Tumbleweed e Leap 16.0 (OBS)
+### Linux — openSUSE Tumbleweed e Leap 16.0/16.1 (OBS)
 
 O Fina está publicado no [openSUSE Build Service (OBS)](https://build.opensuse.org/project/show/home:rodrigosbrito:fina), no projeto
 `home:rodrigosbrito:fina`. O pacote `fina` tem build aprovado para `x86_64`
-em openSUSE Tumbleweed e openSUSE Leap 16.0. Adicione o repositório
+em openSUSE Tumbleweed e openSUSE Leap 16.0/16.1. Adicione o repositório
 correspondente à sua versão:
 
 #### openSUSE Tumbleweed
@@ -127,7 +127,17 @@ sudo zypper refresh
 sudo zypper install fina
 ```
 
-O repositório OBS é o método recomendado para essas duas versões. O pacote
+#### openSUSE Leap 16.1
+
+```bash
+sudo zypper addrepo --refresh \
+  https://download.opensuse.org/repositories/home:/rodrigosbrito:/fina/openSUSE_Leap_16.1/home:rodrigosbrito:fina.repo \
+  fina-obs
+sudo zypper refresh
+sudo zypper install fina
+```
+
+O repositório OBS é o método recomendado para essas versões. O pacote
 é atualizado quando uma nova release do Fina é publicada. Outras versões do
 openSUSE não estão incluídas nesse repositório; use o RPM da [release mais
 recente](https://github.com/britors/Fina/releases/latest) ou o instalador de
@@ -144,7 +154,7 @@ curl -fsSL https://raw.githubusercontent.com/britors/Fina/main/scripts/install.s
 
 No Fedora instala o `.rpm` via `dnf install --nogpgcheck`. Em Ubuntu/Debian
 instala o `.deb` via `apt-get install`, para que as dependências sejam
-resolvidas normalmente. No openSUSE Tumbleweed e no Leap 16.0, use o
+resolvidas normalmente. No openSUSE Tumbleweed e no Leap 16.0/16.1, use o
 repositório OBS acima.
 
 Para travar numa versão específica: `FINA_VERSION=v17.2.0 sudo -E bash
@@ -207,7 +217,7 @@ Acesse: **[github.com/britors/Fina/releases](https://github.com/britors/Fina/rel
 | --- | --- | --- |
 | Arch Linux | AUR (`fina`) | PKGBUILD — build from source |
 | Debian / Ubuntu | `.deb` | GitHub Actions → electron-builder |
-| openSUSE Tumbleweed / Leap 16.0 | `fina` | OBS (`home:rodrigosbrito:fina`) |
+| openSUSE Tumbleweed / Leap 16.0/16.1 | `fina` | OBS (`home:rodrigosbrito:fina`) |
 | Fedora | `.rpm` | GitHub Actions → electron-builder |
 | Windows 10/11 | `.exe` (NSIS) | GitHub Actions → electron-builder |
 
