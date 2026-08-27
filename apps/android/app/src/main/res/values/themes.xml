@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Tema de lancamento (splash simples); a UI real e toda Compose,
-         ver br.com.w3ti.fina.mobile.ui.theme.Theme.kt -->
+    <!-- Tema base; a UI real e toda Compose, ver br.com.w3ti.fina.mobile.ui.theme.Theme.kt -->
     <style name="Theme.FinaMobile" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Splash com o mascote (logo/fina_logo_capivara.png) — mesmo verde do
+         circulo de fundo da propria imagem, pra nao ter costura visivel. -->
+    <style name="Theme.FinaMobile.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#0C2E22</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/fina_capivara</item>
+        <item name="postSplashScreenTheme">@style/Theme.FinaMobile</item>
+    </style>
 </resources>
