@@ -35,8 +35,6 @@ class SyncRepository(
     val categories: Flow<List<CategoryEntity>> = categoryDao.observeAll()
     val outbox: Flow<List<PendingTransactionEntity>> = pendingTransactionDao.observeAll()
 
-    fun isPaired(): Boolean = identityKeyStore.isPaired()
-
     suspend fun connect(ip: String, port: Int): SyncSession = syncClient.connect(ip, port)
 
     suspend fun confirmPairing(session: SyncSession): Boolean {
@@ -44,6 +42,9 @@ class SyncRepository(
         if (confirmed) identityKeyStore.markPaired("Fina Desktop")
         return confirmed
     }
+
+    /** Auto-cura o flag local quando o desktop diz que este device ja esta pareado (ver SyncSession.alreadyPaired). */
+    fun rememberPaired() = identityKeyStore.markPaired("Fina Desktop")
 
     suspend fun refreshAccountsAndCategories(session: SyncSession) {
         val response = session.requestAccountsCategories()
@@ -75,6 +76,9 @@ class SyncRepository(
             ),
         )
     }
+
+    /** Descarta um lançamento rejeitado pelo desktop — sem isso ele ficaria preso na fila pra sempre. */
+    suspend fun deleteTransaction(clientId: String) = pendingTransactionDao.delete(clientId)
 
     suspend fun flushPendingTransactions(session: SyncSession): SyncOutcome {
         val pending = pendingTransactionDao.getPending()

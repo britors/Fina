@@ -1,5 +1,7 @@
 import * as net from 'node:net';
 import * as os from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import type { BrowserWindow } from 'electron';
 import { getDb } from './database';
@@ -29,6 +31,16 @@ import {
 // aguardando confirmação do código pela UI do desktop.
 const MAX_PAIRING_ATTEMPTS = 3;
 const PAIRING_TIMEOUT_MS = 2 * 60 * 1000;
+
+// Porta fixa (faixa de portas dinâmicas/privadas da IANA, sem uso registrado
+// conhecido) em vez de deixar o SO escolher uma efêmera: com firewall
+// restritivo por padrão (ex: firewalld na zona "public", comum em
+// distros como openSUSE/Fedora), uma porta aleatória a cada sessão
+// tornaria impossível liberar a conexão de forma permanente — o usuário
+// teria que reabrir o firewall toda vez que reabrisse esta tela. Com porta
+// fixa, uma unica regra (`firewall-cmd --add-port=47821/tcp --permanent`)
+// resolve de vez.
+const MOBILE_SYNC_PORT = 47821;
 
 interface PendingPairing {
   socket: net.Socket;
@@ -71,23 +83,73 @@ function emit(event: string, payload?: unknown): void {
 // máquinas com várias NICs ativas (VPN, ponte de contêiner) pode escolher a
 // interface errada; se isso incomodar algum usuário real, vale expor um
 // seletor manual na UI.
-function resolveLanAddress(): string {
+function resolveLanAddress(): { ip: string; iface: string } {
   const interfaces = os.networkInterfaces();
-  for (const entries of Object.values(interfaces)) {
+  for (const [iface, entries] of Object.entries(interfaces)) {
     for (const entry of entries ?? []) {
-      if (entry.family === 'IPv4' && !entry.internal) return entry.address;
+      if (entry.family === 'IPv4' && !entry.internal) return { ip: entry.address, iface };
     }
   }
   throw new Error(localizeMainText('Nenhuma rede local ativa foi encontrada. Conecte o computador a uma rede Wi-Fi ou cabeada.'));
 }
 
-export function startSyncListener(): Promise<{ ip: string; port: number }> {
+const execFileAsync = promisify(execFile);
+
+// (Linux, firewalld) Libera a porta fixa do sync no firewall na primeira vez,
+// via pkexec (diálogo gráfico de autenticação do PolicyKit) — sem isso,
+// distros com firewall restritivo por padrão (ex: firewalld na zona
+// "public", comum em openSUSE/Fedora) derrubam a conexão do celular em
+// silêncio, sem qualquer aviso. Windows e macOS já perguntam sozinhos na
+// primeira vez que um app escuta uma porta nova, então isso só roda no
+// Linux. Idempotente: se a porta já está liberada, não pede senha de novo.
+// Qualquer falha (firewalld ausente, pkexec ausente, usuário cancelou o
+// diálogo) é ignorada em silêncio — o listener sobe do mesmo jeito, e só
+// vai falhar de fato se a porta continuar bloqueada.
+async function ensureLinuxFirewallPort(iface: string, port: number): Promise<void> {
+  if (process.platform !== 'linux') return;
+  try {
+    const { stdout: state } = await execFileAsync('firewall-cmd', ['--state']);
+    if (state.trim() !== 'running') return;
+
+    let zone: string;
+    try {
+      const { stdout } = await execFileAsync('firewall-cmd', [`--get-zone-of-interface=${iface}`]);
+      zone = stdout.trim();
+    } catch {
+      const { stdout } = await execFileAsync('firewall-cmd', ['--get-default-zone']);
+      zone = stdout.trim();
+    }
+    if (!zone) return;
+
+    try {
+      // Sai com codigo 0 se a porta ja esta liberada nessa zona — nada a fazer.
+      await execFileAsync('firewall-cmd', [`--zone=${zone}`, `--query-port=${port}/tcp`]);
+      return;
+    } catch {
+      // Codigo != 0 = porta ainda nao liberada; segue pro pkexec abaixo.
+    }
+
+    await execFileAsync('pkexec', [
+      'sh', '-c',
+      `firewall-cmd --zone=${zone} --add-port=${port}/tcp --permanent && firewall-cmd --reload`,
+    ]);
+  } catch {
+    // Sem firewalld, sem pkexec, ou usuario cancelou o dialogo — segue sem a porta liberada.
+  }
+}
+
+export async function startSyncListener(): Promise<{ ip: string; port: number }> {
   if (server) throw new Error(localizeMainText('A sincronização com celular já está ativa.'));
-  const ip = resolveLanAddress();
-  const listening = net.createServer(socket => handleConnection(socket));
+  const { ip, iface } = resolveLanAddress();
+  await ensureLinuxFirewallPort(iface, MOBILE_SYNC_PORT);
+  const listening = net.createServer(socket => {
+    console.log(`[mobileSync] nova conexão de ${socket.remoteAddress}:${socket.remotePort}`);
+    handleConnection(socket);
+  });
   server = listening;
   return new Promise((resolve, reject) => {
     listening.once('error', err => {
+      console.error('[mobileSync] erro no listener:', err);
       server = null;
       reject(err instanceof Error ? err : new Error(String(err)));
     });
@@ -99,13 +161,15 @@ export function startSyncListener(): Promise<{ ip: string; port: number }> {
         reject(new Error(localizeMainText('Falha ao abrir o listener de sincronização.')));
         return;
       }
+      console.log(`[mobileSync] listener ativo em ${ip}:${address.port}`);
       resolve({ ip, port: address.port });
     });
-    listening.listen(0, ip);
+    listening.listen(MOBILE_SYNC_PORT, ip);
   });
 }
 
 export function stopSyncListener(): void {
+  console.log('[mobileSync] parando listener');
   for (const pending of pendingPairings.values()) clearTimeout(pending.timeout);
   pendingPairings.clear();
   for (const socket of activeSockets) socket.destroy();
@@ -119,14 +183,20 @@ function handleConnection(socket: net.Socket): void {
   const parser = new FrameParser();
   const desktopKeys = generateX25519KeyPair();
   let sessionKey: Buffer | null = null;
-  let stage: 'handshake' | 'sync' = 'handshake';
 
   socket.on('error', () => { /* conexão instável do celular, ignorar — 'close' já limpa o estado */ });
 
   socket.on('data', (chunk: Buffer) => {
     try {
       for (const frame of parser.push(chunk)) {
-        if (stage === 'handshake') {
+        console.log(`[mobileSync] frame recebido de ${socket.remoteAddress}:${socket.remotePort}, ${frame.length} bytes, connectionIdentity=${connectionIdentity.has(socket)}`);
+        // "Handshake" = ainda sem entrada em connectionIdentity. Não dá pra
+        // guardar isso numa variável local à conexão (como um `let stage`):
+        // confirmPairing() roda fora do escopo de handleConnection, chamada
+        // pela UI quando o operador confirma o código — precisa de um jeito
+        // de sinalizar "essa conexão pode ir pro estágio de sync" de fora.
+        // Reaproveitar o WeakMap que já existe faz isso sem estado duplicado.
+        if (!connectionIdentity.has(socket)) {
           const { identityPublicKey } = JSON.parse(frame.toString('utf8')) as { identityPublicKey: string };
           const peerPublicKey = importPublicKey(identityPublicKey);
           const salt = Buffer.concat([
@@ -136,11 +206,22 @@ function handleConnection(socket: net.Socket): void {
           const derived = deriveSessionKeys(desktopKeys.privateKey, peerPublicKey, salt);
           sessionKey = derived.sessionKey;
 
-          socket.write(packFrame(Buffer.from(JSON.stringify({ ephemeralPublicKey: exportPublicKey(desktopKeys.publicKey) }), 'utf8')));
-
+          // alreadyPaired vai na resposta em texto claro pra o celular nunca
+          // precisar confiar no proprio estado local pra decidir se espera
+          // confirmacao de pareamento — o desktop e a fonte de verdade. Sem
+          // isso, um celular que perdeu o processo entre o desktop confirmar
+          // o pareamento e ele proprio marcar isso localmente (app fechado
+          // pelo Android no meio do handshake, por exemplo) ficaria pra
+          // sempre esperando um 'paired' que nunca mais chega — o desktop já
+          // o reconhece e vai direto pro estágio de sync sem reenviar nada.
           const device = findPairedDevice(identityPublicKey);
+          socket.write(packFrame(Buffer.from(JSON.stringify({
+            ephemeralPublicKey: exportPublicKey(desktopKeys.publicKey),
+            alreadyPaired: Boolean(device),
+          }), 'utf8')));
+
+          console.log(`[mobileSync] handshake ok, alreadyPaired=${Boolean(device)}`);
           if (device) {
-            stage = 'sync';
             connectionIdentity.set(socket, identityPublicKey);
           } else {
             registerPendingPairing(socket, sessionKey, derived.pairingCode, identityPublicKey);
@@ -149,14 +230,17 @@ function handleConnection(socket: net.Socket): void {
         }
         if (!sessionKey) continue;
         const message = decryptFrame<{ op: string; [key: string]: unknown }>(sessionKey, frame);
+        console.log(`[mobileSync] mensagem de sync: op=${message.op}`);
         handleSyncMessage(socket, sessionKey, message);
       }
-    } catch {
+    } catch (err) {
+      console.error('[mobileSync] erro processando frame, derrubando conexão:', err);
       socket.destroy();
     }
   });
 
   socket.on('close', () => {
+    console.log(`[mobileSync] conexão fechada: ${socket.remoteAddress}:${socket.remotePort}`);
     activeSockets.delete(socket);
     for (const [sessionId, pending] of pendingPairings) {
       if (pending.socket === socket) { clearTimeout(pending.timeout); pendingPairings.delete(sessionId); }
@@ -207,6 +291,13 @@ export function confirmPairing(sessionId: string, enteredCode: string, name: str
   `).run(device.id, device.name, device.public_key, device.owner, device.paired_at);
 
   pending.socket.write(packFrame(encryptFrame(pending.sessionKey, { op: 'paired', success: true })));
+  // Sem isso, o celular manda sync_request cifrado na mesma conexao logo em
+  // seguida (é o fluxo normal apos confirmar pareamento) e o handler de
+  // 'data' ainda trata essa conexao como "sem identidade" -> tenta fazer
+  // JSON.parse de bytes cifrados -> lanca -> socket.destroy(). Do lado do
+  // celular isso aparece como a conexao caindo bem no meio do primeiro sync,
+  // travando o app (excecao nao tratada fora de um SyncError).
+  connectionIdentity.set(pending.socket, pending.identityPublicKey);
   emit('paired', device);
   return device;
 }
@@ -243,7 +334,15 @@ function handleSyncMessage(socket: net.Socket, sessionKey: Buffer, message: { op
 
   if (message.op === 'sync_request') {
     const accounts = getDb().prepare('SELECT id, name, type FROM accounts ORDER BY name').all();
-    const categories = getDb().prepare('SELECT id, name, parent_id, kind FROM categories ORDER BY name').all();
+    // O celular só lança despesa (ver br.com.w3ti.fina.mobile — decisão de
+    // produto, receita continua exclusiva do desktop). Filtrar aqui, e não só
+    // na UI do app, evita que o usuário escolha por engano uma categoria de
+    // receita: insertConfirmedTransaction()/assertCategoryType() rejeitaria
+    // esse lançamento na hora do push, e antes desse filtro esse erro caía no
+    // catch genérico do pushTransaction() e virava 'duplicate' — o item
+    // sumia da fila do celular como se tivesse sido sincronizado, sem nunca
+    // ter sido gravado.
+    const categories = getDb().prepare("SELECT id, name, parent_id, kind FROM categories WHERE type = 'expense' ORDER BY name").all();
     socket.write(packFrame(encryptFrame(sessionKey, { op: 'accounts_categories', accounts, categories })));
     return;
   }
@@ -296,9 +395,17 @@ function pushTransaction(device: PairedDevice, item: MobileTransactionInput): Pu
       mobile_client_id: item.client_id,
     });
     return { client_id: item.client_id, status: 'created' };
-  } catch {
-    // Corrida rara: dois pushes do mesmo client_id em paralelo — a unique
-    // index de idx_transactions_mobile_origin já barrou a segunda escrita.
-    return { client_id: item.client_id, status: 'duplicate' };
+  } catch (err) {
+    // Só é 'duplicate' se a checagem acima (linha 364) perdeu uma corrida
+    // real (dois pushes do mesmo client_id em paralelo — a unique index de
+    // idx_transactions_mobile_origin barrou a segunda escrita): reconfere
+    // agora. Qualquer outro erro (categoria/tipo incompatível, valor
+    // inválido etc.) tem que virar 'rejected' com o motivo real — tratar
+    // como duplicate aqui faria o celular apagar da fila um lançamento que
+    // nunca foi gravado, uma perda de dado silenciosa.
+    const nowExists = db.prepare('SELECT 1 FROM transactions WHERE mobile_device_id = ? AND mobile_client_id = ?')
+      .get(device.id, item.client_id);
+    if (nowExists) return { client_id: item.client_id, status: 'duplicate' };
+    return { client_id: item.client_id, status: 'rejected', reason: err instanceof Error ? err.message : String(err) };
   }
 }

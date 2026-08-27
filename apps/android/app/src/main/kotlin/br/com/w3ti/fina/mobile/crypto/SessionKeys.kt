@@ -5,10 +5,10 @@ import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import kotlin.random.Random
 
 data class SessionKeys(val sessionKey: ByteArray, val pairingCode: String)
 
@@ -41,6 +41,7 @@ private fun hkdf(ikm: ByteArray, salt: ByteArray, info: String, length: Int): By
 private const val GCM_IV_BYTES = 12
 private const val GCM_TAG_BITS = 128
 private const val GCM_TAG_BYTES = GCM_TAG_BITS / 8
+private val secureRandom = SecureRandom()
 
 /**
  * Enquadramento de um frame cifrado: [12 bytes iv][16 bytes auth tag][ciphertext],
@@ -49,7 +50,7 @@ private const val GCM_TAG_BYTES = GCM_TAG_BITS / 8
  * que separa via `getAuthTag()`) — por isso a reordenacao manual abaixo.
  */
 fun encryptFrame(sessionKey: ByteArray, messageJson: String): ByteArray {
-    val iv = Random.nextBytes(GCM_IV_BYTES)
+    val iv = ByteArray(GCM_IV_BYTES).also { secureRandom.nextBytes(it) }
     val cipher = Cipher.getInstance("AES/GCM/NoPadding")
     cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(sessionKey, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
     val ciphertextAndTag = cipher.doFinal(messageJson.toByteArray(Charsets.UTF_8))
