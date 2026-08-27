@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Mesmo verde do circulo de fundo em logo/fina_logo_capivara.png -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <!-- Mesmo verde da variavel accent no CSS do desktop (apps/electron/src/renderer/index.html) -->
-    <solid android:color="#1D9E75" />
+    <solid android:color="#0C2E22" />
 </shape>

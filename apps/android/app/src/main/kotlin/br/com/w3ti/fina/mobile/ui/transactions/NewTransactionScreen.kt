@@ -1,23 +1,29 @@
 package br.com.w3ti.fina.mobile.ui.transactions
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,13 +31,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import br.com.w3ti.fina.mobile.data.AccountEntity
 import br.com.w3ti.fina.mobile.data.CategoryEntity
 import java.time.LocalDate
+
+// So despesa por enquanto: lancar receita continua exclusivo do desktop
+// (decisao de produto — o celular e so pra registrar gastos do dia a dia).
+private const val TRANSACTION_TYPE = "expense"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,7 +49,6 @@ fun NewTransactionScreen(viewModel: TransactionsViewModel, onBack: () -> Unit) {
 
     var description by remember { mutableStateOf("") }
     var amountText by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf("expense") }
     var selectedAccount by remember { mutableStateOf<AccountEntity?>(null) }
     var selectedCategory by remember { mutableStateOf<CategoryEntity?>(null) }
     var notes by remember { mutableStateOf("") }
@@ -53,39 +60,36 @@ fun NewTransactionScreen(viewModel: TransactionsViewModel, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Novo lançamento") },
+                title = { Text("Novo lançamento", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Voltar") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar") }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
+        containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
-        Column(Modifier.fillMaxWidth().padding(padding).padding(16.dp)) {
-            Row {
-                FilterChip(
-                    selected = type == "expense",
-                    onClick = { type = "expense" },
-                    label = { Text("Despesa") },
-                )
-                Spacer(Modifier.size(8.dp))
-                FilterChip(
-                    selected = type == "income",
-                    onClick = { type = "income" },
-                    label = { Text("Receita") },
-                )
-            }
-
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+        ) {
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
                 label = { Text("Descrição") },
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
             )
 
             OutlinedTextField(
                 value = amountText,
                 onValueChange = { amountText = it },
                 label = { Text("Valor") },
+                prefix = { Text("R$ ") },
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             )
 
@@ -116,20 +120,26 @@ fun NewTransactionScreen(viewModel: TransactionsViewModel, onBack: () -> Unit) {
 
             Button(
                 enabled = canSubmit,
-                modifier = Modifier.padding(top = 24.dp),
+                shape = MaterialTheme.shapes.large,
+                colors = ButtonDefaults.buttonColors(
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    disabledContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+                border = if (!canSubmit) BorderStroke(1.dp, MaterialTheme.colorScheme.outline) else null,
+                modifier = Modifier.padding(top = 28.dp, bottom = 16.dp).fillMaxWidth().height(52.dp),
                 onClick = {
                     viewModel.submitTransaction(
                         accountId = selectedAccount!!.id,
                         categoryId = selectedCategory!!.id,
                         description = description.trim(),
                         amount = amount!!,
-                        type = type,
+                        type = TRANSACTION_TYPE,
                         date = LocalDate.now().toString(),
                         notes = notes.trim().ifBlank { null },
                         onSubmitted = onBack,
                     )
                 },
-            ) { Text("Salvar") }
+            ) { Text("SALVAR", style = MaterialTheme.typography.titleMedium) }
         }
     }
 }

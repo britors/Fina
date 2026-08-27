@@ -8,17 +8,28 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,9 +42,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -47,7 +60,7 @@ import java.util.concurrent.Executors
 fun PairingScreen(viewModel: PairingViewModel, onDone: () -> Unit) {
     val state by viewModel.state.collectAsState()
 
-    Scaffold { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (val current = state) {
                 PairingUiState.Scanning -> QrScannerView(onQrCodeDetected = viewModel::onQrDetected)
@@ -76,13 +89,32 @@ private fun QrScannerView(onQrCodeDetected: (String) -> Unit) {
         return
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Text(
-            "Abra \"Sincronizar celular\" no Fina desktop e aponte a câmera para o QR code.",
-            modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.bodyMedium,
-        )
+    Box(Modifier.fillMaxSize()) {
         CameraPreview(onQrCodeDetected)
+
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .fillMaxWidth(0.68f)
+                    .aspectRatio(1f)
+                    .border(2.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(20.dp)),
+            )
+        }
+
+        Surface(
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            shape = RoundedCornerShape(0.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Abra \"Sincronizar celular\" no Fina desktop e aponte a câmera para o QR code.",
+                    modifier = Modifier.padding(start = 12.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
     }
 }
 
@@ -117,12 +149,12 @@ private fun CameraPreview(onQrCodeDetected: (String) -> Unit) {
 @Composable
 private fun StatusMessage(text: String) {
     Column(
-        Modifier.fillMaxSize(),
+        Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        CircularProgressIndicator()
-        Text(text, Modifier.padding(top = 16.dp))
+        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        Text(text, Modifier.padding(top = 20.dp), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
     }
 }
 
@@ -133,19 +165,30 @@ private fun PairingCodeMessage(code: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("Digite este código no desktop para confirmar:", style = MaterialTheme.typography.bodyLarge)
+        Text(
+            "Digite este código no desktop para confirmar",
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+        )
         Surface(
             modifier = Modifier.padding(top = 24.dp),
+            shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.primaryContainer,
         ) {
             Text(
                 code,
-                modifier = Modifier.padding(horizontal = 32.dp, vertical = 16.dp),
+                modifier = Modifier.padding(horizontal = 32.dp, vertical = 20.dp),
                 fontSize = 40.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 8.sp,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
         }
+        CircularProgressIndicator(
+            modifier = Modifier.padding(top = 32.dp).size(20.dp),
+            strokeWidth = 2.dp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -156,10 +199,16 @@ private fun SuccessMessage(outcome: SyncOutcome, onDone: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("Sincronizado!", style = MaterialTheme.typography.headlineSmall)
+        IconBadge(Icons.Default.CheckCircle, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary)
+        Text(
+            "Sincronizado!",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(top = 20.dp),
+        )
         Text(
             "${outcome.created} novo(s) lançamento(s) enviado(s).",
             modifier = Modifier.padding(top = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (outcome.rejected > 0) {
             Text(
@@ -168,7 +217,11 @@ private fun SuccessMessage(outcome: SyncOutcome, onDone: () -> Unit) {
                 color = MaterialTheme.colorScheme.error,
             )
         }
-        Button(onClick = onDone, modifier = Modifier.padding(top = 24.dp)) { Text("Concluir") }
+        Button(
+            onClick = onDone,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.padding(top = 28.dp).fillMaxWidth().height(52.dp),
+        ) { Text("Concluir", style = MaterialTheme.typography.titleMedium) }
     }
 }
 
@@ -179,11 +232,24 @@ private fun ErrorMessage(message: String, onRetry: () -> Unit, onGiveUp: () -> U
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(message, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
-        Row(Modifier.padding(top = 24.dp)) {
-            Button(onClick = onGiveUp) { Text("Voltar") }
-            Spacer(Modifier.size(16.dp))
-            Button(onClick = onRetry) { Text("Tentar de novo") }
+        IconBadge(Icons.Default.ErrorOutline, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.error)
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 20.dp),
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 28.dp)) {
+            OutlinedButton(onClick = onGiveUp, modifier = Modifier.weight(1f).height(48.dp)) { Text("Voltar") }
+            Box(Modifier.size(12.dp))
+            Button(onClick = onRetry, modifier = Modifier.weight(1f).height(48.dp)) { Text("Tentar de novo") }
         }
+    }
+}
+
+@Composable
+private fun IconBadge(icon: androidx.compose.ui.graphics.vector.ImageVector, container: Color, tint: Color) {
+    Surface(shape = CircleShape, color = container) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.padding(20.dp).size(40.dp))
     }
 }

@@ -36,4 +36,8 @@ class TransactionsViewModel(private val syncRepository: SyncRepository) : ViewMo
             onSubmitted()
         }
     }
+
+    fun deleteTransaction(clientId: String) {
+        viewModelScope.launch { syncRepository.deleteTransaction(clientId) }
+    }
 }
