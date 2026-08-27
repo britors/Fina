@@ -228,7 +228,24 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-O workflow `.github/workflows/release.yml` dispara automaticamente, gera os pacotes e cria o release com os artefatos.
+O workflow `.github/workflows/release.yml` dispara automaticamente, gera os pacotes e cria o release com os artefatos (`.deb`, `.rpm`, `.exe`).
+
+**OBS (`home:rodrigosbrito:fina`) não é atualizado sozinho.** O pacote usa
+`_service` com `mode="manual"` (de propósito — evita baixar o `.rpm` de
+85MB a cada `osc checkout`/`osc branch` de qualquer pessoa), e nesse modo
+o endpoint remoto `/trigger/runservice` não reconhece o serviço como
+disparável (erro "no source service defined"). Depois de cada release,
+atualize manualmente:
+
+```bash
+osc checkout home:rodrigosbrito:fina fina
+cd home:rodrigosbrito:fina/fina
+osc service manualrun          # baixa a release mais nova (fina-latest.x86_64.rpm)
+osc commit -m "Update to vX.Y.Z"
+```
+
+O commit já dispara o build nos três repos (Tumbleweed, Leap 16.0, Leap
+16.1). Acompanhe com `osc results home:rodrigosbrito:fina fina -v`.
 
 ---
 
