@@ -63,9 +63,4 @@ class IdentityKeyStore(context: Context) {
             .putString(KEY_DEVICE_LABEL, desktopLabel)
             .apply()
     }
-
-    /** Usado quando o desktop rejeita o handshake de um device que achava que estava pareado (revogado). */
-    fun clearPairing() {
-        prefs.edit().putBoolean(KEY_PAIRED, false).remove(KEY_DEVICE_LABEL).apply()
-    }
 }

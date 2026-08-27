@@ -13,7 +13,7 @@ import kotlinx.serialization.Serializable
 data class HandshakeInit(val identityPublicKey: String)
 
 @Serializable
-data class HandshakeResponse(val ephemeralPublicKey: String)
+data class HandshakeResponse(val ephemeralPublicKey: String, val alreadyPaired: Boolean = false)
 
 @Serializable
 data class AccountDto(val id: String, val name: String, val type: String)
