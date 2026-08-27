@@ -21,6 +21,19 @@ aur/src/
 *.db-shm
 *.db-wal
 
+# Android (apps/android)
+apps/android/**/build/
+.gradle/
+local.properties
+.cxx/
+.kotlin/
+*.iml
+captures/
+*.apk
+*.aab
+*.ap_
+replay_pid*.log
+
 # Variáveis de ambiente
 .env
 

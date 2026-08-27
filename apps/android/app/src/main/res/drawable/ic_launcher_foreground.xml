@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- "F" simples, dentro da zona segura (66dp centrais) do icone adaptativo -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,30 H72 V40 H50 V52 H68 V62 H50 V78 H40 Z" />
+</vector>

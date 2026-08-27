@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema de lancamento (splash simples); a UI real e toda Compose,
+         ver br.com.w3ti.fina.mobile.ui.theme.Theme.kt -->
+    <style name="Theme.FinaMobile" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
