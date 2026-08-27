@@ -241,6 +241,10 @@ atualize manualmente:
 osc checkout home:rodrigosbrito:fina fina
 cd home:rodrigosbrito:fina/fina
 osc service manualrun          # baixa a release mais nova (fina-latest.x86_64.rpm)
+# Edite fina.spec: linha "Version:" -> a versão nova (não é automático,
+# apesar do que o comentário no topo do spec sugere — esquecer esse passo
+# builda e PUBLICA com a versão antiga nos metadados, mesmo com o binário
+# certo dentro).
 osc commit -m "Update to vX.Y.Z"
 ```
 
