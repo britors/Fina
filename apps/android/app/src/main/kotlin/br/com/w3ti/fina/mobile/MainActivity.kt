@@ -1,6 +1,7 @@
 package br.com.w3ti.fina.mobile
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +18,10 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Dados financeiros na tela: bloqueia captura por screenshot/gravação
+        // de tela e esconde o conteúdo na miniatura do seletor de apps recentes.
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
 
         val viewModelFactory = ViewModelFactory((application as FinaMobileApplication).syncRepository)
 

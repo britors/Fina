@@ -34,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -122,7 +123,21 @@ private fun QrScannerView(onQrCodeDetected: (String) -> Unit) {
 @Composable
 private fun CameraPreview(onQrCodeDetected: (String) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    val analyzer = remember { QrCodeAnalyzer(onQrCodeDetected) }
+
+    // Sem isso, a câmera continua vinculada (e o QrCodeAnalyzer analisando
+    // frames) mesmo depois que o usuário sai desta tela — o lifecycleOwner
+    // é o da Activity única do app, que permanece RESUMED ao navegar entre
+    // composables, então bindToLifecycle sozinho nunca libera a câmera.
+    DisposableEffect(Unit) {
+        onDispose {
+            runCatching { ProcessCameraProvider.getInstance(context).get().unbindAll() }
+            analyzer.close()
+            cameraExecutor.shutdown()
+        }
+    }
 
     AndroidView(
         modifier = Modifier.fillMaxSize(),
@@ -137,7 +152,7 @@ private fun CameraPreview(onQrCodeDetected: (String) -> Unit) {
                 val analysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
-                    .apply { setAnalyzer(cameraExecutor, QrCodeAnalyzer(onQrCodeDetected)) }
+                    .apply { setAnalyzer(cameraExecutor, analyzer) }
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
             }, ContextCompat.getMainExecutor(ctx))

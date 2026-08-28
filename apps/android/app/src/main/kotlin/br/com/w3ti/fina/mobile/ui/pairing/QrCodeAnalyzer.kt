@@ -15,6 +15,11 @@ class QrCodeAnalyzer(private val onQrCodeDetected: (String) -> Unit) : ImageAnal
             .build(),
     )
 
+    /** Chamado quando a tela de pareamento é desmontada — ver DisposableEffect em PairingScreen.kt. */
+    fun close() {
+        scanner.close()
+    }
+
     @androidx.camera.core.ExperimentalGetImage
     override fun analyze(imageProxy: ImageProxy) {
         val mediaImage = imageProxy.image

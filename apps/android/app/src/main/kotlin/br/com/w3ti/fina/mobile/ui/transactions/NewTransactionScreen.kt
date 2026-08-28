@@ -41,6 +41,19 @@ import java.time.LocalDate
 // (decisao de produto — o celular e so pra registrar gastos do dia a dia).
 private const val TRANSACTION_TYPE = "expense"
 
+// O app e todo localizado em pt-BR (ver TransactionsScreen), entao o usuario
+// naturalmente digita "1.500,00". Um replace(',', '.') ingenuo vira
+// "1.500.00" (dois pontos), que toDoubleOrNull() rejeita — o botao SALVAR
+// so ficava desabilitado, sem explicar o motivo. Só remove os pontos de
+// milhar quando ha uma virgula decimal, pra nao quebrar "1500.00" digitado
+// sem vírgula.
+private fun parseAmountInput(raw: String): Double? {
+    val clean = raw.trim()
+    if (clean.isEmpty()) return null
+    return if (clean.contains(',')) clean.replace(".", "").replace(',', '.').toDoubleOrNull()
+    else clean.toDoubleOrNull()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewTransactionScreen(viewModel: TransactionsViewModel, onBack: () -> Unit) {
@@ -53,7 +66,10 @@ fun NewTransactionScreen(viewModel: TransactionsViewModel, onBack: () -> Unit) {
     var selectedCategory by remember { mutableStateOf<CategoryEntity?>(null) }
     var notes by remember { mutableStateOf("") }
 
-    val amount = amountText.replace(',', '.').toDoubleOrNull()
+    // Arredonda pra centavos no ponto de entrada: evita que erro de ponto
+    // flutuante binário (ex.: 0.1 + 0.2 != 0.3) se acumule ao longo da cadeia
+    // sync -> Room -> desktop, já que o valor trafega como Double no protocolo.
+    val amount = parseAmountInput(amountText)?.let { Math.round(it * 100) / 100.0 }
     val canSubmit = description.isNotBlank() && amount != null && amount > 0 &&
         selectedAccount != null && selectedCategory != null
 

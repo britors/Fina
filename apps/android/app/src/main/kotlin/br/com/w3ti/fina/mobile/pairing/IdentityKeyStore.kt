@@ -13,6 +13,14 @@ private const val KEY_PUBLIC = "identity_public_key"
 private const val KEY_PAIRED = "is_paired"
 private const val KEY_DEVICE_LABEL = "paired_device_label"
 
+private fun createEncryptedPrefs(context: Context) = EncryptedSharedPreferences.create(
+    context,
+    PREFS_FILE,
+    MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+)
+
 /**
  * Guarda a chave de identidade X25519 de longo prazo do celular (gerada uma
  * unica vez, ver comentario em mobileCrypto.ts sobre a simplificacao de nao
@@ -24,27 +32,34 @@ private const val KEY_DEVICE_LABEL = "paired_device_label"
  * restore).
  */
 class IdentityKeyStore(context: Context) {
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-
-    private val prefs = EncryptedSharedPreferences.create(
-        context,
-        PREFS_FILE,
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    // MasterKey.Builder/EncryptedSharedPreferences.create podem lançar (chave
+    // do Keystore invalidada por atualização de OS, bug de OEM, arquivo de
+    // prefs corrompido) — sem tratar isso, o app trava em TODO lançamento,
+    // sem tela nenhuma e sem caminho de recuperação. Se falhar, apaga o
+    // arquivo de prefs (perde a identidade, exige parear de novo — bem menos
+    // grave que o app nunca mais abrir) e tenta criar uma vez do zero.
+    private val prefs = try {
+        createEncryptedPrefs(context)
+    } catch (e: Exception) {
+        context.deleteSharedPreferences(PREFS_FILE)
+        createEncryptedPrefs(context)
+    }
 
     fun loadOrCreateKeyPair(): X25519KeyPair {
-        val storedPrivate = prefs.getString(KEY_PRIVATE, null)
-        val storedPublic = prefs.getString(KEY_PUBLIC, null)
-        if (storedPrivate != null && storedPublic != null) {
-            return X25519KeyPair(
-                privateKeyRaw = Base64.getDecoder().decode(storedPrivate),
-                publicKeyRaw = Base64.getDecoder().decode(storedPublic),
-            )
+        val stored = try {
+            val storedPrivate = prefs.getString(KEY_PRIVATE, null)
+            val storedPublic = prefs.getString(KEY_PUBLIC, null)
+            if (storedPrivate != null && storedPublic != null) {
+                X25519KeyPair(
+                    privateKeyRaw = Base64.getDecoder().decode(storedPrivate),
+                    publicKeyRaw = Base64.getDecoder().decode(storedPublic),
+                )
+            } else null
+        } catch (e: IllegalArgumentException) {
+            // Base64 salvo corrompido: trata como se não houvesse chave e gera outra.
+            null
         }
+        if (stored != null) return stored
         val generated = X25519.generateKeyPair()
         prefs.edit()
             .putString(KEY_PRIVATE, Base64.getEncoder().encodeToString(generated.privateKeyRaw))

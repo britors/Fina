@@ -60,6 +60,15 @@ class PairingViewModel(private val syncRepository: SyncRepository) : ViewModel()
             Log.e(TAG, "runSync: connect falhou", e)
             fail(e.message ?: "Falha ao conectar ao desktop.")
             return
+        } catch (e: CancellationException) {
+            throw e // cancelamento estrutural (ViewModel limpo etc.) — nunca engolir
+        } catch (e: Exception) {
+            // loadIdentity() (IdentityKeyStore) roda dentro de SyncClient.connect
+            // antes de qualquer I/O de rede e pode lançar (Keystore/prefs
+            // corrompidos) sem virar SyncError — não deixa subir e derrubar o app.
+            Log.e(TAG, "runSync: exceção inesperada ao conectar", e)
+            fail(e.message ?: "Falha inesperada ao conectar ao desktop.")
+            return
         }
         try {
             // A fonte de verdade e o desktop (session.alreadyPaired), nunca o

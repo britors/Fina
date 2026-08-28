@@ -168,21 +168,36 @@ class SyncClient(private val loadIdentity: () -> X25519KeyPair) {
             socket.close()
             throw SyncError("O desktop não respondeu ao pareamento.", e)
         }
-        val response = protocolJson.decodeFromString(
-            HandshakeResponse.serializer(),
-            handshakeResponse.toString(Charsets.UTF_8),
-        )
-        Log.d(TAG, "connect: handshake ok, alreadyPaired=${response.alreadyPaired}")
-        val peerSpkiDer = Base64.getDecoder().decode(response.ephemeralPublicKey)
-        val peerPublicRaw = SpkiCodec.decode(peerSpkiDer)
+        // Qualquer coisa fora do formato esperado aqui (JSON invalido, base64
+        // invalido, chave com tamanho errado) vem de um peer que respondeu no
+        // IP:porta do QR mas nao fala o protocolo esperado — nunca deve
+        // derrubar o app (viewModelScope.launch nao tem exception handler).
+        val session = try {
+            val response = protocolJson.decodeFromString(
+                HandshakeResponse.serializer(),
+                handshakeResponse.toString(Charsets.UTF_8),
+            )
+            Log.d(TAG, "connect: handshake ok, alreadyPaired=${response.alreadyPaired}")
+            val peerSpkiDer = Base64.getDecoder().decode(response.ephemeralPublicKey)
+            val peerPublicRaw = SpkiCodec.decode(peerSpkiDer)
 
-        // 3. os dois lados derivam a mesma chave de sessao + codigo de pareamento.
-        // Salt = [chave efemera do desktop] + [chave de identidade do celular],
-        // nessa ordem nos dois lados — igual ao Buffer.concat em mobileCrypto.ts.
-        val shared = X25519.agree(identity.privateKeyRaw, peerPublicRaw)
-        val salt = peerSpkiDer + ownSpkiDer
-        val keys = deriveSessionKeys(shared, salt)
+            // 3. os dois lados derivam a mesma chave de sessao + codigo de pareamento.
+            // Salt = [chave efemera do desktop] + [chave de identidade do celular],
+            // nessa ordem nos dois lados — igual ao Buffer.concat em mobileCrypto.ts.
+            val shared = X25519.agree(identity.privateKeyRaw, peerPublicRaw)
+            val salt = peerSpkiDer + ownSpkiDer
+            val keys = deriveSessionKeys(shared, salt)
 
-        SyncSession(socket, frame, keys.sessionKey, keys.pairingCode, response.alreadyPaired)
+            SyncSession(socket, frame, keys.sessionKey, keys.pairingCode, response.alreadyPaired)
+        } catch (e: SyncError) {
+            socket.close()
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "connect: resposta de handshake inválida", e)
+            socket.close()
+            throw SyncError("O desktop respondeu de forma inesperada ao pareamento. Tente novamente.", e)
+        }
+
+        session
     }
 }
