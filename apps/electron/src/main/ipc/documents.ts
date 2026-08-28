@@ -27,7 +27,11 @@ export function registerDocumentHandlers(): void {
   );
 
   ipcMain.handle('documents:import', (_event, sourcePath: string): FinancialDocument => {
-    if (!sourcePath || !allowedImportPaths.has(sourcePath) || !fs.existsSync(sourcePath)) throw new Error('Arquivo não encontrado.');
+    if (!sourcePath || !allowedImportPaths.has(sourcePath)) {
+      console.warn(`[Security] documents:import rejeitado, path fora da allowlist: ${sourcePath}`);
+      throw new Error('Arquivo não encontrado.');
+    }
+    if (!fs.existsSync(sourcePath)) throw new Error('Arquivo não encontrado.');
     allowedImportPaths.delete(sourcePath);
     const id = randomUUID();
     const filename = path.basename(sourcePath).replace(/[\\/]/g, '_');

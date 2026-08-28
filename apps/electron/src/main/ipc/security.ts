@@ -24,10 +24,12 @@ export function registerUnlockHandler(): void {
   ipcMain.handle('security:unlock', (_e, password: string) => {
     const now = Date.now();
     if (now < unlockBlockedUntil) {
+      console.warn(`[Security] tentativa de unlock bloqueada por throttle (${unlockFailures} falhas consecutivas)`);
       throw new Error(localizeMainText('Muitas tentativas incorretas. Aguarde alguns segundos antes de tentar de novo.'));
     }
     const ok = unlockDatabase(password ?? '');
     if (ok) {
+      if (unlockFailures > 0) console.log(`[Security] unlock ok após ${unlockFailures} falha(s)`);
       unlockFailures = 0;
       unlockBlockedUntil = 0;
     } else {
@@ -35,6 +37,7 @@ export function registerUnlockHandler(): void {
       if (unlockFailures > UNLOCK_FREE_ATTEMPTS) {
         const delay = Math.min(UNLOCK_MAX_DELAY_MS, UNLOCK_BASE_DELAY_MS * 2 ** (unlockFailures - UNLOCK_FREE_ATTEMPTS));
         unlockBlockedUntil = Date.now() + delay;
+        console.warn(`[Security] unlock falhou ${unlockFailures}x seguidas, throttle de ${delay}ms ativado`);
       }
     }
     return ok;
