@@ -24,6 +24,11 @@ import type {
   TransactionType,
 } from '../../shared/types';
 
+// Sem timeout, um provedor externo que trava a resposta deixa o handler IPC
+// pendurado indefinidamente e a UI num "carregando" infinito.
+const AI_LIST_MODELS_TIMEOUT_MS = 10_000;
+const AI_COMPLETION_TIMEOUT_MS = 45_000;
+
 type AIProvider = 'openai' | 'gemini';
 
 interface AISettings {
@@ -144,6 +149,7 @@ function settings(): AISettings {
 async function listOpenAIModels(apiKey: string): Promise<string[]> {
   const res = await fetch('https://api.openai.com/v1/models', {
     headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(AI_LIST_MODELS_TIMEOUT_MS),
   });
   const json = await res.json() as { data?: { id?: string }[]; error?: { message?: string } };
   if (!res.ok) throw new Error(json.error?.message ?? `OpenAI retornou HTTP ${res.status}`);
@@ -163,6 +169,7 @@ async function listOpenAIModels(apiKey: string): Promise<string[]> {
 async function listGeminiModels(apiKey: string): Promise<string[]> {
   const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
     headers: { 'x-goog-api-key': apiKey },
+    signal: AbortSignal.timeout(AI_LIST_MODELS_TIMEOUT_MS),
   });
   const json = await res.json() as {
     models?: { name?: string; supportedGenerationMethods?: string[] }[];
@@ -733,6 +740,7 @@ async function callOpenAI(apiKey: string, model: string, prompt: string): Promis
       store: false,
       max_output_tokens: 1200,
     }),
+    signal: AbortSignal.timeout(AI_COMPLETION_TIMEOUT_MS),
   });
   const json = await res.json() as {
     output_text?: string;
@@ -757,6 +765,7 @@ async function callGemini(apiKey: string, model: string, prompt: string): Promis
       store: false,
       generation_config: { temperature: 0.4, thinking_level: 'low' },
     }),
+    signal: AbortSignal.timeout(AI_COMPLETION_TIMEOUT_MS),
   });
   const json = await res.json() as {
     output_text?: string;

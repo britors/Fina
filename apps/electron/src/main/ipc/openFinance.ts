@@ -624,8 +624,10 @@ function pluggyBaseUrl(): string {
   return 'https://api.pluggy.ai';
 }
 
+const HTTP_JSON_TIMEOUT_MS = 20_000;
+
 async function httpJson<T>(url: string, init: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  const res = await fetch(url, { signal: AbortSignal.timeout(HTTP_JSON_TIMEOUT_MS), ...init });
   const text = await res.text();
   const body = text ? JSON.parse(text) as T : {} as T;
   if (!res.ok) {
