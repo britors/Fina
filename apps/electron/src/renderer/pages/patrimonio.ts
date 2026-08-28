@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, formatPercent } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
@@ -67,7 +67,7 @@ export async function render(el: HTMLElement): Promise<void> {
             ${gain >= 0 ? '+' : ''}${formatCurrency(gain)}
           </div>
           <div class="stat-sub">
-            ${totalAcquisition > 0 ? ((gain / totalAcquisition) * 100).toFixed(1) + '%' : '—'}
+            ${totalAcquisition > 0 ? formatPercent((gain / totalAcquisition) * 100) + '%' : '—'}
           </div>
         </div>
       </div>
@@ -124,7 +124,7 @@ export async function render(el: HTMLElement): Promise<void> {
                 <tbody>
                   ${g.list.map(a => {
                     const diff = a.current_value - a.acquisition_value;
-                    const pct  = a.acquisition_value > 0 ? (diff / a.acquisition_value * 100).toFixed(1) : '—';
+                    const pct  = a.acquisition_value > 0 ? formatPercent(diff / a.acquisition_value * 100) : '—';
                     return `<tr>
                       <td>
                         <div style="font-weight:500">${esc(a.name)}</div>

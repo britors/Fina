@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, formatPercent } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { showAlert, showConfirm } from '../components/alertDialog';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
@@ -59,7 +59,7 @@ export async function render(el: HTMLElement): Promise<void> {
         </div>
         <div class="stat-card">
           <div class="stat-label">% do limite anual</div>
-          <div class="stat-value" style="color:${pct >= 90 ? 'var(--danger)' : pct >= 70 ? 'var(--warning)' : 'var(--accent)'}">${pct.toFixed(1)}%</div>
+          <div class="stat-value" style="color:${pct >= 90 ? 'var(--danger)' : pct >= 70 ? 'var(--warning)' : 'var(--accent)'}">${formatPercent(pct)}%</div>
           <div class="stat-sub">${r.projected_to_exceed ? 'Projeção indica que pode ultrapassar o limite' : 'Dentro da projeção do limite'}</div>
         </div>
         <div class="stat-card">

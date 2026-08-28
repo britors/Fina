@@ -1,5 +1,6 @@
 import { invoke } from '../api';
 import { escapeHtml, locale, tk, tpk } from '../i18n';
+import { formatPercent } from '../../shared/utils';
 import type { FinancialDocument } from '../../shared/types';
 
 export async function render(el: HTMLElement): Promise<void> {
@@ -23,6 +24,6 @@ export async function render(el: HTMLElement): Promise<void> {
 }
 
 function documentRow(doc: FinancialDocument): string {
-  const size = doc.size_bytes < 1024 * 1024 ? `${Math.max(1, Math.round(doc.size_bytes / 1024))} KB` : `${(doc.size_bytes / 1024 / 1024).toFixed(1)} MB`;
+  const size = doc.size_bytes < 1024 * 1024 ? `${Math.max(1, Math.round(doc.size_bytes / 1024))} KB` : `${formatPercent(doc.size_bytes / 1024 / 1024)} MB`;
   return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border)"><i class="ti ti-file-description" style="color:var(--accent);font-size:1.2rem"></i><div style="flex:1"><strong>${escapeHtml(doc.filename)}</strong><div style="font-size:.76rem;color:var(--text-3)">${size} · ${new Date(doc.created_at).toLocaleDateString(locale)}</div></div><button class="btn btn-ghost btn-sm" data-open-document="${doc.id}">${tk('documents.open')}</button><button class="btn btn-ghost btn-sm" data-delete-document="${doc.id}" aria-label="${tk('documents.remove')}">${tk('documents.remove')}</button></div>`;
 }

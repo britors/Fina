@@ -1,6 +1,6 @@
 import { td } from '../i18n';
 import { invoke } from '../api';
-import { formatCurrency, projectCompoundGrowth } from '../../shared/utils';
+import { formatCurrency, formatPercent, projectCompoundGrowth } from '../../shared/utils';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import type { Account, InvestmentSummary } from '../../shared/types';
 
@@ -31,7 +31,7 @@ export async function render(el: HTMLElement): Promise<void> {
       <div class="grid-3" style="margin-bottom:20px">
         ${metricCard('Patrimônio projetado', formatCurrency(finalValue), `${years} anos`, 'ti-trending-up', 'var(--accent)')}
         ${metricCard('Aportes totais', formatCurrency(monthly * years * 12), td("{value}/mês", [formatCurrency(monthly)]), 'ti-pig-money', 'var(--warning)')}
-        ${metricCard('Ganho estimado', `${gain >= 0 ? '+' : ''}${formatCurrency(gain)}`, td("{value}% ao ano", [annualRate.toFixed(1)]), 'ti-chart-line', gain >= 0 ? 'var(--accent)' : 'var(--danger)')}
+        ${metricCard('Ganho estimado', `${gain >= 0 ? '+' : ''}${formatCurrency(gain)}`, td("{value}% ao ano", [formatPercent(annualRate)]), 'ti-chart-line', gain >= 0 ? 'var(--accent)' : 'var(--danger)')}
       </div>
 
       <div class="grid-2" style="grid-template-columns:.8fr 1.2fr">

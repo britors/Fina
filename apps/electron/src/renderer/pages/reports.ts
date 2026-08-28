@@ -1,6 +1,6 @@
 import { invoke } from '../api';
 import { isBrazilLocale, locale, td } from '../i18n';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, formatPercent } from '../../shared/utils';
 import { createBarChart, createDonut, createAreaChart } from '../components/charts';
 import { setTopbarActions } from '../components/topbar';
 import { goToTransactions } from '../navigation';
@@ -278,7 +278,7 @@ export async function render(el: HTMLElement): Promise<void> {
         </div>
         <div class="stat-card">
           <div class="stat-label">Variação contra ${comparisonMode === 'yoy' ? 'ano anterior' : 'período anterior'}</div>
-          <div class="stat-value" style="color:${periodVariation == null ? 'var(--text-3)' : periodVariation > 0 ? 'var(--danger)' : 'var(--accent)'}">${periodVariation == null ? 'Sem base' : `${periodVariation > 0 ? '+' : ''}${periodVariation.toFixed(1)}%`}</div>
+          <div class="stat-value" style="color:${periodVariation == null ? 'var(--text-3)' : periodVariation > 0 ? 'var(--danger)' : 'var(--accent)'}">${periodVariation == null ? 'Sem base' : `${periodVariation > 0 ? '+' : ''}${formatPercent(periodVariation)}%`}</div>
           <div class="stat-sub">${comparisonMode === 'yoy' ? 'Mesmo período do ano anterior' : 'Mesma duração imediatamente anterior'}</div>
         </div>
       </div>
@@ -287,7 +287,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="card">
           <div class="card-header">Concentração dos gastos</div><div class="card-hr"></div>
           <div class="card-body">
-            <div style="font-size:28px;font-weight:650;color:${topConcentration >= 50 ? 'var(--warning)' : 'var(--text)'}">${topConcentration.toFixed(1)}%</div>
+            <div style="font-size:28px;font-weight:650;color:${topConcentration >= 50 ? 'var(--warning)' : 'var(--text)'}">${formatPercent(topConcentration)}%</div>
             <div style="font-size:12px;color:var(--text-2);margin:4px 0 14px">em ${esc(categoryDetails[0]?.name ?? 'nenhuma categoria')}</div>
             <div class="prog-track"><div class="prog-fill" style="width:${Math.min(topConcentration,100)}%;background:${categoryDetails[0]?.color ?? 'var(--accent)'}"></div></div>
             <div style="font-size:11px;color:var(--text-3);margin-top:10px">Quanto maior, mais o orçamento depende de uma única categoria.</div>
@@ -302,8 +302,8 @@ export async function render(el: HTMLElement): Promise<void> {
                 <div title="${td('Essenciais: {value}', [formatCurrency(essentialTotal)])}" style="width:${essentialTotal/kindTotal*100}%;background:var(--warning)"></div>
                 <div title="${td('Variáveis: {value}', [formatCurrency(variableTotal)])}" style="width:${variableTotal/kindTotal*100}%;background:var(--accent)"></div>
               </div>
-              <div style="display:flex;justify-content:space-between;font-size:12px"><span>Essenciais</span><strong>${(essentialTotal/kindTotal*100).toFixed(1)}%</strong></div>
-              <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:8px"><span>Variáveis</span><strong>${(variableTotal/kindTotal*100).toFixed(1)}%</strong></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px"><span>Essenciais</span><strong>${formatPercent(essentialTotal/kindTotal*100)}%</strong></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:8px"><span>Variáveis</span><strong>${formatPercent(variableTotal/kindTotal*100)}%</strong></div>
             `}
           </div>
         </div>
@@ -325,7 +325,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="card">
           <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
             <span>Despesas por conta</span>
-            ${isBrazilLocale && paymentMethodTotal > 0 ? `<span style="font-size:11px;color:var(--text-2)" title="${formatCurrency(pixTotal)} pagos via Pix">${pixPct.toFixed(1)}% via Pix</span>` : ''}
+            ${isBrazilLocale && paymentMethodTotal > 0 ? `<span style="font-size:11px;color:var(--text-2)" title="${formatCurrency(pixTotal)} pagos via Pix">${formatPercent(pixPct)}% via Pix</span>` : ''}
           </div><div class="card-hr"></div>
           <div class="card-body">
             ${analytics.accountBreakdown.length === 0 ? '<div class="empty"><div class="empty-title">Sem despesas no recorte</div></div>' : analytics.accountBreakdown.map(account => {
@@ -363,7 +363,7 @@ export async function render(el: HTMLElement): Promise<void> {
                 <td>${formatCurrency(row.total)}</td>
                 <td>${row.transaction_count}</td>
                 <td>${formatCurrency(row.average_amount)}</td>
-                <td>${participation.toFixed(1)}%</td>
+                <td>${formatPercent(participation)}%</td>
               </tr>`;
             }).join('')}</tbody>
           </table>`}
@@ -442,7 +442,7 @@ export async function render(el: HTMLElement): Promise<void> {
                 return `<tr data-cat-id="${category.id ?? ''}" title="${td('Ver lançamentos de {value}', [category.name])}" style="cursor:pointer">
                   <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${category.color};margin-right:6px"></span>${esc(category.name)}</td>
                   <td>${formatCurrency(category.total)}</td>
-                  <td>${participation.toFixed(1)}%</td>
+                  <td>${formatPercent(participation)}%</td>
                   <td>${category.transaction_count}</td>
                   <td>${formatCurrency(category.average_amount)}</td>
                   <td>${formatCurrency(category.largest_amount)}</td>
@@ -505,7 +505,7 @@ export async function render(el: HTMLElement): Promise<void> {
                 return `<tr data-cat-id="${category.id ?? ''}" title="${td('Ver lançamentos de {value}', [category.name])}" style="cursor:pointer">
                   <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${category.color};margin-right:6px"></span>${esc(category.name)}</td>
                   <td>${formatCurrency(category.total)}</td>
-                  <td>${participation.toFixed(1)}%</td>
+                  <td>${formatPercent(participation)}%</td>
                   <td>${category.transaction_count}</td>
                   <td>${formatCurrency(category.average_amount)}</td>
                   <td>${formatCurrency(category.largest_amount)}</td>

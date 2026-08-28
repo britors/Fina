@@ -1,6 +1,6 @@
 import { td } from '../i18n';
 import { invoke } from '../api';
-import { formatCurrency, isCreditLikeAccountType } from '../../shared/utils';
+import { formatCurrency, formatPercent, isCreditLikeAccountType } from '../../shared/utils';
 import type { Account, Debt, InvestmentSummary } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
@@ -90,7 +90,7 @@ export async function render(el: HTMLElement): Promise<void> {
 
     <div class="grid-3" style="margin-bottom:20px">
       ${metricCard('Comprometido com dívidas', `${debtCommitment.toFixed(0)}%`, td("{value}/mês", [formatCurrency(debtInstallments)]), 'ti-receipt', debtCommitment > 35 ? 'var(--danger)' : debtCommitment > 20 ? 'var(--warning)' : 'var(--accent)')}
-      ${metricCard('Reserva estimada', `${reserveMonths.toFixed(1)} meses`, td("{value} em contas", [formatCurrency(liquidBalance)]), 'ti-shield', reserveMonths < 1 ? 'var(--danger)' : reserveMonths < 3 ? 'var(--warning)' : 'var(--accent)')}
+      ${metricCard('Reserva estimada', td("{value} meses", [formatPercent(reserveMonths)]), td("{value} em contas", [formatCurrency(liquidBalance)]), 'ti-shield', reserveMonths < 1 ? 'var(--danger)' : reserveMonths < 3 ? 'var(--warning)' : 'var(--accent)')}
       ${metricCard('Patrimônio líquido', formatCurrency(netWorth), 'Contas + bens + investimentos - dívidas', 'ti-building-bank', netWorth >= 0 ? 'var(--accent)' : 'var(--danger)')}
     </div>
 

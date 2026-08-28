@@ -1,6 +1,7 @@
 import { td } from '../i18n';
 import { invoke } from '../api';
 import { locale } from '../i18n';
+import { formatPercent } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import type { MarketQuote } from '../../shared/types';
 
@@ -76,7 +77,7 @@ export async function render(el: HTMLElement): Promise<void> {
           const arrow  = noChange ? '' : up ? '▲' : '▼';
 
           const priceStr = q.currency === '%'
-            ? `${q.price.toFixed(2)}%`
+            ? `${formatPercent(q.price, 2)}%`
             : q.currency === 'BRL'
               ? q.price.toLocaleString(locale, { style: 'currency', currency: 'BRL' })
               : q.price.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -90,7 +91,7 @@ export async function render(el: HTMLElement): Promise<void> {
             <div style="font-size:1.4rem;font-weight:700">${priceStr}</div>
             ${!noChange ? `
               <div style="font-size:0.8rem;color:${color}">
-                ${arrow} ${Math.abs(q.change_pct).toFixed(2)}% hoje
+                ${arrow} ${formatPercent(Math.abs(q.change_pct), 2)}% hoje
               </div>` : ''}
           </div>`;
         }).join('')}
@@ -113,7 +114,7 @@ export async function render(el: HTMLElement): Promise<void> {
               const noChg = q.change_pct === 0;
               const color = noChg ? 'var(--text-2)' : up ? 'var(--accent)' : 'var(--danger)';
               const priceStr = q.currency === '%'
-                ? td("{value}% a.a.", [q.price.toFixed(2)])
+                ? td("{value}% a.a.", [formatPercent(q.price, 2)])
                 : q.price.toLocaleString(locale, { style: 'currency', currency: 'BRL' });
               return `<tr>
                 <td>
@@ -122,7 +123,7 @@ export async function render(el: HTMLElement): Promise<void> {
                 </td>
                 <td style="text-align:right;font-weight:500">${priceStr}</td>
                 <td style="text-align:right;color:${color}">
-                  ${noChg ? '—' : (up ? '+' : '') + q.change_pct.toFixed(2) + '%'}
+                  ${noChg ? '—' : (up ? '+' : '') + formatPercent(q.change_pct, 2) + '%'}
                 </td>
               </tr>`;
             }).join('')}

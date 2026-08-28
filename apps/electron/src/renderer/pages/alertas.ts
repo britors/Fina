@@ -1,6 +1,6 @@
 import { isBrazilLocale, td } from '../i18n';
 import { invoke } from '../api';
-import { formatCurrency, formatDate, getCurrentYearMonth, isCreditLikeAccountType } from '../../shared/utils';
+import { formatCurrency, formatDate, formatPercent, getCurrentYearMonth, isCreditLikeAccountType } from '../../shared/utils';
 import type { Account, AnomalyType, BalanceDropAlert, BillPriceIncrease, ReceivablePriceIncrease, BudgetWithProgress, Debt, SpendingAnomaly, RadarSignal } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
@@ -178,7 +178,7 @@ function buildAlerts(
     alerts.push({
       level: 'warning',
       title: 'Reserva de emergência baixa',
-      body: td("O saldo em contas cobre cerca de {value} mês de despesas.", [reserveMonths.toFixed(1)]),
+      body: td("O saldo em contas cobre cerca de {value} mês de despesas.", [formatPercent(reserveMonths)]),
       action: 'Use a tela Reserva para definir uma contribuição mensal.',
       icon: 'ti-shield',
     });

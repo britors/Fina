@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency, getDaysUntilDue } from '../../shared/utils';
+import { formatCurrency, formatPercent, getDaysUntilDue } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
@@ -55,7 +55,7 @@ export async function render(el: HTMLElement): Promise<void> {
             ${summary.gain >= 0 ? '+' : ''}${formatCurrency(summary.gain)}
           </div>
           <div class="stat-sub" style="color:${gainColor}">
-            ${summary.gain >= 0 ? '+' : ''}${summary.gain_pct.toFixed(2)}%
+            ${summary.gain >= 0 ? '+' : ''}${formatPercent(summary.gain_pct, 2)}%
           </div>
         </div>
       </div>
@@ -89,7 +89,7 @@ export async function render(el: HTMLElement): Promise<void> {
               <tbody>
                 ${investments.map(inv => {
                   const diff = inv.current_value - inv.applied_amount;
-                  const pct  = inv.applied_amount > 0 ? (diff / inv.applied_amount * 100).toFixed(1) : '—';
+                  const pct  = inv.applied_amount > 0 ? formatPercent(diff / inv.applied_amount * 100) : '—';
                   const meta = TYPE_META[inv.type];
                   const maturityWarning = inv.maturity_date ? getDaysUntilDue(inv.maturity_date) : null;
                   return `<tr>

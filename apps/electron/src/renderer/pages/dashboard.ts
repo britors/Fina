@@ -1,7 +1,7 @@
 import { td } from '../i18n';
 import { invoke } from '../api';
 import { isBrazilLocale, locale } from '../i18n';
-import { formatCurrency, formatDate, getDaysUntilDue, isCreditLikeAccountType } from '../../shared/utils';
+import { formatCurrency, formatDate, formatPercent, getDaysUntilDue, isCreditLikeAccountType } from '../../shared/utils';
 import { createDonut, createAreaChart } from '../components/charts';
 import type { Account, Bill, Receivable, TransactionWithDetails, MonthlySummary, ForecastPoint, EndOfMonthForecast, InvestmentSummary, Goal, MarketQuote, ConsolidatedBalance, CashFlowForecast } from '../../shared/types';
 
@@ -379,13 +379,13 @@ export async function render(el: HTMLElement): Promise<void> {
                 const noChg = q.change_pct === 0;
                 const color = noChg ? 'var(--text-2)' : up ? 'var(--accent)' : 'var(--danger)';
                 const priceStr = q.currency === '%'
-                  ? td("{value}% a.a.", [q.price.toFixed(2)])
+                  ? td("{value}% a.a.", [formatPercent(q.price, 2)])
                   : q.price.toLocaleString(locale, { style: 'currency', currency: 'BRL' });
                 return `<div style="padding:10px 20px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
                   <span style="font-size:0.85rem;font-weight:500">${esc(q.label)}</span>
                   <div style="text-align:right">
                     <div style="font-weight:600;font-size:0.88rem">${priceStr}</div>
-                    ${!noChg ? `<div style="font-size:0.73rem;color:${color}">${up ? '+' : ''}${q.change_pct.toFixed(2)}%</div>` : ''}
+                    ${!noChg ? `<div style="font-size:0.73rem;color:${color}">${up ? '+' : ''}${formatPercent(q.change_pct, 2)}%</div>` : ''}
                   </div>
                 </div>`;
               }).join('')}

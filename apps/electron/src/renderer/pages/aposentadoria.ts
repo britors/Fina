@@ -1,6 +1,6 @@
 import { td } from '../i18n';
 import { invoke } from '../api';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, formatPercent } from '../../shared/utils';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import type { Account, InvestmentSummary } from '../../shared/types';
 
@@ -40,7 +40,7 @@ export async function render(el: HTMLElement): Promise<void> {
     el.innerHTML = `
       <div class="grid-3" style="margin-bottom:20px">
         ${metricCard('Patrimônio na aposentadoria', formatCurrency(balanceAtRetirement), td("aos {value} anos", [retirementAge]), 'ti-building-bank', 'var(--accent)')}
-        ${metricCard('Renda mensal sustentável', formatCurrency(sustainableIncome), td("por {value} anos, {value}% a.a.", [yearsInRetirement, retirementRate.toFixed(1)]), 'ti-cash', gap > 0 ? 'var(--danger)' : 'var(--accent)')}
+        ${metricCard('Renda mensal sustentável', formatCurrency(sustainableIncome), td("por {value} anos, {value}% a.a.", [yearsInRetirement, formatPercent(retirementRate)]), 'ti-cash', gap > 0 ? 'var(--danger)' : 'var(--accent)')}
         ${metricCard(gap > 0 ? 'Falta por mês' : 'Margem acima da meta', formatCurrency(Math.abs(gap)), gap > 0 ? 'para atingir a renda desejada' : 'sobre a renda desejada', gap > 0 ? 'ti-alert-triangle' : 'ti-check', gap > 0 ? 'var(--danger)' : 'var(--accent)')}
       </div>
 

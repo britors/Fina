@@ -880,7 +880,7 @@ function openImportModal(): void {
                 <td>${esc(r.description)}</td>
                 <td>${r.suggested_category_name ? `<span class="badge badge-ok" title="${esc(r.suggested_category_reason ?? '')}">${esc(r.suggested_category_name)}</span>` : '<span style="color:var(--text-3)">Padrão</span>'}</td>
                 <td style="color:${r.type === 'income' ? 'var(--accent)' : 'var(--danger)'}">
-                  ${r.type === 'income' ? '+' : '-'}R$ ${r.amount.toFixed(2).replace('.', ',')}
+                  ${r.type === 'income' ? '+' : '-'}${formatCurrency(r.amount)}
                 </td>
                 <td>${r.duplicate ? '<span style="color:var(--warning)">Duplicata</span>' : (r.type === 'income' ? 'Receita' : 'Despesa')}</td>
               </tr>`).join('')}

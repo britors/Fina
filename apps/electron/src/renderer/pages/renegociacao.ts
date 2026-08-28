@@ -1,5 +1,5 @@
 import { invoke } from '../api';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, formatPercent } from '../../shared/utils';
 import { runAIAction } from '../components/aiConsent';
 import type { Debt } from '../../shared/types';
 
@@ -71,7 +71,7 @@ function debtCard(d: Debt, index: number): string {
           <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
             <div>
               <div style="font-weight:700">${esc(d.description)}</div>
-              <div style="font-size:0.78rem;color:var(--text-3)">${esc(d.creditor ?? 'Credor não informado')} · ${d.interest_rate.toFixed(2)}% a.m.</div>
+              <div style="font-size:0.78rem;color:var(--text-3)">${esc(d.creditor ?? 'Credor não informado')} · ${formatPercent(d.interest_rate, 2)}% a.m.</div>
             </div>
             <span class="badge" style="color:${color};background:${color}18">Prioridade ${severity}</span>
           </div>
@@ -86,7 +86,7 @@ function debtCard(d: Debt, index: number): string {
             </div>
             <div>
               <div class="stat-label">Proposta inicial</div>
-              <strong>${formatCurrency(suggestedInstallment)}/mês ou ${suggestedRate.toFixed(2)}% a.m.</strong>
+              <strong>${formatCurrency(suggestedInstallment)}/mês ou ${formatPercent(suggestedRate, 2)}% a.m.</strong>
             </div>
           </div>
           <div style="margin-top:10px;font-size:0.82rem;color:var(--text-2);line-height:1.5">

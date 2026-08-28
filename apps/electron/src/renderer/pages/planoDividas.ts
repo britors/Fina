@@ -1,6 +1,6 @@
 import { td } from '../i18n';
 import { invoke } from '../api';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, formatPercent } from '../../shared/utils';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import type { Debt } from '../../shared/types';
 
@@ -93,7 +93,7 @@ export async function render(el: HTMLElement): Promise<void> {
                 <td><span class="badge badge-ok">${i + 1}</span></td>
                 <td style="font-weight:500">${esc(d.description)}</td>
                 <td style="text-align:right;color:var(--danger)">${formatCurrency(d.balance)}</td>
-                <td style="text-align:right;color:var(--warning)">${d.rate.toFixed(2)}%</td>
+                <td style="text-align:right;color:var(--warning)">${formatPercent(d.rate, 2)}%</td>
                 <td style="text-align:right">${formatCurrency(d.minPayment)}</td>
               </tr>
             `).join('')}
