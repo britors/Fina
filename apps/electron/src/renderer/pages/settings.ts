@@ -807,7 +807,7 @@ async function renderSecurity(el: HTMLElement): Promise<void> {
     const confirm_ = (el.querySelector('#sec-new-pass-confirm') as HTMLInputElement).value;
     const ack = (el.querySelector('#sec-ack') as HTMLInputElement).checked;
     if (!ack) { showAlert('Confirme que você entende o risco de perda de dados antes de continuar.'); return; }
-    if (pass.length < 4) { showAlert('Use uma senha de pelo menos 4 caracteres.'); return; }
+    if (pass.length < 8) { showAlert('Use uma senha de pelo menos 8 caracteres.'); return; }
     if (pass !== confirm_) { showAlert('As senhas não conferem.'); return; }
     try {
       await invoke('security:enable', pass);
@@ -822,7 +822,7 @@ async function renderSecurity(el: HTMLElement): Promise<void> {
     const oldPassword = (el.querySelector('#sec-current-pass') as HTMLInputElement).value;
     const pass = (el.querySelector('#sec-change-pass') as HTMLInputElement).value;
     const confirm_ = (el.querySelector('#sec-change-pass-confirm') as HTMLInputElement).value;
-    if (pass.length < 4) { showAlert('Use uma senha de pelo menos 4 caracteres.'); return; }
+    if (pass.length < 8) { showAlert('Use uma senha de pelo menos 8 caracteres.'); return; }
     if (pass !== confirm_) { showAlert('As senhas não conferem.'); return; }
     try {
       await invoke('security:changePassword', { oldPassword, newPassword: pass });
