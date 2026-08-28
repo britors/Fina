@@ -41,6 +41,8 @@ CREATE INDEX IF NOT EXISTS idx_receivable_price_history_receivable ON receivable
 -- recurring_log precisa aceitar 'receivable' como source_type, além de
 -- 'transaction' e 'bill' (mesmo mecanismo de anti-duplicação usado para
 -- gerar as próximas ocorrências de recorrências).
+BEGIN;
+
 CREATE TABLE recurring_log_new (
   source_id      TEXT NOT NULL,
   source_type    TEXT NOT NULL CHECK (source_type IN ('transaction','bill','receivable')),
@@ -53,3 +55,5 @@ SELECT source_id, source_type, generated_date FROM recurring_log;
 
 DROP TABLE recurring_log;
 ALTER TABLE recurring_log_new RENAME TO recurring_log;
+
+COMMIT;

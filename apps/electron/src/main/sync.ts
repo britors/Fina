@@ -113,7 +113,10 @@ export function pushSync(folder: string): void {
   }
   assertNoRemoteConflict(folder);
   const filePath = syncFilePath(folder);
-  performBackup(filePath);
+  // Revalida logo antes de substituir o arquivo remoto: o VACUUM INTO acima
+  // pode levar segundos, e outra máquina sincronizando a mesma pasta pode ter
+  // gravado uma versão mais nova nesse meio-tempo.
+  performBackup(filePath, () => assertNoRemoteConflict(folder));
   writeSyncState(fs.statSync(filePath).mtimeMs, fileHash(filePath));
 }
 

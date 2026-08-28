@@ -122,6 +122,10 @@ export function registerImportHandlers(): void {
 
     const doImport = db.transaction((rows: ImportPreviewRow[]) => {
       for (const row of rows) {
+        if (!Number.isFinite(row.amount) || row.amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
+          skipped++;
+          continue;
+        }
         const hash  = txHash(row.date, row.amount, row.description);
         const fitidPattern = row.fitid ? `%FITID:${row.fitid}%` : '__NO_FITID__';
         if (duplicateByAccount.get(payload.accountId, fitidPattern, `%HASH:${hash}%`)) {

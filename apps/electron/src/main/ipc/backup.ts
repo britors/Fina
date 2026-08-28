@@ -48,7 +48,11 @@ export function isValidFinaBackup(filePath: string): boolean {
 
 // Grava uma cópia consistente e autocontida do banco no caminho informado.
 // Reaproveitada pela exportação manual, pelo auto-backup e pela sincronização.
-export function performBackup(filePath: string): void {
+// `beforeReplace`, se informado, roda depois do VACUUM INTO (que pode levar
+// segundos num banco grande) e antes da substituição do arquivo final —
+// janela em que outra máquina sincronizando a mesma pasta pode ter gravado
+// uma versão mais nova; o chamador pode usá-lo para checar de novo e abortar.
+export function performBackup(filePath: string, beforeReplace?: () => void): void {
   const target = path.resolve(filePath);
   if (target === path.resolve(dbPath())) {
     throw new Error('O destino do backup não pode ser o próprio banco de dados.');
@@ -64,6 +68,7 @@ export function performBackup(filePath: string): void {
     if (!fs.existsSync(temp) || fs.statSync(temp).size === 0) {
       throw new Error('O backup gerado está vazio.');
     }
+    beforeReplace?.();
     try {
       fs.renameSync(temp, filePath);
     } catch (err) {
