@@ -5,8 +5,10 @@ import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
@@ -37,6 +39,23 @@ private fun hkdf(ikm: ByteArray, salt: ByteArray, info: String, length: Int): By
     generator.generateBytes(out, 0, length)
     return out
 }
+
+/**
+ * Espelha `computeIdentityProof()` de apps/electron/src/main/mobileCrypto.ts:
+ * HMAC-SHA256 sobre `message` com uma chave derivada (HKDF) de um segredo
+ * ECDH estático-estático (as identidades de longo prazo, não as efêmeras da
+ * sessão) + `salt`. Usado tanto para calcular a prova (SyncClient não faz
+ * isso, só o desktop) quanto para verificá-la aqui — ver [identityProofValid].
+ */
+fun computeIdentityProof(sharedSecret: ByteArray, salt: ByteArray, message: ByteArray): ByteArray {
+    val key = hkdf(sharedSecret, salt, "fina-mobile-identity-proof-v1", 32)
+    val mac = Mac.getInstance("HmacSHA256")
+    mac.init(SecretKeySpec(key, "HmacSHA256"))
+    return mac.doFinal(message)
+}
+
+/** Comparação em tempo constante — a prova viaja em texto claro, não faz sentido vazar timing nela. */
+fun identityProofValid(expected: ByteArray, received: ByteArray): Boolean = MessageDigest.isEqual(expected, received)
 
 private const val GCM_IV_BYTES = 12
 private const val GCM_TAG_BITS = 128

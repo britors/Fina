@@ -2,8 +2,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import {
-  decryptFrame, deriveSessionKeys, encryptFrame, exportPublicKey, FrameParser,
-  generateX25519KeyPair, importPublicKey, packFrame,
+  computeIdentityProof, decryptFrame, deriveSessionKeys, encryptFrame, exportPrivateKey, exportPublicKey,
+  FrameParser, generateX25519KeyPair, importPrivateKey, importPublicKey, packFrame,
 } from '../src/main/mobileCrypto';
 
 function handshakeSalt(a: Buffer, b: Buffer): Buffer {
@@ -57,6 +57,66 @@ describe('exportPublicKey / importPublicKey', () => {
     const exported = exportPublicKey(publicKey);
     const imported = importPublicKey(exported);
     assert.equal(exportPublicKey(imported), exported);
+  });
+});
+
+describe('exportPrivateKey / importPrivateKey', () => {
+  test('round-trip preserva a chave (mesmo segredo ECDH depois de reimportar)', () => {
+    const desktop = generateX25519KeyPair();
+    const phone = generateX25519KeyPair();
+    const exported = exportPrivateKey(desktop.privateKey);
+    const reimported = importPrivateKey(exported);
+    const before = deriveSessionKeys(desktop.privateKey, phone.publicKey, Buffer.from('salt'));
+    const after = deriveSessionKeys(reimported, phone.publicKey, Buffer.from('salt'));
+    assert.deepEqual(before.sessionKey, after.sessionKey);
+  });
+});
+
+describe('computeIdentityProof', () => {
+  test('os dois lados calculam a mesma prova a partir do segredo estático-estático (DH comutativo)', () => {
+    const desktopIdentity = generateX25519KeyPair();
+    const phone = generateX25519KeyPair();
+    const salt = Buffer.concat([
+      phone.publicKey.export({ type: 'spki', format: 'der' }) as Buffer,
+      desktopIdentity.publicKey.export({ type: 'spki', format: 'der' }) as Buffer,
+    ]);
+    const message = Buffer.from('ephemeral-pub-der-bytes-here');
+
+    const onDesktop = computeIdentityProof(desktopIdentity.privateKey, phone.publicKey, salt, message);
+    const onPhone = computeIdentityProof(phone.privateKey, desktopIdentity.publicKey, salt, message);
+
+    assert.deepEqual(onDesktop, onPhone);
+  });
+
+  test('um atacante sem a chave privada de identidade do desktop não reproduz a prova', () => {
+    const desktopIdentity = generateX25519KeyPair();
+    const attackerIdentity = generateX25519KeyPair();
+    const phone = generateX25519KeyPair();
+    const salt = Buffer.concat([
+      phone.publicKey.export({ type: 'spki', format: 'der' }) as Buffer,
+      desktopIdentity.publicKey.export({ type: 'spki', format: 'der' }) as Buffer,
+    ]);
+    const message = Buffer.from('ephemeral-pub-der-bytes-here');
+
+    // Atacante forja a mesma chave pública de identidade do desktop (é
+    // pública, viaja em texto claro), mas assina com a própria chave privada.
+    const forged = computeIdentityProof(attackerIdentity.privateKey, phone.publicKey, salt, message);
+    const expected = computeIdentityProof(phone.privateKey, desktopIdentity.publicKey, salt, message);
+
+    assert.notDeepEqual(forged, expected);
+  });
+
+  test('mensagem diferente (ephemeral key ou nonce trocados) muda a prova', () => {
+    const desktopIdentity = generateX25519KeyPair();
+    const phone = generateX25519KeyPair();
+    const salt = Buffer.concat([
+      phone.publicKey.export({ type: 'spki', format: 'der' }) as Buffer,
+      desktopIdentity.publicKey.export({ type: 'spki', format: 'der' }) as Buffer,
+    ]);
+
+    const first = computeIdentityProof(desktopIdentity.privateKey, phone.publicKey, salt, Buffer.from('msg-1'));
+    const second = computeIdentityProof(desktopIdentity.privateKey, phone.publicKey, salt, Buffer.from('msg-2'));
+    assert.notDeepEqual(first, second);
   });
 });
 

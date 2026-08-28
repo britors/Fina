@@ -29,7 +29,7 @@ class SyncRepository(
     private val categoryDao: CategoryDao,
     private val pendingTransactionDao: PendingTransactionDao,
 ) {
-    private val syncClient = SyncClient(identityKeyStore::loadOrCreateKeyPair)
+    private val syncClient = SyncClient(identityKeyStore)
 
     val accounts: Flow<List<AccountEntity>> = accountDao.observeAll()
     val categories: Flow<List<CategoryEntity>> = categoryDao.observeAll()
@@ -39,7 +39,13 @@ class SyncRepository(
 
     suspend fun confirmPairing(session: SyncSession): Boolean {
         val confirmed = session.awaitPairingConfirmation()
-        if (confirmed) identityKeyStore.markPaired("Fina Desktop")
+        if (confirmed) {
+            // Fixa a identidade do desktop confirmada manualmente agora — é
+            // isso que permite pular essa confirmação com segurança nas
+            // próximas reconexões (ver `trusted` em SyncClient.connect).
+            identityKeyStore.pinDesktopIdentity(session.desktopIdentityPublicKey)
+            identityKeyStore.markPaired("Fina Desktop")
+        }
         return confirmed
     }
 

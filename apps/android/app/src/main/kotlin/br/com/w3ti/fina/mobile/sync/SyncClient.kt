@@ -4,10 +4,12 @@ import android.util.Log
 import br.com.w3ti.fina.mobile.crypto.FrameSocket
 import br.com.w3ti.fina.mobile.crypto.SpkiCodec
 import br.com.w3ti.fina.mobile.crypto.X25519
-import br.com.w3ti.fina.mobile.crypto.X25519KeyPair
+import br.com.w3ti.fina.mobile.crypto.computeIdentityProof
 import br.com.w3ti.fina.mobile.crypto.decryptFrame
 import br.com.w3ti.fina.mobile.crypto.deriveSessionKeys
 import br.com.w3ti.fina.mobile.crypto.encryptFrame
+import br.com.w3ti.fina.mobile.crypto.identityProofValid
+import br.com.w3ti.fina.mobile.pairing.IdentityKeyStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
@@ -17,6 +19,7 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
+import java.security.SecureRandom
 import java.util.Base64
 
 private const val TAG = "FinaSync"
@@ -49,8 +52,18 @@ class SyncSession internal constructor(
     private val frame: FrameSocket,
     private val sessionKey: ByteArray,
     val pairingCode: String,
-    /** Fonte de verdade pra saber se pula a espera do codigo — vem do desktop, nunca do estado local do celular. */
+    /**
+     * Decidido aqui no celular (não é só o que o desktop mandou em
+     * `alreadyPaired`): só é true quando o desktop reconhece este celular *e*
+     * a identidade de longo prazo recebida bate com a fixada numa confirmação
+     * manual anterior, com prova de posse verificada (ver connect() abaixo).
+     * Um peer malicioso pode mandar `alreadyPaired: true` livremente — por
+     * isso o valor bruto do desktop nunca é usado sozinho pra pular a tela
+     * de código.
+     */
     val alreadyPaired: Boolean,
+    /** Identidade de longo prazo do desktop recebida nesta conexão — ver IdentityKeyStore.pinDesktopIdentity(). */
+    val desktopIdentityPublicKey: String,
 ) {
     fun close() {
         runCatching { socket.close() }
@@ -130,10 +143,12 @@ class SyncSession internal constructor(
  * no desktop para a descricao completa). O QR so carrega {ip, port}; nenhuma
  * chave viaja nele.
  */
-class SyncClient(private val loadIdentity: () -> X25519KeyPair) {
+class SyncClient(private val identityStore: IdentityKeyStore) {
+    private val secureRandom = SecureRandom()
+
     suspend fun connect(ip: String, port: Int): SyncSession = withContext(Dispatchers.IO) {
         Log.d(TAG, "connect: conectando a $ip:$port")
-        val identity = loadIdentity()
+        val identity = identityStore.loadOrCreateKeyPair()
         val socket = Socket()
         try {
             socket.connect(InetSocketAddress(ip, port), CONNECT_TIMEOUT_MS)
@@ -144,13 +159,21 @@ class SyncClient(private val loadIdentity: () -> X25519KeyPair) {
         Log.d(TAG, "connect: TCP conectado, iniciando handshake")
         val frame = FrameSocket(socket.getInputStream(), socket.getOutputStream())
 
-        // 1. celular -> desktop, texto claro: identityPublicKey (SPKI/DER, base64)
+        // 1. celular -> desktop, texto claro: identityPublicKey (SPKI/DER, base64) +
+        // nonce (freshness da prova de identidade do desktop) + a identidade do
+        // desktop que este celular já tem fixada, se houver (ver IdentityKeyStore).
         val ownSpkiDer = SpkiCodec.encode(identity.publicKeyRaw)
+        val nonce = ByteArray(16).also { secureRandom.nextBytes(it) }
+        val knownDesktopIdentity = identityStore.pinnedDesktopIdentity()
         try {
             frame.writeFrame(
                 protocolJson.encodeToString(
                     HandshakeInit.serializer(),
-                    HandshakeInit(Base64.getEncoder().encodeToString(ownSpkiDer)),
+                    HandshakeInit(
+                        identityPublicKey = Base64.getEncoder().encodeToString(ownSpkiDer),
+                        nonce = Base64.getEncoder().encodeToString(nonce),
+                        knownDesktopIdentity = knownDesktopIdentity,
+                    ),
                 ).toByteArray(Charsets.UTF_8),
             )
         } catch (e: IOException) {
@@ -159,7 +182,7 @@ class SyncClient(private val loadIdentity: () -> X25519KeyPair) {
             throw SyncError("Não foi possível iniciar o pareamento com o desktop.", e)
         }
 
-        // 2. desktop -> celular, texto claro: ephemeralPublicKey
+        // 2. desktop -> celular, texto claro: ephemeralPublicKey + identityPublicKey + identityProof
         socket.soTimeout = CONNECT_TIMEOUT_MS
         val handshakeResponse = try {
             frame.readFrame()
@@ -177,7 +200,6 @@ class SyncClient(private val loadIdentity: () -> X25519KeyPair) {
                 HandshakeResponse.serializer(),
                 handshakeResponse.toString(Charsets.UTF_8),
             )
-            Log.d(TAG, "connect: handshake ok, alreadyPaired=${response.alreadyPaired}")
             val peerSpkiDer = Base64.getDecoder().decode(response.ephemeralPublicKey)
             val peerPublicRaw = SpkiCodec.decode(peerSpkiDer)
 
@@ -188,7 +210,38 @@ class SyncClient(private val loadIdentity: () -> X25519KeyPair) {
             val salt = peerSpkiDer + ownSpkiDer
             val keys = deriveSessionKeys(shared, salt)
 
-            SyncSession(socket, frame, keys.sessionKey, keys.pairingCode, response.alreadyPaired)
+            // Verifica a prova de posse da identidade de longo prazo do desktop
+            // (ver computeIdentityProof em mobileCrypto.ts) ANTES de decidir se
+            // confia em `response.alreadyPaired` — sem isso um MITM ativo podia
+            // simplesmente mandar `alreadyPaired: true` e pular a confirmação
+            // manual em toda reconexão, já que o desktop não tinha identidade
+            // própria pra provar. proofSalt/proofMessage têm que usar exatamente
+            // a mesma ordem de bytes calculada em mobileSync.ts do outro lado.
+            val desktopIdentityDer = Base64.getDecoder().decode(response.identityPublicKey)
+            val desktopIdentityRaw = SpkiCodec.decode(desktopIdentityDer)
+            val staticShared = X25519.agree(identity.privateKeyRaw, desktopIdentityRaw)
+            val proofSalt = ownSpkiDer + desktopIdentityDer
+            val proofMessage = peerSpkiDer + nonce
+            val expectedProof = computeIdentityProof(staticShared, proofSalt, proofMessage)
+            val proofValid = identityProofValid(expectedProof, Base64.getDecoder().decode(response.identityProof))
+            if (!proofValid) {
+                Log.e(TAG, "connect: prova de identidade do desktop inválida")
+                throw SyncError("O desktop não conseguiu provar sua identidade. Tente novamente ou pareie de novo.")
+            }
+
+            // Confiança local: exige a prova válida acima, que o desktop
+            // reconheça este celular (response.alreadyPaired) *e* que a
+            // identidade recebida bata com a que este celular já tinha
+            // fixado — as três coisas ao mesmo tempo, nunca só a palavra do
+            // peer. Se algum celular antigo (pareado antes desta correção)
+            // ainda não tem nada fixado, isso cai em `false` e volta pro
+            // fluxo normal de confirmação por código, que fixa a identidade
+            // ao final — sem precisar de nenhuma ação manual de "esquecer
+            // pareamento".
+            val trusted = response.alreadyPaired && proofValid && knownDesktopIdentity == response.identityPublicKey
+            Log.d(TAG, "connect: handshake ok, trusted=$trusted")
+
+            SyncSession(socket, frame, keys.sessionKey, keys.pairingCode, trusted, response.identityPublicKey)
         } catch (e: SyncError) {
             socket.close()
             throw e

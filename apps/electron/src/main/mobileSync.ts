@@ -9,9 +9,10 @@ import { localizeMainText } from './i18n';
 import { insertConfirmedTransaction } from './ipc/transactions';
 import type { PairedDevice } from '../shared/types';
 import {
-  decryptFrame, deriveSessionKeys, encryptFrame, exportPublicKey, FrameParser,
-  generateX25519KeyPair, importPublicKey, packFrame,
+  computeIdentityProof, decryptFrame, deriveSessionKeys, encryptFrame, exportPrivateKey, exportPublicKey,
+  FrameParser, generateX25519KeyPair, importPrivateKey, importPublicKey, packFrame,
 } from './mobileCrypto';
+import type { KeyPair } from './mobileCrypto';
 
 // Listener TCP local para o app mobile — só existe enquanto a tela
 // "Sincronizar celular" está aberta no desktop (ver render()/cleanup em
@@ -20,14 +21,22 @@ import {
 // conexões de rede quando o usuário não está ativamente sincronizando.
 //
 // Handshake por conexão (o QR só carrega {ip, port} — nenhuma chave):
-//   1. Celular → desktop, texto claro: { identityPublicKey }
-//   2. Desktop → celular, texto claro: { ephemeralPublicKey }
+//   1. Celular → desktop, texto claro: { identityPublicKey, nonce, knownDesktopIdentity }
+//   2. Desktop → celular, texto claro: { ephemeralPublicKey, identityPublicKey, identityProof }
 //   3. Os dois lados derivam a mesma chave de sessão (ECDH X25519 + HKDF) e,
-//      se o dispositivo ainda não está pareado, o mesmo código de 6 dígitos.
+//      se a conexão ainda não é considerada confiável (`trusted` abaixo), o
+//      mesmo código de 6 dígitos pra confirmação manual.
 //   4. Daí em diante todo frame é [4 bytes tamanho][iv|tag|ciphertext].
 //
-// Um device já pareado (public_key encontrada e não revogada) segue direto
-// pro protocolo de sync; um device desconhecido vira uma "pairing candidate"
+// `trusted` (== "pula a tela de código") exige as duas coisas ao mesmo
+// tempo: o desktop já conhece esse celular (public_key em paired_devices,
+// não revogada) *e* o celular já tem a identidade deste desktop fixada
+// (pinned) de uma confirmação manual anterior — ver computeIdentityProof em
+// mobileCrypto.ts para o porquê de só a public_key do device não bastar
+// (um MITM ativo conseguiria completar o ECDH da sessão com a chave
+// estática do celular sem nunca ter a chave privada de identidade do
+// desktop de verdade). Um celular pareando pela primeira vez, ou que ainda
+// não fixou a identidade deste desktop, sempre vira uma "pairing candidate"
 // aguardando confirmação do código pela UI do desktop.
 const MAX_PAIRING_ATTEMPTS = 3;
 const PAIRING_TIMEOUT_MS = 2 * 60 * 1000;
@@ -41,6 +50,34 @@ const PAIRING_TIMEOUT_MS = 2 * 60 * 1000;
 // fixa, uma unica regra (`firewall-cmd --add-port=47821/tcp --permanent`)
 // resolve de vez.
 const MOBILE_SYNC_PORT = 47821;
+
+const DESKTOP_IDENTITY_PUBLIC_KEY = 'mobile_sync_identity_public';
+const DESKTOP_IDENTITY_PRIVATE_KEY = 'mobile_sync_identity_private';
+
+let cachedDesktopIdentity: KeyPair | null = null;
+
+// Identidade X25519 de longo prazo do desktop, gerada uma única vez e
+// guardada em app_settings (dentro do banco SQLCipher — mesma proteção que
+// já vale pra outros segredos guardados ali, ex: credenciais de Open
+// Finance). Espelha IdentityKeyStore.kt do lado do celular: sem isso o
+// desktop não tem como provar a mesma identidade em reconexões futuras
+// (ver computeIdentityProof em mobileCrypto.ts).
+function getOrCreateDesktopIdentity(): KeyPair {
+  if (cachedDesktopIdentity) return cachedDesktopIdentity;
+  const db = getDb();
+  const pub = db.prepare(`SELECT value FROM app_settings WHERE key = ?`).get(DESKTOP_IDENTITY_PUBLIC_KEY) as { value: string } | undefined;
+  const priv = db.prepare(`SELECT value FROM app_settings WHERE key = ?`).get(DESKTOP_IDENTITY_PRIVATE_KEY) as { value: string } | undefined;
+  if (pub && priv) {
+    cachedDesktopIdentity = { publicKey: importPublicKey(pub.value), privateKey: importPrivateKey(priv.value) };
+    return cachedDesktopIdentity;
+  }
+  const generated = generateX25519KeyPair();
+  const stmt = db.prepare(`INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)`);
+  stmt.run(DESKTOP_IDENTITY_PUBLIC_KEY, exportPublicKey(generated.publicKey));
+  stmt.run(DESKTOP_IDENTITY_PRIVATE_KEY, exportPrivateKey(generated.privateKey));
+  cachedDesktopIdentity = generated;
+  return generated;
+}
 
 interface PendingPairing {
   socket: net.Socket;
@@ -197,7 +234,11 @@ function handleConnection(socket: net.Socket): void {
         // de sinalizar "essa conexão pode ir pro estágio de sync" de fora.
         // Reaproveitar o WeakMap que já existe faz isso sem estado duplicado.
         if (!connectionIdentity.has(socket)) {
-          const { identityPublicKey } = JSON.parse(frame.toString('utf8')) as { identityPublicKey: string };
+          const parsed = JSON.parse(frame.toString('utf8')) as {
+            identityPublicKey: string; nonce: string; knownDesktopIdentity?: string | null;
+          };
+          const { identityPublicKey, nonce } = parsed;
+          const knownDesktopIdentity = parsed.knownDesktopIdentity ?? null;
           const peerPublicKey = importPublicKey(identityPublicKey);
           const salt = Buffer.concat([
             desktopKeys.publicKey.export({ type: 'spki', format: 'der' }) as Buffer,
@@ -205,6 +246,24 @@ function handleConnection(socket: net.Socket): void {
           ]);
           const derived = deriveSessionKeys(desktopKeys.privateKey, peerPublicKey, salt);
           sessionKey = derived.sessionKey;
+
+          // Prova de posse da identidade de longo prazo do desktop (ver
+          // computeIdentityProof em mobileCrypto.ts): amarra a chave efêmera
+          // desta conexão + o nonce do celular a um segredo estático-estático
+          // que só quem tem a chave privada de mobile_sync_identity consegue
+          // calcular. `proofSalt` e `proofMessage` têm que usar exatamente a
+          // mesma ordem de bytes calculada em SyncClient.kt do outro lado.
+          const desktopIdentity = getOrCreateDesktopIdentity();
+          const desktopIdentityPublicKey = exportPublicKey(desktopIdentity.publicKey);
+          const proofSalt = Buffer.concat([
+            Buffer.from(identityPublicKey, 'base64'),
+            Buffer.from(desktopIdentityPublicKey, 'base64'),
+          ]);
+          const proofMessage = Buffer.concat([
+            desktopKeys.publicKey.export({ type: 'spki', format: 'der' }) as Buffer,
+            Buffer.from(nonce ?? '', 'base64'),
+          ]);
+          const identityProof = computeIdentityProof(desktopIdentity.privateKey, peerPublicKey, proofSalt, proofMessage);
 
           // alreadyPaired vai na resposta em texto claro pra o celular nunca
           // precisar confiar no proprio estado local pra decidir se espera
@@ -214,14 +273,24 @@ function handleConnection(socket: net.Socket): void {
           // pelo Android no meio do handshake, por exemplo) ficaria pra
           // sempre esperando um 'paired' que nunca mais chega — o desktop já
           // o reconhece e vai direto pro estágio de sync sem reenviar nada.
+          //
+          // Mas isso sozinho não é suficiente pra pular a confirmação com
+          // segurança (ver comentário no topo do arquivo): também exige que
+          // o celular já tenha fixado a identidade *deste* desktop numa
+          // confirmação manual anterior. Um MITM ativo sempre cai no `else`
+          // abaixo, porque nunca vai ter a identidade fixada pelo celular
+          // batendo com a chave pública real do desktop.
           const device = findPairedDevice(identityPublicKey);
+          const trusted = Boolean(device) && knownDesktopIdentity === desktopIdentityPublicKey;
           socket.write(packFrame(Buffer.from(JSON.stringify({
             ephemeralPublicKey: exportPublicKey(desktopKeys.publicKey),
-            alreadyPaired: Boolean(device),
+            identityPublicKey: desktopIdentityPublicKey,
+            identityProof: identityProof.toString('base64'),
+            alreadyPaired: trusted,
           }), 'utf8')));
 
-          console.log(`[mobileSync] handshake ok, alreadyPaired=${Boolean(device)}`);
-          if (device) {
+          console.log(`[mobileSync] handshake ok, trusted=${trusted}`);
+          if (trusted) {
             connectionIdentity.set(socket, identityPublicKey);
           } else {
             registerPendingPairing(socket, sessionKey, derived.pairingCode, identityPublicKey);
@@ -276,19 +345,26 @@ export function confirmPairing(sessionId: string, enteredCode: string, name: str
   clearTimeout(pending.timeout);
   pendingPairings.delete(sessionId);
 
-  const device: PairedDevice = {
-    id: randomUUID(),
-    name,
-    public_key: pending.identityPublicKey,
-    owner,
-    paired_at: new Date().toISOString(),
-    last_sync_at: null,
-    revoked_at: null,
-  };
-  getDb().prepare(`
-    INSERT INTO paired_devices (id, name, public_key, owner, paired_at)
-    VALUES (?,?,?,?,?)
-  `).run(device.id, device.name, device.public_key, device.owner, device.paired_at);
+  // Uma "pairing candidate" agora também acontece quando o desktop já
+  // conhece esse celular mas o celular ainda não fixou a identidade deste
+  // desktop (ver `trusted` em handleConnection) — nesse caso reaproveita a
+  // linha existente (mesmo id) em vez de inserir uma duplicata, o que
+  // quebraria o histórico e o vínculo com transactions.mobile_device_id.
+  const db = getDb();
+  const existing = db.prepare(`SELECT * FROM paired_devices WHERE public_key = ?`).get(pending.identityPublicKey) as PairedDevice | undefined;
+  const device: PairedDevice = existing
+    ? { ...existing, name, owner, revoked_at: null }
+    : { id: randomUUID(), name, public_key: pending.identityPublicKey, owner, paired_at: new Date().toISOString(), last_sync_at: null, revoked_at: null };
+
+  if (existing) {
+    db.prepare(`UPDATE paired_devices SET name = ?, owner = ?, revoked_at = NULL WHERE id = ?`).run(name, owner, existing.id);
+  } else {
+    db.prepare(`
+      INSERT INTO paired_devices (id, name, public_key, owner, paired_at)
+      VALUES (?,?,?,?,?)
+    `).run(device.id, device.name, device.public_key, device.owner, device.paired_at);
+  }
+  console.log(`[mobileSync] pareamento confirmado: device=${device.id} (${existing ? 'reconfirmado' : 'novo'})`);
 
   pending.socket.write(packFrame(encryptFrame(pending.sessionKey, { op: 'paired', success: true })));
   // Sem isso, o celular manda sync_request cifrado na mesma conexao logo em

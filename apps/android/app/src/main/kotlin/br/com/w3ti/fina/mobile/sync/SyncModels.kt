@@ -10,10 +10,23 @@ import kotlinx.serialization.Serializable
 // camelCase sem mudar o que trafega na rede.
 
 @Serializable
-data class HandshakeInit(val identityPublicKey: String)
+data class HandshakeInit(
+    val identityPublicKey: String,
+    /** 16 bytes aleatórios (base64) — amarra a prova de identidade do desktop a esta conexão específica. */
+    val nonce: String,
+    /** Identidade do desktop fixada numa confirmação manual anterior, se houver — ver IdentityKeyStore.pinnedDesktopIdentity(). */
+    val knownDesktopIdentity: String? = null,
+)
 
 @Serializable
-data class HandshakeResponse(val ephemeralPublicKey: String, val alreadyPaired: Boolean = false)
+data class HandshakeResponse(
+    val ephemeralPublicKey: String,
+    /** Identidade X25519 de longo prazo do desktop (SPKI/DER, base64) — ver mobileSync.ts. */
+    val identityPublicKey: String,
+    /** Prova de posse da chave privada de `identityPublicKey` — ver computeIdentityProof. */
+    val identityProof: String,
+    val alreadyPaired: Boolean = false,
+)
 
 @Serializable
 data class AccountDto(val id: String, val name: String, val type: String)
