@@ -1,6 +1,6 @@
 import { td } from '../i18n';
 import { invoke } from '../api';
-import { formatCurrency, formatPercent, isCreditLikeAccountType } from '../../shared/utils';
+import { formatCurrency, formatDecimal, isCreditLikeAccountType } from '../../shared/utils';
 import { runAIAction } from '../components/aiConsent';
 import type { Account, BudgetWithProgress, Debt, Goal } from '../../shared/types';
 
@@ -47,7 +47,7 @@ export async function render(el: HTMLElement): Promise<void> {
       </div>
       <div class="stat-card">
         <div class="stat-label">Reserva</div>
-        <div class="stat-value">${td("{value} meses", [formatPercent(reserveMonths)])}</div>
+        <div class="stat-value">${td("{value} meses", [formatDecimal(reserveMonths)])}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Dívidas</div>
@@ -133,7 +133,7 @@ function scenarioResult(data: { reserveMonths: number; avgExpense: number; activ
     return { title: `Acelerar ${goal.name}`, body: td("{value} por mês completa {value} restantes em aproximadamente {value} meses.", [formatCurrency(amount), formatCurrency(remaining), months || '—']) };
   }
   const addedMonths = data.avgExpense > 0 ? amount / data.avgExpense : 0;
-  return { title: 'Fortalecer a reserva', body: td("{value} mensais adicionam {value} mês de despesas por aporte e levam a reserva estimada para {value} meses após um ano.", [formatCurrency(amount), formatPercent(addedMonths), formatPercent(data.reserveMonths + addedMonths)]) };
+  return { title: 'Fortalecer a reserva', body: td("{value} mensais adicionam {value} mês de despesas por aporte e levam a reserva estimada para {value} meses após um ano.", [formatCurrency(amount), formatDecimal(addedMonths), formatDecimal(data.reserveMonths + addedMonths)]) };
 }
 
 function buildDecisions(data: {
@@ -166,7 +166,7 @@ function buildDecisions(data: {
   if (data.reserveMonths < 3) {
     decisions.push({
       title: 'Fortalecer reserva de emergência',
-      body: td("A reserva cobre {value} meses de despesas.", [formatPercent(data.reserveMonths)]),
+      body: td("A reserva cobre {value} meses de despesas.", [formatDecimal(data.reserveMonths)]),
       impact: 'Aumenta proteção contra imprevistos.',
       route: 'reserva',
       priority: data.reserveMonths < 1 ? 'Alta' : 'Média',

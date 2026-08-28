@@ -1,6 +1,6 @@
 import { td } from '../i18n';
 import { invoke } from '../api';
-import { formatCurrency, formatPercent, isCreditLikeAccountType } from '../../shared/utils';
+import { formatCurrency, formatDecimal, isCreditLikeAccountType } from '../../shared/utils';
 import type { Account, BudgetWithProgress, Category, Debt } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
@@ -53,7 +53,7 @@ export async function render(el: HTMLElement): Promise<void> {
       label: 'Reserva',
       value: clampScore(reserveMonths / 6, 25),
       max: 25,
-      detail: td("{value} meses de despesas", [formatPercent(reserveMonths)]),
+      detail: td("{value} meses de despesas", [formatDecimal(reserveMonths)]),
     },
     {
       label: 'Dívidas',

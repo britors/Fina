@@ -1,6 +1,6 @@
 import { td } from '../i18n';
 import { invoke } from '../api';
-import { formatCurrency, formatPercent, isCreditLikeAccountType } from '../../shared/utils';
+import { formatCurrency, formatDecimal, isCreditLikeAccountType } from '../../shared/utils';
 import type { Account, Debt, Goal, InvestmentSummary } from '../../shared/types';
 
 type MonthRow = { label: string; income: number; expense: number };
@@ -76,7 +76,7 @@ export async function render(el: HTMLElement): Promise<void> {
         <div class="card-hr"></div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
           ${insightLine('Dívidas ativas', activeDebts.length === 0 ? 'Nenhuma' : td("{value} dívida{value}", [activeDebts.length, activeDebts.length !== 1 ? 's' : '']), debtBalance > 0 ? formatCurrency(debtBalance) : 'Sem saldo devedor')}
-          ${insightLine('Reserva estimada', td("{value} meses", [formatPercent(reserveMonths)]), reserveMonths < 3 ? 'Abaixo de 3 meses' : 'Boa cobertura inicial')}
+          ${insightLine('Reserva estimada', td("{value} meses", [formatDecimal(reserveMonths)]), reserveMonths < 3 ? 'Abaixo de 3 meses' : 'Boa cobertura inicial')}
           ${insightLine('Metas em aberto', String(openGoals.length), openGoals.length > 0 ? 'Considere aporte mensal' : 'Nenhuma meta pendente')}
           ${insightLine('Investimentos atuais', formatCurrency(investments.total_current), investments.total_current > 0 ? 'Carteira iniciada' : 'Ainda sem investimentos')}
         </div>

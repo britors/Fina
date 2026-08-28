@@ -13,12 +13,20 @@ export function formatCurrency(amount: number, locale = presentationLocale(), cu
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(normalized);
 }
 
+// Formata um número respeitando o separador decimal do locale (vírgula em
+// pt-BR), sem nenhuma unidade — uso genérico (ex.: "3,5 meses de reserva",
+// "2,1 MB"). Para valores em escala de porcentagem use `formatPercent`
+// abaixo, que é só um alias mais claro no call site.
+export function formatDecimal(value: number, decimals = 1, locale = presentationLocale()): string {
+  return new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(value);
+}
+
 // `value` já está na escala de porcentagem (ex.: 12.5 para "12,5%"), não em
 // fração (0-1) — por isso não usamos style:'percent' do Intl, que multiplica
-// por 100. Só formata o número respeitando o separador decimal do locale
-// (vírgula em pt-BR); quem chama continua responsável por acrescentar o "%".
+// por 100. Só formata o número respeitando o separador decimal do locale;
+// quem chama continua responsável por acrescentar o "%".
 export function formatPercent(value: number, decimals = 1, locale = presentationLocale()): string {
-  return new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(value);
+  return formatDecimal(value, decimals, locale);
 }
 
 export function formatDate(dateStr: string, locale = presentationLocale()): string {
