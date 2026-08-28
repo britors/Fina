@@ -1,0 +1,40 @@
+name: Android CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/android/**'
+      - '.github/workflows/android-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/android/**'
+      - '.github/workflows/android-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Test + assembleDebug
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: apps/android
+
+      - name: Unit tests
+        working-directory: apps/android
+        run: ./gradlew testDebugUnitTest --console=plain
+
+      - name: Assemble debug APK
+        working-directory: apps/android
+        run: ./gradlew assembleDebug --console=plain
