@@ -1,6 +1,6 @@
 import { invoke } from '../api';
 import { locale } from '../i18n';
-import { formatCurrency } from '../../shared/utils';
+import { formatCurrency, formatPercent } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { attachMoneyMask, formatMoneyValue, moneyInputValue } from '../components/moneyMask';
 import { showAlert, showConfirm } from '../components/alertDialog';
@@ -113,7 +113,7 @@ export async function render(el: HTMLElement): Promise<void> {
                   </td>
                   <td style="text-align:right;color:var(--danger);font-weight:500">${formatCurrency(d.outstanding_balance)}</td>
                   <td style="text-align:right">${formatCurrency(d.installment_amount)}</td>
-                  <td style="text-align:right;color:var(--warning)">${d.interest_rate.toFixed(2)}%</td>
+                  <td style="text-align:right;color:var(--warning)">${formatPercent(d.interest_rate, 2)}%</td>
                   <td style="text-align:center;min-width:120px">
                     <div class="progress-track" style="margin:0 auto;max-width:100px">
                       <div class="prog-fill" style="width:${pct.toFixed(0)}%"></div>
@@ -256,13 +256,15 @@ export async function render(el: HTMLElement): Promise<void> {
     overlay.querySelector('#btn-save-debt')?.addEventListener('click', async () => {
       const description = (overlay.querySelector<HTMLInputElement>('#f-desc')!).value.trim();
       if (!description) { showAlert('Informe a descrição.'); return; }
+      const outstandingBalance = moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-balance'));
+      if (!(outstandingBalance > 0)) { showAlert('Informe o saldo devedor.'); return; }
       const payload = {
         description,
         type:                    (overlay.querySelector<HTMLSelectElement>('#f-type')!).value,
         creditor:                (overlay.querySelector<HTMLInputElement>('#f-cred')!).value.trim() || null,
         status:                  (overlay.querySelector<HTMLSelectElement>('#f-status')!).value,
         original_amount:         moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-orig'))    || 0,
-        outstanding_balance:     moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-balance')) || 0,
+        outstanding_balance:     outstandingBalance,
         interest_rate:           parseFloat((overlay.querySelector<HTMLInputElement>('#f-rate')!).value)    || 0,
         installments_total:      parseInt((overlay.querySelector<HTMLInputElement>('#f-total')!).value)     || 1,
         installments_remaining:  parseInt((overlay.querySelector<HTMLInputElement>('#f-rem')!).value)       || 1,

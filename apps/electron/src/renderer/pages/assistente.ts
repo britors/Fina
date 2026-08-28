@@ -119,6 +119,10 @@ export async function render(el: HTMLElement): Promise<void> {
     const btn = el.querySelector<HTMLButtonElement>('#btn-ask-ai')!;
     const question = el.querySelector<HTMLTextAreaElement>('#ai-question')!.value.trim();
     const consentConfirmed = el.querySelector<HTMLInputElement>('#ai-send-consent')!.checked;
+    if (!consentConfirmed) {
+      showAlert('Confirme o consentimento de envio antes de enviar a pergunta.');
+      return;
+    }
     btn.disabled = true;
     btn.innerHTML = '<i class="ti ti-loader ti-spin"></i> Consultando...';
     try {

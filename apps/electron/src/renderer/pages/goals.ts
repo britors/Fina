@@ -279,10 +279,12 @@ export async function render(el: HTMLElement): Promise<void> {
     overlay.querySelector('#btn-save-goal')?.addEventListener('click', async () => {
       const name = (overlay.querySelector<HTMLInputElement>('#f-name')!).value.trim();
       if (!name) { showAlert('Informe o nome da meta.'); return; }
+      const targetAmount = moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-target'));
+      if (!(targetAmount > 0)) { showAlert('Informe o valor da meta.'); return; }
       const payload = {
         name,
         type: (overlay.querySelector<HTMLSelectElement>('#f-type')!).value,
-        target_amount:  moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-target'))  || 0,
+        target_amount:  targetAmount,
         current_amount: moneyInputValue(overlay.querySelector<HTMLInputElement>('#f-current')) || 0,
         target_date: (overlay.querySelector<HTMLInputElement>('#f-date')!).value || null,
         account_id:  (overlay.querySelector<HTMLSelectElement>('#f-account')!).value || null,
