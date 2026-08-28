@@ -860,7 +860,7 @@ function openImportModal(): void {
     const filePath = (file as File & { path?: string }).path ?? '';
     if (!filePath) { showAlert('Não foi possível ler o caminho do arquivo.'); return; }
 
-    const preview = await invoke<{ rows: unknown[]; format: string; total: number; duplicates: number }>('import:preview', filePath);
+    const preview = await invoke<{ rows: unknown[]; format: string; total: number; duplicates: number; invalid: number }>('import:preview', filePath);
     previewedRows = preview.rows;
 
     const previewEl = overlay.querySelector('#imp-preview')!;
@@ -868,6 +868,7 @@ function openImportModal(): void {
       <div style="font-size:0.82rem;color:var(--text-2);margin-bottom:8px">
         <strong>${preview.total}</strong> transações encontradas
         ${preview.duplicates > 0 ? `· <span style="color:var(--warning)">${preview.duplicates} duplicata${preview.duplicates !== 1 ? 's' : ''} serão ignoradas</span>` : ''}
+        ${preview.invalid > 0 ? `· <span style="color:var(--danger)">${preview.invalid} linha${preview.invalid !== 1 ? 's' : ''} do arquivo com data ou valor inválido, ignorada${preview.invalid !== 1 ? 's' : ''}</span>` : ''}
         · Formato: <strong>${preview.format.toUpperCase()}</strong>
       </div>
       <div style="max-height:220px;overflow-y:auto;font-size:0.78rem;border:1px solid var(--border);border-radius:6px">

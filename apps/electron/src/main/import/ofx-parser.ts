@@ -42,12 +42,22 @@ function buildRow(block: string): ImportPreviewRow | null {
   };
 }
 
-export function parseOFX(content: string): ImportPreviewRow[] {
+export interface OFXParseResult {
+  rows: ImportPreviewRow[];
+  // Blocos STMTTRN com data ou valor malformado/zerado, descartados por
+  // buildRow(). Sem contar isso, uma transação real podia simplesmente
+  // sumir do preview sem nenhum indício de que algo no arquivo original
+  // não foi lido — ver import:preview em ipc/import.ts.
+  invalid: number;
+}
+
+export function parseOFX(content: string): OFXParseResult {
   const stmttrns = allTags(content, 'STMTTRN');
   const blocks = stmttrns.length > 0
     ? stmttrns
     // SGML format: split by <STMTTRN> blocks without closing tags
     : content.split(/<STMTTRN>/i).slice(1);
 
-  return blocks.map(block => buildRow(block)).filter(Boolean) as ImportPreviewRow[];
+  const rows = blocks.map(block => buildRow(block)).filter(Boolean) as ImportPreviewRow[];
+  return { rows, invalid: blocks.length - rows.length };
 }

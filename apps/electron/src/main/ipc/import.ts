@@ -72,7 +72,8 @@ export function registerImportHandlers(): void {
     const isOfx   = lower.endsWith('.ofx') || lower.endsWith('.qfx');
     const format: 'csv' | 'ofx' = isOfx ? 'ofx' : 'csv';
 
-    const raw: ImportPreviewRow[] = isOfx ? parseOFX(content) : parseCSV(content);
+    const ofxResult = isOfx ? parseOFX(content) : null;
+    const raw: ImportPreviewRow[] = ofxResult ? ofxResult.rows : parseCSV(content);
 
     for (const row of raw) {
       const hash = txHash(row.date, row.amount, row.description);
@@ -88,6 +89,7 @@ export function registerImportHandlers(): void {
       format,
       total: raw.length,
       duplicates: raw.filter(r => r.duplicate).length,
+      invalid: ofxResult?.invalid ?? 0,
     };
   });
 

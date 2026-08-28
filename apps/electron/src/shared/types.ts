@@ -722,6 +722,9 @@ export interface ImportPreview {
   format: 'csv' | 'ofx';
   total: number;
   duplicates: number;
+  // Linhas do arquivo original com data ou valor malformado/zerado,
+  // descartadas antes mesmo de chegar em `rows` — só se aplica a OFX.
+  invalid: number;
 }
 
 // ── Metas financeiras ─────────────────────────────────────────────────────────
