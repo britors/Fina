@@ -33,6 +33,9 @@ captures/
 *.aab
 *.ap_
 replay_pid*.log
+*.jks
+*.keystore
+keystore.properties
 
 # Variáveis de ambiente
 .env

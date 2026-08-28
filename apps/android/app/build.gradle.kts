@@ -23,6 +23,23 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Lido só de variáveis de ambiente (nunca de um arquivo no repo) — só o
+    // workflow de release (.github/workflows/android-release.yml) as define,
+    // decodificando o secret ANDROID_KEYSTORE_BASE64 num arquivo temporário.
+    // Sem elas, `release` builda sem signingConfig (funciona normalmente pra
+    // qualquer dev local rodando assembleRelease/bundleRelease sem assinar).
+    val signingStoreFile = System.getenv("SIGNING_STORE_FILE")
+    signingConfigs {
+        if (signingStoreFile != null) {
+            create("release") {
+                storeFile = file(signingStoreFile)
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -34,6 +51,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (signingStoreFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
