@@ -12,13 +12,23 @@ function documentsDir(): string {
   return dir;
 }
 
+// O renderer nunca deve poder mandar o main copiar um path arbitrário do
+// disco: documents:import só aceita paths que vieram de fato de um
+// dialog:openDocument recente (ver index.ts), consumidos aqui uma única vez.
+const allowedImportPaths = new Set<string>();
+
+export function allowDocumentImportPaths(paths: string[]): void {
+  for (const p of paths) allowedImportPaths.add(p);
+}
+
 export function registerDocumentHandlers(): void {
   ipcMain.handle('documents:list', (): FinancialDocument[] =>
     getDb().prepare('SELECT * FROM financial_documents ORDER BY created_at DESC').all() as FinancialDocument[]
   );
 
   ipcMain.handle('documents:import', (_event, sourcePath: string): FinancialDocument => {
-    if (!sourcePath || !path.isAbsolute(sourcePath) || !fs.existsSync(sourcePath)) throw new Error('Arquivo não encontrado.');
+    if (!sourcePath || !allowedImportPaths.has(sourcePath) || !fs.existsSync(sourcePath)) throw new Error('Arquivo não encontrado.');
+    allowedImportPaths.delete(sourcePath);
     const id = randomUUID();
     const filename = path.basename(sourcePath).replace(/[\\/]/g, '_');
     const storedPath = path.join(documentsDir(), `${id}-${filename}`);

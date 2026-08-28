@@ -330,13 +330,17 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
   const detailMode = !!filters.rootCategoryId && !filters.subcategoryId;
   const subcategoryMode = !!filters.subcategoryId;
   const dimension = detailMode
-    ? `CASE WHEN c.id = '${filters.rootCategoryId!.replace(/'/g, "''")}' THEN NULL ELSE c.id END AS id,
-       CASE WHEN c.id = '${filters.rootCategoryId!.replace(/'/g, "''")}' THEN 'Sem subcategoria' ELSE c.name END AS name,
+    ? `CASE WHEN c.id = ? THEN NULL ELSE c.id END AS id,
+       CASE WHEN c.id = ? THEN 'Sem subcategoria' ELSE c.name END AS name,
        c.color`
     : subcategoryMode
       ? 'c.id AS id, c.name AS name, c.color'
     : 'root.id AS id, root.name AS name, root.color';
   const group = detailMode || subcategoryMode ? 'c.id, c.name, c.color' : 'root.id, root.name, root.color';
+  // O CASE de `dimension` acima é interpolado em duas queries (categories e
+  // monthlySeries); cada ocorrência tem 2 placeholders `?` que precisam vir
+  // antes dos params do WHERE, na ordem em que aparecem no texto da query.
+  const dimensionParams = detailMode ? [filters.rootCategoryId!, filters.rootCategoryId!] : [];
 
   const availableRoots = db.prepare(`
     SELECT root.id, root.name, root.color, SUM(tc.amount) AS total
@@ -357,7 +361,7 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
     JOIN categories root ON root.id=COALESCE(c.parent_id,c.id)
     WHERE ${filtered.sql}
     GROUP BY ${group} ORDER BY total DESC
-  `).all(...filtered.params);
+  `).all(...dimensionParams, ...filtered.params);
 
   const monthlySeries = db.prepare(`
     SELECT strftime('%Y-%m',t.date) AS month, ${dimension}, SUM(tc.amount) AS total
@@ -367,7 +371,7 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
     JOIN categories root ON root.id=COALESCE(c.parent_id,c.id)
     WHERE ${filtered.sql}
     GROUP BY month, ${group} ORDER BY month, total DESC
-  `).all(...filtered.params);
+  `).all(...dimensionParams, ...filtered.params);
 
   const topTransactions = db.prepare(`
     SELECT t.id, t.date, t.description, t.amount, a.name AS account_name,

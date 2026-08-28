@@ -38,7 +38,7 @@ import { registerOpenFinanceHandlers } from './ipc/openFinance';
 import { registerPixHandlers } from './ipc/pix';
 import { registerOCRHandlers } from './ipc/ocr';
 import { registerRadarHandlers } from './ipc/radar';
-import { registerDocumentHandlers } from './ipc/documents';
+import { registerDocumentHandlers, allowDocumentImportPaths } from './ipc/documents';
 import { initUpdater } from './updater';
 import { startNotificationScheduler } from './notifications';
 import { generateRecurrences } from './recurrences';
@@ -262,12 +262,14 @@ function registerHandlers(): void {
       properties: ['openFile'],
     }))
   );
-  ipcMain.handle('dialog:openDocument', () =>
-    dialog.showOpenDialog(localizeDialogOptions({
+  ipcMain.handle('dialog:openDocument', async () => {
+    const result = await dialog.showOpenDialog(localizeDialogOptions({
       filters: [{ name: 'Documentos financeiros', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'csv'] }],
       properties: ['openFile', 'multiSelections'],
-    }))
-  );
+    }));
+    if (!result.canceled) allowDocumentImportPaths(result.filePaths);
+    return result;
+  });
 
   ipcMain.on('shell:openExternal', (event, url: string) => {
     assertTrustedIpcSender(event);

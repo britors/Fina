@@ -11,6 +11,16 @@ function esc(s: string | null | undefined): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Neutraliza CSV/Formula Injection: campos que começam com =, +, -, @ (ou tab/CR)
+// são interpretados como fórmula pelo Excel/LibreOffice ao abrir o arquivo.
+// Como a descrição pode vir de fontes não confiáveis (OFX/CSV importado, Open
+// Finance), prefixamos com aspas simples para forçar interpretação como texto.
+function csvCell(s: string | null | undefined): string {
+  let value = String(s ?? '');
+  if (/^[=+\-@\t\r]/.test(value)) value = `'${value}`;
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
 function fmtBrl(n: number): string {
   return formatMainNumber(n, { style: 'currency', currency: 'BRL' });
 }
@@ -78,14 +88,14 @@ export function registerExportHandlers(): void {
 
     const header = localizeMainText('Data,Descrição,Categoria,Subcategoria,Conta,Tipo,Valor,Status,Observações');
     const lines = rows.map(r => [
-      r.date, `"${String(r.description).replace(/"/g, '""')}"`,
-      `"${String(r.category).replace(/"/g, '""')}"`,
-      `"${String(r.subcategory ?? '').replace(/"/g, '""')}"`,
-      `"${String(r.account).replace(/"/g, '""')}"`,
+      r.date, csvCell(String(r.description)),
+      csvCell(String(r.category)),
+      csvCell(String(r.subcategory ?? '')),
+      csvCell(String(r.account)),
       typeLabel(String(r.type)),
       String(r.amount),
       statusLabel(String(r.status)),
-      `"${String(r.notes ?? '').replace(/"/g, '""')}"`,
+      csvCell(String(r.notes ?? '')),
     ].join(','));
 
     writeFileSync(filePath, '﻿' + [header, ...lines].join('\n'), 'utf-8');
