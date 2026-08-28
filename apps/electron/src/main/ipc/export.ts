@@ -15,7 +15,7 @@ function esc(s: string | null | undefined): string {
 // são interpretados como fórmula pelo Excel/LibreOffice ao abrir o arquivo.
 // Como a descrição pode vir de fontes não confiáveis (OFX/CSV importado, Open
 // Finance), prefixamos com aspas simples para forçar interpretação como texto.
-function csvCell(s: string | null | undefined): string {
+export function csvCell(s: string | null | undefined): string {
   let value = String(s ?? '');
   if (/^[=+\-@\t\r]/.test(value)) value = `'${value}`;
   return `"${value.replace(/"/g, '""')}"`;

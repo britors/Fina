@@ -10,6 +10,7 @@ import { formatMainDate, formatMainNumber, resolveMainLocale } from '../i18n';
 import { localizeDialogOptions } from '../i18n';
 import { localizeMainHtml } from '../i18n';
 import { localizeMainText } from '../i18n';
+import { csvCell } from './export';
 
 export interface IRPFRendimento {
   category: string;
@@ -90,7 +91,12 @@ export function registerIRPFHandlers(): void {
     if (!filePath) return null;
 
     const lines: string[] = [];
-    const q = (s: string) => `"${localizeMainText(String(s)).replace(/"/g, '""')}"`;
+    // csvCell (ver export.ts) neutraliza CSV/Formula Injection: categorias,
+    // descrições de bens/dívidas etc. vêm de texto livre do usuário e, sem
+    // isso, um valor começando com =/+/-/@ seria interpretado como fórmula
+    // ao abrir o CSV no Excel/LibreOffice — mesmo risco que a exportação de
+    // transações já tinha corrigido.
+    const q = (s: string) => csvCell(localizeMainText(String(s)));
     const n = (v: number) => v.toFixed(2).replace('.', ',');
 
     lines.push(localizeMainText('FICHA;DESCRICAO;VALOR'));
