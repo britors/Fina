@@ -25,15 +25,20 @@ jobs:
         with:
           build-root-directory: apps/android
 
+      # Caminho absoluto de propósito: signingConfigs.release.storeFile em
+      # app/build.gradle.kts resolve `file(SIGNING_STORE_FILE)` relativo ao
+      # diretório do módulo (apps/android/app/), não à raiz do checkout nem
+      # ao working-directory deste step — um path relativo aqui já causou
+      # "Keystore file ... not found" (o arquivo foi decodificado num nível
+      # acima de onde o Gradle procurava).
       - name: Decode signing keystore
-        working-directory: apps/android
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.jks
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "${{ github.workspace }}/apps/android/app/release.jks"
 
       - name: Build signed .aab and .apk
         working-directory: apps/android
         env:
-          SIGNING_STORE_FILE: release.jks
+          SIGNING_STORE_FILE: ${{ github.workspace }}/apps/android/app/release.jks
           SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -41,8 +46,7 @@ jobs:
 
       - name: Remove decoded keystore
         if: always()
-        working-directory: apps/android
-        run: rm -f release.jks
+        run: rm -f "${{ github.workspace }}/apps/android/app/release.jks"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
