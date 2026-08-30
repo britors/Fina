@@ -22,6 +22,7 @@
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:win": "npm run build && electron-builder --win",
+    "dist:store": "npm run build && node scripts/build-store.mjs",
     "generate-icons": "node build/generate-icons.js"
   },
   "devDependencies": {

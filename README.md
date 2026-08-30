@@ -162,7 +162,8 @@ install.sh` (baixe o script primeiro se for usar essa variante).
 
 ### Windows
 
-Baixe o instalador `.exe` na [página de releases](https://github.com/britors/Fina/releases/latest) e execute-o.  
+Baixe o instalador `.exe` na [página de releases](https://github.com/britors/Fina/releases/latest) e execute-o.
+O pacote da Microsoft Store será disponibilizado após a aprovação no Partner Center.
 Compatível com Windows 10/11 (x64).
 
 ---
@@ -220,6 +221,7 @@ Acesse: **[github.com/britors/Fina/releases](https://github.com/britors/Fina/rel
 | openSUSE Tumbleweed / Leap 16.0/16.1 | `fina` | OBS (`home:rodrigosbrito:fina`) |
 | Fedora | `.rpm` | GitHub Actions → electron-builder |
 | Windows 10/11 | `.exe` (NSIS) | GitHub Actions → electron-builder |
+| Microsoft Store | MSIX/AppX assinado | GitHub Actions → Partner Center |
 
 ### Criar um release
 
@@ -229,6 +231,21 @@ git push origin v1.0.0
 ```
 
 O workflow `.github/workflows/release.yml` dispara automaticamente, gera os pacotes e cria o release com os artefatos (`.deb`, `.rpm`, `.exe`).
+
+### Microsoft Store
+
+Depois de reservar o produto no Partner Center, configure no repositório as
+variáveis `MS_STORE_IDENTITY_NAME`, `MS_STORE_PUBLISHER` e
+`MS_STORE_PUBLISHER_DISPLAY_NAME` com os valores exibidos em **Product
+identity**. Configure também os secrets `WINDOWS_CSC_LINK` (PFX em base64 ou
+URL privada) e `WINDOWS_CSC_KEY_PASSWORD`. O Subject do certificado precisa
+corresponder exatamente ao Publisher reservado.
+
+Execute manualmente o workflow **Microsoft Store package**. Ele gera o
+MSIX/AppX x64, verifica a assinatura Authenticode e disponibiliza o pacote
+como artifact privado por 14 dias para envio ao Partner Center. O instalador
+NSIS das releases continua sendo gerado separadamente e não depende dessas
+credenciais.
 
 **OBS (`home:rodrigosbrito:fina`) não é atualizado sozinho.** O pacote usa
 `_service` com `mode="manual"` (de propósito — evita baixar o `.rpm` de
@@ -285,6 +302,7 @@ npm start
 | `npm run dist` | Empacota para a plataforma atual |
 | `npm run dist:linux` | Gera `.deb` e `.rpm` |
 | `npm run dist:win` | Gera instalador `.exe` |
+| `npm run dist:store` | Gera MSIX/AppX assinado para o Partner Center (Windows) |
 
 ---
 

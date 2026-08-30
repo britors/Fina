@@ -1,0 +1,64 @@
+name: Microsoft Store package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Signed MSIX/AppX (x64)
+    runs-on: windows-latest
+    env:
+      MS_STORE_IDENTITY_NAME: ${{ vars.MS_STORE_IDENTITY_NAME }}
+      MS_STORE_PUBLISHER: ${{ vars.MS_STORE_PUBLISHER }}
+      MS_STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.MS_STORE_PUBLISHER_DISPLAY_NAME }}
+      WIN_CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+      WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Windows resvg binding
+        run: npm install --no-save --package-lock=false --ignore-scripts @resvg/resvg-js-win32-x64-msvc@2.6.2
+
+      - name: Generate icons
+        run: npm run generate-icons
+
+      - name: Rebuild native dependencies
+        run: npx electron-rebuild -f -w better-sqlite3-multiple-ciphers
+
+      - name: Test and typecheck
+        run: npm test && npm run typecheck
+
+      - name: Build signed Store package
+        working-directory: apps/electron
+        run: npm run dist:store
+
+      - name: Verify package signature
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem apps/electron/dist/Fina-Store-* | Select-Object -First 1
+          if (-not $package) { throw "Pacote da Microsoft Store não foi gerado" }
+          $signature = Get-AuthenticodeSignature $package.FullName
+          if ($signature.Status -ne "Valid") {
+            throw "Assinatura inválida: $($signature.Status) - $($signature.StatusMessage)"
+          }
+          Write-Host "Assinatura válida: $($signature.SignerCertificate.Subject)"
+
+      - name: Upload package for Partner Center
+        uses: actions/upload-artifact@v4
+        with:
+          name: fina-microsoft-store
+          path: apps/electron/dist/Fina-Store-*
+          if-no-files-found: error
+          retention-days: 14

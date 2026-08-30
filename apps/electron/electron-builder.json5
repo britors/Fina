@@ -62,6 +62,20 @@
     artifactName: "Fina-Setup-${version}.${ext}"
   },
 
+  // O target "appx" do electron-builder gera o pacote MSIX/AppX aceito pelo
+  // Partner Center. Estes três valores precisam ser copiados literalmente de
+  // Product identity na Microsoft Store; scripts/build-store.mjs falha cedo
+  // quando algum deles não foi configurado.
+  appx: {
+    identityName: "${env.MS_STORE_IDENTITY_NAME}",
+    publisher: "${env.MS_STORE_PUBLISHER}",
+    publisherDisplayName: "${env.MS_STORE_PUBLISHER_DISPLAY_NAME}",
+    applicationId: "Fina",
+    displayName: "Fina",
+    languages: ["pt-BR", "en-US"],
+    artifactName: "Fina-Store-${version}.${ext}"
+  },
+
   nsis: {
     oneClick: false,
     allowToChangeInstallationDirectory: true,
