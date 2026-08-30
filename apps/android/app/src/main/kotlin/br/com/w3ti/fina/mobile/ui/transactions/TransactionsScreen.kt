@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -55,6 +56,7 @@ fun TransactionsScreen(
     viewModel: TransactionsViewModel,
     onNewTransaction: () -> Unit,
     onSync: () -> Unit,
+    onEditTransaction: (String) -> Unit,
 ) {
     val outbox by viewModel.outbox.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
@@ -90,7 +92,11 @@ fun TransactionsScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
         ) {
             items(outbox, key = { it.clientId }) { transaction ->
-                TransactionRow(transaction, onDelete = { viewModel.deleteTransaction(transaction.clientId) })
+                TransactionRow(
+                    transaction,
+                    onDelete = { viewModel.deleteTransaction(transaction.clientId) },
+                    onEdit = { onEditTransaction(transaction.clientId) },
+                )
             }
         }
     }
@@ -134,7 +140,7 @@ private fun EmptyState(canLaunch: Boolean, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TransactionRow(transaction: PendingTransactionEntity, onDelete: () -> Unit) {
+private fun TransactionRow(transaction: PendingTransactionEntity, onDelete: () -> Unit, onEdit: () -> Unit) {
     val isExpense = transaction.type == "expense"
     val amountColor = if (isExpense) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
     val iconContainer = if (isExpense) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
@@ -185,6 +191,13 @@ private fun TransactionRow(transaction: PendingTransactionEntity, onDelete: () -
             // Rejeitado nunca mais vai ser reenviado sozinho — sem isso ficaria
             // preso na fila pra sempre, sem nenhuma acao possivel.
             if (transaction.syncStatus == SyncStatus.REJECTED) {
+                IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Corrigir lançamento",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
                     Icon(
                         Icons.Default.Close,

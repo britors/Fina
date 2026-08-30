@@ -259,8 +259,10 @@ export function insertConfirmedTransaction(input: {
   const payments = normalizePayments(data);
   const categories = normalizeCategories(data);
   const id = randomUUID();
-  insertTransaction(data, id, input.account_id, payments, categories);
-  applyBalanceEffect({ ...data, id, payments }, 1);
+  getDb().transaction(() => {
+    insertTransaction(data, id, input.account_id, payments, categories);
+    applyBalanceEffect({ ...data, id, payments }, 1);
+  })();
   return id;
 }
 

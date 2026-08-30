@@ -53,12 +53,6 @@
     "es-ES": "% del límite anual",
     "zh-CN": "年度限额的%"
   },
-  "(Nubank, Itaú, Bradesco, Santander) e": {
-    "pt-BR": "(Nubank, Itaú, Bradesco, Santander) e",
-    "en-US": "(Nubank, Itaú, Bradesco, Santander) and",
-    "es-ES": "(Nubank, Itaú, Bradesco, Santander) y",
-    "zh-CN": "（努班克、伊塔乌、布拉德斯科、桑坦德）和"
-  },
   "(opcional)": {
     "pt-BR": "(opcional)",
     "en-US": "(optional)",
@@ -1210,12 +1204,6 @@
     "en-US": "Category not found.",
     "es-ES": "Categoría no encontrada.",
     "zh-CN": "未找到类别。"
-  },
-  "Categoria padrão *": {
-    "pt-BR": "Categoria padrão *",
-    "en-US": "Default Category*",
-    "es-ES": "Categoría predeterminada*",
-    "zh-CN": "默认类别*"
   },
   "Categoria pai": {
     "pt-BR": "Categoria pai",
@@ -7577,12 +7565,6 @@
     "es-ES": "Seleccione la cuenta de origen.",
     "zh-CN": "选择源帐户。"
   },
-  "Selecione a conta e a categoria de destino.": {
-    "pt-BR": "Selecione a conta e a categoria de destino.",
-    "en-US": "Select the target account and category.",
-    "es-ES": "Seleccione la cuenta y la categoría de destino.",
-    "zh-CN": "选择目标账户和类别。"
-  },
   "Selecione ao menos um lançamento para salvar.": {
     "pt-BR": "Selecione ao menos um lançamento para salvar.",
     "en-US": "Select at least one release to save.",
@@ -9730,5 +9712,137 @@
     "en-US": "⚠️ Attention:",
     "es-ES": "⚠️ Atención:",
     "zh-CN": "⚠️注意："
+  },
+  "Este PDF não parece ser um extrato de conta do Bradesco.": {
+    "pt-BR": "Este PDF não parece ser um extrato de conta do Bradesco.",
+    "en-US": "This PDF does not appear to be a Bradesco account statement.",
+    "es-ES": "Este PDF no parece ser un extracto de cuenta de Bradesco.",
+    "zh-CN": "此 PDF 似乎不是 Bradesco 账户对账单。"
+  },
+  "Formato de arquivo não suportado.": {
+    "pt-BR": "Formato de arquivo não suportado.",
+    "en-US": "Unsupported file format.",
+    "es-ES": "Formato de archivo no compatible.",
+    "zh-CN": "不支持的文件格式。"
+  },
+  "O arquivo excede o limite de 25 MB.": {
+    "pt-BR": "O arquivo excede o limite de 25 MB.",
+    "en-US": "The file exceeds the 25 MB limit.",
+    "es-ES": "El archivo supera el límite de 25 MB.",
+    "zh-CN": "文件超过 25 MB 限制。"
+  },
+  "Tipo de importação inválido.": {
+    "pt-BR": "Tipo de importação inválido.",
+    "en-US": "Invalid import type.",
+    "es-ES": "Tipo de importación no válido.",
+    "zh-CN": "导入类型无效。"
+  },
+  "PDF de conta do Bradesco": {
+    "pt-BR": "PDF de conta do Bradesco",
+    "en-US": "Bradesco account PDF",
+    "es-ES": "PDF de cuenta de Bradesco",
+    "zh-CN": "Bradesco 账户 PDF"
+  },
+  "O que deseja importar? *": {
+    "pt-BR": "O que deseja importar? *",
+    "en-US": "What do you want to import? *",
+    "es-ES": "¿Qué desea importar? *",
+    "zh-CN": "您要导入什么？*"
+  },
+  "Débitos e receitas": {
+    "pt-BR": "Débitos e receitas",
+    "en-US": "Debits and income",
+    "es-ES": "Débitos e ingresos",
+    "zh-CN": "支出和收入"
+  },
+  "Somente débitos": {
+    "pt-BR": "Somente débitos",
+    "en-US": "Debits only",
+    "es-ES": "Solo débitos",
+    "zh-CN": "仅支出"
+  },
+  "Somente receitas": {
+    "pt-BR": "Somente receitas",
+    "en-US": "Income only",
+    "es-ES": "Solo ingresos",
+    "zh-CN": "仅收入"
+  },
+  "Dados de importação inválidos.": {
+    "pt-BR": "Dados de importação inválidos.",
+    "en-US": "Invalid import data.",
+    "es-ES": "Datos de importación no válidos.",
+    "zh-CN": "导入数据无效。"
+  },
+  "Selecione uma categoria padrão de despesas.": {
+    "pt-BR": "Selecione uma categoria padrão de despesas.",
+    "en-US": "Select a default expense category.",
+    "es-ES": "Seleccione una categoría de gastos predeterminada.",
+    "zh-CN": "请选择默认支出类别。"
+  },
+  "Selecione uma categoria padrão de receitas.": {
+    "pt-BR": "Selecione uma categoria padrão de receitas.",
+    "en-US": "Select a default income category.",
+    "es-ES": "Seleccione una categoría de ingresos predeterminada.",
+    "zh-CN": "请选择默认收入类别。"
+  },
+  "Categoria padrão para débitos *": {
+    "pt-BR": "Categoria padrão para débitos *",
+    "en-US": "Default category for debits *",
+    "es-ES": "Categoría predeterminada para débitos *",
+    "zh-CN": "默认支出类别 *"
+  },
+  "Categoria padrão para receitas *": {
+    "pt-BR": "Categoria padrão para receitas *",
+    "en-US": "Default category for income *",
+    "es-ES": "Categoría predeterminada para ingresos *",
+    "zh-CN": "默认收入类别 *"
+  },
+  "Não foi possível ler o extrato.": {
+    "pt-BR": "Não foi possível ler o extrato.",
+    "en-US": "The statement could not be read.",
+    "es-ES": "No se pudo leer el extracto.",
+    "zh-CN": "无法读取对账单。"
+  },
+  "Selecione a conta e as categorias padrão necessárias.": {
+    "pt-BR": "Selecione a conta e as categorias padrão necessárias.",
+    "en-US": "Select the account and the required default categories.",
+    "es-ES": "Seleccione la cuenta y las categorías predeterminadas necesarias.",
+    "zh-CN": "请选择账户和所需的默认类别。"
+  },
+  "Falha na importação: {value}": {
+    "pt-BR": "Falha na importação: {value}",
+    "en-US": "Import failed: {value}",
+    "es-ES": "Error de importación: {value}",
+    "zh-CN": "导入失败：{value}"
+  },
+  "Lendo e validando o extrato…": {
+    "pt-BR": "Lendo e validando o extrato…",
+    "en-US": "Reading and validating the statement…",
+    "es-ES": "Leyendo y validando el extracto…",
+    "zh-CN": "正在读取并验证对账单…"
+  },
+  "Falha ao ler o extrato: {value}": {
+    "pt-BR": "Falha ao ler o extrato: {value}",
+    "en-US": "Could not read the statement: {value}",
+    "es-ES": "No se pudo leer el extracto: {value}",
+    "zh-CN": "无法读取对账单：{value}"
+  },
+  "{value} transações prontas para importar.": {
+    "pt-BR": "{value} transações prontas para importar.",
+    "en-US": "{value} transactions ready to import.",
+    "es-ES": "{value} transacciones listas para importar.",
+    "zh-CN": "{value} 笔交易可供导入。"
+  },
+  "Nenhuma transação encontrada para o filtro selecionado.": {
+    "pt-BR": "Nenhuma transação encontrada para o filtro selecionado.",
+    "en-US": "No transactions found for the selected filter.",
+    "es-ES": "No se encontraron transacciones para el filtro seleccionado.",
+    "zh-CN": "所选筛选条件下未找到交易。"
+  },
+  "Importando transações…": {
+    "pt-BR": "Importando transações…",
+    "en-US": "Importing transactions…",
+    "es-ES": "Importando transacciones…",
+    "zh-CN": "正在导入交易…"
   }
 }

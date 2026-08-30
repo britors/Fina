@@ -21,7 +21,10 @@ class TransactionsViewModel(private val syncRepository: SyncRepository) : ViewMo
     val outbox: StateFlow<List<PendingTransactionEntity>> =
         syncRepository.outbox.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun submitTransaction(
+    fun transaction(clientId: String): PendingTransactionEntity? = outbox.value.firstOrNull { it.clientId == clientId }
+
+    fun saveTransaction(
+        clientId: String?,
         accountId: String,
         categoryId: String,
         description: String,
@@ -32,7 +35,11 @@ class TransactionsViewModel(private val syncRepository: SyncRepository) : ViewMo
         onSubmitted: () -> Unit,
     ) {
         viewModelScope.launch {
-            syncRepository.queueTransaction(accountId, categoryId, description, amount, type, date, notes)
+            if (clientId == null) {
+                syncRepository.queueTransaction(accountId, categoryId, description, amount, type, date, notes)
+            } else {
+                syncRepository.correctTransaction(clientId, accountId, categoryId, description, amount, type, date, notes)
+            }
             onSubmitted()
         }
     }

@@ -1,6 +1,7 @@
 package br.com.w3ti.fina.mobile.ui.transactions
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,10 +32,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import br.com.w3ti.fina.mobile.data.AccountEntity
 import br.com.w3ti.fina.mobile.data.CategoryEntity
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDate
 
 // So despesa por enquanto: lancar receita continua exclusivo do desktop
@@ -47,36 +55,74 @@ private const val TRANSACTION_TYPE = "expense"
 // so ficava desabilitado, sem explicar o motivo. Só remove os pontos de
 // milhar quando ha uma virgula decimal, pra nao quebrar "1500.00" digitado
 // sem vírgula.
-private fun parseAmountInput(raw: String): Double? {
+internal fun parseAmountInput(raw: String): Double? {
     val clean = raw.trim()
     if (clean.isEmpty()) return null
     return if (clean.contains(',')) clean.replace(".", "").replace(',', '.').toDoubleOrNull()
     else clean.toDoubleOrNull()
 }
 
+internal fun formatCurrencyDigits(rawDigits: String): String {
+    val digits = rawDigits.filter(Char::isDigit).takeLast(15)
+    if (digits.isEmpty()) return "0,00"
+    val padded = digits.padStart(3, '0')
+    val cents = padded.takeLast(2)
+    val whole = padded.dropLast(2).trimStart('0').ifEmpty { "0" }
+    val grouped = whole.reversed().chunked(3).joinToString(".").reversed()
+    return "$grouped,$cents"
+}
+
+internal fun amountToCurrencyDigits(amount: Double?): String = amount
+    ?.takeIf { it.isFinite() && it > 0 }
+    ?.let { BigDecimal.valueOf(it).movePointRight(2).setScale(0, RoundingMode.HALF_UP).toPlainString() }
+    .orEmpty()
+
+private object CurrencyVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val formatted = formatCurrencyDigits(text.text)
+        val originalLength = text.text.length
+        val mapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int =
+                (formatted.length - (originalLength - offset.coerceIn(0, originalLength))).coerceIn(0, formatted.length)
+
+            override fun transformedToOriginal(offset: Int): Int =
+                (originalLength - (formatted.length - offset.coerceIn(0, formatted.length))).coerceIn(0, originalLength)
+        }
+        return TransformedText(AnnotatedString(formatted), mapping)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NewTransactionScreen(viewModel: TransactionsViewModel, onBack: () -> Unit) {
+fun NewTransactionScreen(
+    viewModel: TransactionsViewModel,
+    onBack: () -> Unit,
+    editing: br.com.w3ti.fina.mobile.data.PendingTransactionEntity? = null,
+) {
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
 
-    var description by remember { mutableStateOf("") }
-    var amountText by remember { mutableStateOf("") }
-    var selectedAccount by remember { mutableStateOf<AccountEntity?>(null) }
-    var selectedCategory by remember { mutableStateOf<CategoryEntity?>(null) }
-    var notes by remember { mutableStateOf("") }
+    var description by remember(editing?.clientId) { mutableStateOf(editing?.description.orEmpty()) }
+    var amountDigits by remember(editing?.clientId) { mutableStateOf(amountToCurrencyDigits(editing?.amount)) }
+    var selectedAccount by remember(editing?.clientId, accounts) {
+        mutableStateOf(accounts.firstOrNull { it.id == editing?.accountId })
+    }
+    var selectedCategory by remember(editing?.clientId, categories) {
+        mutableStateOf(categories.firstOrNull { it.id == editing?.categoryId })
+    }
+    var notes by remember(editing?.clientId) { mutableStateOf(editing?.notes.orEmpty()) }
 
     // Arredonda pra centavos no ponto de entrada: evita que erro de ponto
     // flutuante binário (ex.: 0.1 + 0.2 != 0.3) se acumule ao longo da cadeia
     // sync -> Room -> desktop, já que o valor trafega como Double no protocolo.
-    val amount = parseAmountInput(amountText)?.let { Math.round(it * 100) / 100.0 }
-    val canSubmit = description.isNotBlank() && amount != null && amount > 0 &&
+    val amount = amountDigits.toLongOrNull()?.div(100.0)
+    val canSubmit = description.isNotBlank() && amount != null && amount.isFinite() && amount > 0 &&
         selectedAccount != null && selectedCategory != null
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Novo lançamento", fontWeight = FontWeight.SemiBold) },
+                title = { Text(if (editing == null) "Novo lançamento" else "Corrigir lançamento", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar") }
                 },
@@ -101,10 +147,12 @@ fun NewTransactionScreen(viewModel: TransactionsViewModel, onBack: () -> Unit) {
             )
 
             OutlinedTextField(
-                value = amountText,
-                onValueChange = { amountText = it },
+                value = amountDigits,
+                onValueChange = { value -> amountDigits = value.filter(Char::isDigit).take(15) },
                 label = { Text("Valor") },
                 prefix = { Text("R$ ") },
+                visualTransformation = CurrencyVisualTransformation,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             )
@@ -144,7 +192,8 @@ fun NewTransactionScreen(viewModel: TransactionsViewModel, onBack: () -> Unit) {
                 border = if (!canSubmit) BorderStroke(1.dp, MaterialTheme.colorScheme.outline) else null,
                 modifier = Modifier.padding(top = 28.dp, bottom = 16.dp).fillMaxWidth().height(52.dp),
                 onClick = {
-                    viewModel.submitTransaction(
+                    viewModel.saveTransaction(
+                        clientId = editing?.clientId,
                         accountId = selectedAccount!!.id,
                         categoryId = selectedCategory!!.id,
                         description = description.trim(),
@@ -155,7 +204,7 @@ fun NewTransactionScreen(viewModel: TransactionsViewModel, onBack: () -> Unit) {
                         onSubmitted = onBack,
                     )
                 },
-            ) { Text("SALVAR", style = MaterialTheme.typography.titleMedium) }
+            ) { Text(if (editing == null) "SALVAR" else "SALVAR E REENVIAR", style = MaterialTheme.typography.titleMedium) }
         }
     }
 }

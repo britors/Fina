@@ -46,7 +46,7 @@ function copyAssets() {
 async function buildTests() {
   await esbuild.build({
     ...shared,
-    entryPoints: ['tests/accounts.test.ts', 'tests/transactions.test.ts', 'tests/invoices.test.ts', 'tests/klavi.test.ts', 'tests/belvo.test.ts', 'tests/categories.test.ts', 'tests/categoryQueries.test.ts', 'tests/migrations.test.ts', 'tests/debts.test.ts', 'tests/family.test.ts', 'tests/irpf.test.ts', 'tests/i18n.test.ts', 'tests/mobileCrypto.test.ts'],
+    entryPoints: ['tests/accounts.test.ts', 'tests/transactions.test.ts', 'tests/invoices.test.ts', 'tests/klavi.test.ts', 'tests/belvo.test.ts', 'tests/categories.test.ts', 'tests/categoryQueries.test.ts', 'tests/migrations.test.ts', 'tests/debts.test.ts', 'tests/family.test.ts', 'tests/irpf.test.ts', 'tests/i18n.test.ts', 'tests/mobileCrypto.test.ts', 'tests/incrementalBackup.test.ts', 'tests/bradescoPdfParser.test.ts'],
     outdir: 'out/tests',
     platform: 'node',
     format: 'cjs',
@@ -65,7 +65,7 @@ async function build() {
       outfile: 'out/main/index.js',
       platform: 'node',
       format: 'cjs',
-      external: ['electron', 'better-sqlite3-multiple-ciphers', 'tesseract.js'],
+      external: ['electron', 'better-sqlite3-multiple-ciphers', 'tesseract.js', 'pdfjs-dist'],
     },
     {
       ...shared,

@@ -52,6 +52,9 @@ interface PendingTransactionDao {
     @Query("SELECT * FROM pending_transactions WHERE syncStatus = 'PENDING' ORDER BY createdAt")
     suspend fun getPending(): List<PendingTransactionEntity>
 
+    @Query("SELECT * FROM pending_transactions WHERE clientId = :clientId LIMIT 1")
+    suspend fun get(clientId: String): PendingTransactionEntity?
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(transaction: PendingTransactionEntity)
 

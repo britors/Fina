@@ -1,11 +1,16 @@
 declare global {
   interface Window {
     api: {
+      getPathForFile(file: File): string;
       invoke(channel: string, data?: unknown): Promise<unknown>;
       send(channel: string, data?: unknown): void;
       on(channel: string, cb: (...args: unknown[]) => void): void;
     };
   }
+}
+
+export function getPathForFile(file: File): string {
+  return window.api.getPathForFile(file);
 }
 
 export async function invoke<T>(channel: string, data?: unknown): Promise<T> {

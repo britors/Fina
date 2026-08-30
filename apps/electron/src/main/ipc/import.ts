@@ -1,13 +1,15 @@
 import { ipcMain } from 'electron';
 import { randomUUID, createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { getDb } from '../database';
 import { parseOFX } from '../import/ofx-parser';
 import { parseCSV } from '../import/csv-parser';
+import { parseBradescoPdfPages } from '../import/bradesco-pdf-parser';
+import { extractPdfText } from '../import/pdf-text';
 import { adjustBalance, balanceDelta } from './transactions';
 import { attachToInvoice } from '../invoices';
 import { suggestCategoryFromHistory, learnCategoryRule } from './categorySuggestion';
-import type { ImportPreview, ImportPreviewRow, TransactionType } from '../../shared/types';
+import type { ImportDirection, ImportPreview, ImportPreviewRow, TransactionType } from '../../shared/types';
 
 function txHash(date: string, amount: number, description: string): string {
   return createHash('md5').update(`${date}|${amount}|${description}`).digest('hex');
@@ -66,14 +68,23 @@ function suggestCategory(description: string, type: TransactionType): { id: stri
 }
 
 export function registerImportHandlers(): void {
-  ipcMain.handle('import:preview', (_e, filePath: string): ImportPreview => {
-    const content = readFileSync(filePath, 'utf-8');
+  ipcMain.handle('import:preview', async (_e, payload: { filePath: string; direction?: ImportDirection }): Promise<ImportPreview> => {
+    const filePath = payload?.filePath;
+    if (typeof filePath !== 'string' || !/\.(csv|ofx|qfx|pdf)$/i.test(filePath)) throw new Error('Formato de arquivo não suportado.');
+    if (statSync(filePath).size > 25 * 1024 * 1024) throw new Error('O arquivo excede o limite de 25 MB.');
     const lower   = filePath.toLowerCase();
     const isOfx   = lower.endsWith('.ofx') || lower.endsWith('.qfx');
-    const format: 'csv' | 'ofx' = isOfx ? 'ofx' : 'csv';
+    const isPdf   = lower.endsWith('.pdf');
+    const format: ImportPreview['format'] = isPdf ? 'pdf-bradesco' : isOfx ? 'ofx' : 'csv';
 
-    const ofxResult = isOfx ? parseOFX(content) : null;
-    const raw: ImportPreviewRow[] = ofxResult ? ofxResult.rows : parseCSV(content);
+    const content = isPdf ? null : readFileSync(filePath, 'utf-8');
+    const ofxResult = isOfx && content !== null ? parseOFX(content) : null;
+    let raw: ImportPreviewRow[] = isPdf
+      ? parseBradescoPdfPages(await extractPdfText(filePath))
+      : ofxResult ? ofxResult.rows : parseCSV(content ?? '');
+    const direction = payload.direction ?? 'both';
+    if (!['expenses', 'income', 'both'].includes(direction)) throw new Error('Tipo de importação inválido.');
+    if (direction !== 'both') raw = raw.filter(row => row.type === (direction === 'income' ? 'income' : 'expense'));
 
     for (const row of raw) {
       const hash = txHash(row.date, row.amount, row.description);
@@ -96,12 +107,23 @@ export function registerImportHandlers(): void {
   ipcMain.handle('import:confirm', (_e, payload: {
     rows: ImportPreviewRow[];
     accountId: string;
-    categoryId: string;
+    expenseCategoryId?: string;
+    incomeCategoryId?: string;
     useSuggestions?: boolean;
-  }): { imported: number; skipped: number } => {
+  }): { imported: number; skipped: number; dateFrom: string | null; dateTo: string | null } => {
     const db = getDb();
+    if (!Array.isArray(payload.rows) || typeof payload.accountId !== 'string') throw new Error('Dados de importação inválidos.');
+    const categoryType = db.prepare('SELECT type FROM categories WHERE id = ?');
+    const requiredTypes = new Set(payload.rows.map(row => row.type));
+    if (requiredTypes.has('expense') && (typeof payload.expenseCategoryId !== 'string' || (categoryType.get(payload.expenseCategoryId) as { type?: string } | undefined)?.type !== 'expense')) {
+      throw new Error('Selecione uma categoria padrão de despesas.');
+    }
+    if (requiredTypes.has('income') && (typeof payload.incomeCategoryId !== 'string' || (categoryType.get(payload.incomeCategoryId) as { type?: string } | undefined)?.type !== 'income')) {
+      throw new Error('Selecione uma categoria padrão de receitas.');
+    }
     let imported = 0;
     let skipped  = 0;
+    const importedDates: string[] = [];
 
     const insert = db.prepare(`
       INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring)
@@ -124,7 +146,7 @@ export function registerImportHandlers(): void {
 
     const doImport = db.transaction((rows: ImportPreviewRow[]) => {
       for (const row of rows) {
-        if (!Number.isFinite(row.amount) || row.amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
+        if (!Number.isFinite(row.amount) || row.amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(row.date) || !['income', 'expense'].includes(row.type)) {
           skipped++;
           continue;
         }
@@ -136,7 +158,9 @@ export function registerImportHandlers(): void {
         }
         const notes = row.fitid ? `FITID:${row.fitid}|HASH:${hash}` : `HASH:${hash}`;
         const id = randomUUID();
-        const categoryId = payload.useSuggestions && row.suggested_category_id ? row.suggested_category_id : payload.categoryId;
+        const categoryId = payload.useSuggestions && row.suggested_category_id
+          ? row.suggested_category_id
+          : row.type === 'income' ? payload.incomeCategoryId! : payload.expenseCategoryId!;
         learnCategoryRule(row.description, row.type as TransactionType, categoryId);
         insert.run(id, payload.accountId, categoryId,
                    row.description, row.amount, row.type as TransactionType,
@@ -150,10 +174,16 @@ export function registerImportHandlers(): void {
           if (invoiceId) linkInvoice.run(invoiceId, paymentId);
         }
         imported++;
+        importedDates.push(row.date);
       }
     });
 
     doImport(payload.rows);
-    return { imported, skipped };
+    return {
+      imported,
+      skipped,
+      dateFrom: importedDates.length ? importedDates.reduce((a, b) => a < b ? a : b) : null,
+      dateTo: importedDates.length ? importedDates.reduce((a, b) => a > b ? a : b) : null,
+    };
   });
 }

@@ -149,6 +149,10 @@ function validatePatch(value: unknown): IncrementalPatch {
     documentBytes += Math.floor(data.length * 0.75);
     if (documentBytes > MAX_DOCUMENT_TOTAL_BYTES) throw new Error('Patch incremental excede o limite de anexos.');
   }
+  const deletedDocumentIds = new Set((deleted.financial_documents ?? []).map(row => row.id));
+  if ((patch.tables.financial_documents ?? []).some(row => deletedDocumentIds.has(String(row.id)))) {
+    throw new Error('Patch incremental inválido.');
+  }
   return { ...(patch as IncrementalPatch), deleted, document_files: documentFiles };
 }
 
@@ -285,31 +289,83 @@ function roundNumber(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function prepareDocumentRows(patch: IncrementalPatch, generatedAt: string): { rows: Row[]; createdPaths: string[] } {
+export interface StagedDocument {
+  tempPath: string;
+  targetPath: string;
+  previousPath?: string;
+}
+
+export class FileMutationJournal {
+  private readonly backups: { original: string; backup: string }[] = [];
+  private readonly installed: string[] = [];
+
+  remove(filePath: string): void {
+    if (!fs.existsSync(filePath) || this.backups.some(item => item.original === filePath)) return;
+    const backup = `${filePath}.rollback-${process.pid}-${randomBytes(8).toString('hex')}`;
+    fs.renameSync(filePath, backup);
+    this.backups.push({ original: filePath, backup });
+  }
+
+  install(staged: StagedDocument): void {
+    if (staged.previousPath && staged.previousPath !== staged.targetPath) this.remove(staged.previousPath);
+    this.remove(staged.targetPath);
+    fs.renameSync(staged.tempPath, staged.targetPath);
+    this.installed.push(staged.targetPath);
+  }
+
+  rollback(staged: StagedDocument[]): void {
+    for (const target of this.installed.reverse()) {
+      try { fs.rmSync(target, { force: true }); } catch { /* continua restaurando os demais */ }
+    }
+    for (const item of this.backups.reverse()) {
+      try { if (fs.existsSync(item.backup)) fs.renameSync(item.backup, item.original); } catch { /* melhor esforço */ }
+    }
+    for (const item of staged) {
+      try { fs.rmSync(item.tempPath, { force: true }); } catch { /* melhor esforço */ }
+    }
+  }
+
+  commit(staged: StagedDocument[]): void {
+    for (const item of this.backups) {
+      try { fs.rmSync(item.backup, { force: true }); } catch { /* limpeza posterior é segura */ }
+    }
+    for (const item of staged) {
+      try { fs.rmSync(item.tempPath, { force: true }); } catch { /* limpeza posterior é segura */ }
+    }
+  }
+}
+
+function prepareDocumentRows(patch: IncrementalPatch, generatedAt: string): { rows: Row[]; staged: StagedDocument[] } {
   const sourceRows = patch.tables.financial_documents ?? [];
   const rows: Row[] = [];
-  const createdPaths: string[] = [];
+  const staged: StagedDocument[] = [];
   const documentsDir = path.join(app.getPath('userData'), 'documents');
   fs.mkdirSync(documentsDir, { recursive: true });
 
-  for (const row of filterFreshRows('financial_documents', sourceRows, generatedAt)) {
-    const id = String(row.id);
-    const data = patch.document_files[id];
-    if (typeof data !== 'string') throw new Error(`O patch não contém o arquivo do documento ${row.filename ?? id}.`);
-    const bytes = Buffer.from(data, 'base64');
-    if (bytes.length > MAX_DOCUMENT_BYTES) throw new Error('O anexo do patch excede o limite permitido.');
-    const hash = createHash('sha256').update(bytes).digest('hex');
-    if (row.sha256 && row.sha256 !== hash) throw new Error(`O anexo do documento ${row.filename ?? id} está corrompido.`);
-    const filename = String(row.filename ?? 'documento').replace(/[\\/]/g, '_');
-    const targetPath = path.join(documentsDir, `${id}-${filename}`);
-    const existed = fs.existsSync(targetPath);
-    if (!existed || createHash('sha256').update(fs.readFileSync(targetPath)).digest('hex') !== hash) {
-      fs.writeFileSync(targetPath, bytes, { mode: 0o600 });
-      if (!existed) createdPaths.push(targetPath);
+  try {
+    for (const row of filterFreshRows('financial_documents', sourceRows, generatedAt)) {
+      const id = String(row.id);
+      const data = patch.document_files[id];
+      if (typeof data !== 'string') throw new Error(`O patch não contém o arquivo do documento ${row.filename ?? id}.`);
+      const bytes = Buffer.from(data, 'base64');
+      if (bytes.length > MAX_DOCUMENT_BYTES) throw new Error('O anexo do patch excede o limite permitido.');
+      const hash = createHash('sha256').update(bytes).digest('hex');
+      if (row.sha256 && row.sha256 !== hash) throw new Error(`O anexo do documento ${row.filename ?? id} está corrompido.`);
+      const filename = String(row.filename ?? 'documento').replace(/[\\/]/g, '_');
+      const targetPath = path.join(documentsDir, `${id}-${filename}`);
+      const existing = getDb().prepare('SELECT stored_path FROM financial_documents WHERE id = ?').get(id) as { stored_path?: string } | undefined;
+      if (!fs.existsSync(targetPath) || createHash('sha256').update(fs.readFileSync(targetPath)).digest('hex') !== hash) {
+        const tempPath = path.join(documentsDir, `.import-${id}-${randomBytes(8).toString('hex')}.tmp`);
+        fs.writeFileSync(tempPath, bytes, { mode: 0o600, flag: 'wx' });
+        staged.push({ tempPath, targetPath, previousPath: existing?.stored_path });
+      }
+      rows.push({ ...row, stored_path: targetPath });
     }
-    rows.push({ ...row, stored_path: targetPath });
+  } catch (error) {
+    for (const item of staged) fs.rmSync(item.tempPath, { force: true });
+    throw error;
   }
-  return { rows, createdPaths };
+  return { rows, staged };
 }
 
 function collectDeletedRows(sinceIso: string): Record<string, { id: string; deleted_at: string }[]> {
@@ -324,7 +380,7 @@ function collectDeletedRows(sinceIso: string): Record<string, { id: string; dele
   }, {});
 }
 
-function deleteRowsFromPatch(table: string, rows: { id: string; deleted_at: string }[]): void {
+function deleteRowsFromPatch(table: string, rows: { id: string; deleted_at: string }[], files: FileMutationJournal): void {
   const timestampColumn = tableTimestamp(table);
   const statement = getDb().prepare(`SELECT ${timestampColumn ?? 'NULL'} AS timestamp FROM ${table} WHERE id = ?`);
   const deleteStatement = getDb().prepare(`DELETE FROM ${table} WHERE id = ?`);
@@ -333,7 +389,7 @@ function deleteRowsFromPatch(table: string, rows: { id: string; deleted_at: stri
     if (local?.timestamp && local.timestamp > row.deleted_at) continue;
     if (table === 'financial_documents') {
       const document = getDb().prepare('SELECT stored_path FROM financial_documents WHERE id = ?').get(row.id) as { stored_path?: string } | undefined;
-      if (document?.stored_path) fs.rmSync(document.stored_path, { force: true });
+      if (document?.stored_path) files.remove(document.stored_path);
     }
     deleteStatement.run(row.id);
   }
@@ -456,6 +512,7 @@ function upsertRows(table: string, rows: Row[], forceInsert: boolean, generatedA
 export function importIncrementalPatch(filePath: string, password?: string): void {
   const patch = decodePatch(fs.readFileSync(filePath, 'utf-8'), password);
   const documentState = prepareDocumentRows(patch, patch.generated_at);
+  const files = new FileMutationJournal();
   const db = getDb();
 
   try {
@@ -503,15 +560,21 @@ export function importIncrementalPatch(filePath: string, password?: string): voi
       }
 
       for (const [table, rows] of Object.entries(patch.deleted)) {
-        deleteRowsFromPatch(table, rows);
+        deleteRowsFromPatch(table, rows, files);
       }
 
       // Recalcula somente contas locais. Contas Open Finance usam a base
       // remota mais o delta manual, preservado no merge acima.
       recomputeAllAccountBalances();
+
+      // Só troca os arquivos finais quando todo o trabalho SQL já passou. Se
+      // qualquer rename falhar, a transação ainda está aberta e o catch
+      // restaura tanto o banco quanto os arquivos anteriores.
+      for (const staged of documentState.staged) files.install(staged);
     })();
+    files.commit(documentState.staged);
   } catch (error) {
-    for (const createdPath of documentState.createdPaths) fs.rmSync(createdPath, { force: true });
+    files.rollback(documentState.staged);
     throw error;
   }
 }
