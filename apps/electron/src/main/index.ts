@@ -46,6 +46,7 @@ import { runAutoBackup, startAutoBackupScheduler } from './autobackup';
 import { runBackgroundTasksAndExit } from './backgroundRunner';
 import { registerBackgroundServiceHandlers } from './ipc/backgroundService';
 import { localizeDialogOptions, localizeMainText, resolveMainLocale } from './i18n';
+import { isNewerDesktopVersion, selectLatestDesktopRelease, type GitHubRelease } from './desktopRelease';
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -232,7 +233,7 @@ function registerHandlers(): void {
     const isAur = app.getAppPath().startsWith('/usr/');
     const options = {
       hostname: 'api.github.com',
-      path: '/repos/britors/Fina/releases/latest',
+      path: '/repos/britors/Fina/releases?per_page=30',
       headers: { 'User-Agent': 'fina-app' },
     };
     const req = https.get(options, (res) => {
@@ -240,19 +241,22 @@ function registerHandlers(): void {
       res.on('data', (chunk: string) => data += chunk);
       res.on('end', () => {
         try {
-          const json = JSON.parse(data);
-          const latestVersion = (json.tag_name ?? '').replace(/^v/, '');
-          const hasUpdate = latestVersion !== '' && latestVersion !== currentVersion;
-          resolve({ currentVersion, latestVersion, hasUpdate, isAur, releaseUrl: json.html_url ?? '' });
+          if (res.statusCode !== 200) throw new Error(`GitHub respondeu HTTP ${res.statusCode ?? 0}`);
+          const releases = JSON.parse(data) as GitHubRelease[];
+          const release = selectLatestDesktopRelease(releases);
+          if (!release) throw new Error('desktop-release-not-found');
+          const latestVersion = release?.tag_name.slice(1) ?? '';
+          const hasUpdate = isNewerDesktopVersion(latestVersion, currentVersion);
+          resolve({ currentVersion, latestVersion, hasUpdate, isAur, releaseUrl: release?.html_url ?? '' });
         } catch {
-          resolve({ currentVersion, latestVersion: '', hasUpdate: false, isAur, releaseUrl: '' });
+          resolve({ currentVersion, latestVersion: '', hasUpdate: false, isAur, releaseUrl: '', checkFailed: true });
         }
       });
     });
-    req.on('error', () => resolve({ currentVersion, latestVersion: '', hasUpdate: false, isAur, releaseUrl: '' }));
+    req.on('error', () => resolve({ currentVersion, latestVersion: '', hasUpdate: false, isAur, releaseUrl: '', checkFailed: true }));
     req.setTimeout(5000, () => {
       req.destroy();
-      resolve({ currentVersion, latestVersion: '', hasUpdate: false, isAur, releaseUrl: '' });
+      resolve({ currentVersion, latestVersion: '', hasUpdate: false, isAur, releaseUrl: '', checkFailed: true });
     });
   }));
 

@@ -1,6 +1,6 @@
 {
   "name": "fina",
-  "version": "18.2.0",
+  "version": "18.2.1",
   "description": "Gerenciador de finanças pessoais",
   "author": {
     "name": "Rodrigo Brito",
@@ -12,17 +12,18 @@
   },
   "main": "out/main/index.js",
   "scripts": {
-    "build": "node esbuild.config.js",
+    "build": "node esbuild.config.js --production",
+    "build:dev": "node esbuild.config.js",
     "watch": "node esbuild.config.js --watch",
     "start": "electron .",
     "typecheck": "tsc --noEmit",
     "build:tests": "node esbuild.config.js --tests",
     "test:i18n-coverage": "node scripts/i18n-inventory.mjs --catalog-check --quiet && node scripts/i18n-inventory.mjs --migrated --check --quiet",
-    "test": "npm run test:i18n-coverage && node esbuild.config.js --tests && node --test out/tests/accounts.test.js out/tests/transactions.test.js out/tests/invoices.test.js out/tests/klavi.test.js out/tests/belvo.test.js out/tests/categories.test.js out/tests/categoryQueries.test.js out/tests/migrations.test.js out/tests/debts.test.js out/tests/family.test.js out/tests/irpf.test.js out/tests/i18n.test.js out/tests/mobileCrypto.test.js out/tests/incrementalBackup.test.js out/tests/bradescoPdfParser.test.js",
-    "dist": "npm run build && electron-builder",
-    "dist:linux": "npm run build && electron-builder --linux",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:store": "npm run build && node scripts/build-store.mjs",
+    "test": "npm run test:i18n-coverage && node esbuild.config.js --tests && node --test out/tests/accounts.test.js out/tests/transactions.test.js out/tests/invoices.test.js out/tests/klavi.test.js out/tests/belvo.test.js out/tests/categories.test.js out/tests/categoryQueries.test.js out/tests/migrations.test.js out/tests/debts.test.js out/tests/family.test.js out/tests/irpf.test.js out/tests/i18n.test.js out/tests/mobileCrypto.test.js out/tests/incrementalBackup.test.js out/tests/bradescoPdfParser.test.js out/tests/desktopRelease.test.js",
+    "dist": "npm run generate-icons && npm run build && electron-builder",
+    "dist:linux": "npm run generate-icons && npm run build && electron-builder --linux",
+    "dist:win": "npm run generate-icons && npm run build && electron-builder --win",
+    "dist:store": "npm run generate-icons && npm run build && node scripts/build-store.mjs",
     "generate-icons": "node build/generate-icons.js"
   },
   "devDependencies": {

@@ -72,6 +72,7 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
+          make_latest: false
           files: |
             apps/electron/dist/*.deb
             apps/electron/dist/*.rpm
@@ -140,7 +141,19 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
+          make_latest: false
           files: |
             apps/electron/dist/*.exe
             apps/electron/dist/latest.yml
             apps/electron/dist/*.blockmap
+
+  mark-desktop-latest:
+    name: Mark complete desktop release as latest
+    needs: [release-linux, release-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark release as latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "${{ github.ref_name }}" --latest

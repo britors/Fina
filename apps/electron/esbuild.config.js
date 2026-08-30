@@ -43,10 +43,14 @@ function copyAssets() {
   }
 }
 
+function cleanOutput() {
+  fs.rmSync('out', { recursive: true, force: true });
+}
+
 async function buildTests() {
   await esbuild.build({
     ...shared,
-    entryPoints: ['tests/accounts.test.ts', 'tests/transactions.test.ts', 'tests/invoices.test.ts', 'tests/klavi.test.ts', 'tests/belvo.test.ts', 'tests/categories.test.ts', 'tests/categoryQueries.test.ts', 'tests/migrations.test.ts', 'tests/debts.test.ts', 'tests/family.test.ts', 'tests/irpf.test.ts', 'tests/i18n.test.ts', 'tests/mobileCrypto.test.ts', 'tests/incrementalBackup.test.ts', 'tests/bradescoPdfParser.test.ts'],
+    entryPoints: ['tests/accounts.test.ts', 'tests/transactions.test.ts', 'tests/invoices.test.ts', 'tests/klavi.test.ts', 'tests/belvo.test.ts', 'tests/categories.test.ts', 'tests/categoryQueries.test.ts', 'tests/migrations.test.ts', 'tests/debts.test.ts', 'tests/family.test.ts', 'tests/irpf.test.ts', 'tests/i18n.test.ts', 'tests/mobileCrypto.test.ts', 'tests/incrementalBackup.test.ts', 'tests/bradescoPdfParser.test.ts', 'tests/desktopRelease.test.ts'],
     outdir: 'out/tests',
     platform: 'node',
     format: 'cjs',
@@ -56,6 +60,9 @@ async function buildTests() {
 }
 
 async function build() {
+  // Testes também usam out/. Não deixe testes nem artefatos antigos entrarem
+  // no app.asar, que inclui out/**/*.
+  if (!isWatch) cleanOutput();
   copyAssets();
 
   const configs = [
