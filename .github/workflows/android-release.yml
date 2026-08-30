@@ -51,6 +51,8 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
+          # Não assumir /releases/latest: o atualizador desktop espera latest.yml.
+          make_latest: false
           files: |
             apps/android/app/build/outputs/bundle/release/*.aab
             apps/android/app/build/outputs/apk/release/*.apk

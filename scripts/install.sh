@@ -45,6 +45,18 @@ download_release_assets() {
   local release_json
   release_json="$(curl -fsSL "$api_url")"
 
+  # Nunca tente instalar uma release Android caso /latest tenha sido
+  # configurado incorretamente no GitHub.
+  local resolved_tag
+  resolved_tag="$(printf '%s' "$release_json" \
+    | grep -m1 -Eo '"tag_name": *"[^"]+"' \
+    | sed -E 's/.*"([^"]+)"/\1/')"
+  if ! printf '%s' "$resolved_tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "Erro: '$resolved_tag' não é uma release desktop estável do Fina." >&2
+    echo "Confira https://github.com/$REPO/releases e tente novamente." >&2
+    exit 1
+  fi
+
   local urls=()
   mapfile -t urls < <(printf '%s' "$release_json" \
     | grep -Eo "\"browser_download_url\": *\"[^\"]*${suffix}\"" \

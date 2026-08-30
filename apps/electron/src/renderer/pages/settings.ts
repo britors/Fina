@@ -852,6 +852,7 @@ type UpdateInfo = {
   hasUpdate: boolean;
   isAur: boolean;
   releaseUrl: string;
+  checkFailed?: boolean;
 };
 
 // O box de atualização é recriado a cada visita à página; o listener do
@@ -991,7 +992,7 @@ function renderManualUpdateBox(el: HTMLElement): void {
 
     const info = await invoke<UpdateInfo>('app:checkUpdate').catch(() => null);
 
-    if (!info) {
+    if (!info || info.checkFailed) {
       sub.textContent = 'Não foi possível verificar. Verifique sua conexão.';
       btn.textContent = 'Tentar novamente';
       btn.disabled = false;
