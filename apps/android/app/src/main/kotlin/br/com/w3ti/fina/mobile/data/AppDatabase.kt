@@ -37,11 +37,14 @@ abstract class AppDatabase : RoomDatabase() {
             val backup = if (plaintext) movePlaintextAside(databaseFile) else null
 
             try {
+                // SupportOpenHelperFactory conserva a chave para abrir novas
+                // conexoes do pool sob demanda. Entregue uma copia propria à
+                // factory antes de limpar o buffer temporario no finally.
                 val database = Room.databaseBuilder(context, AppDatabase::class.java, DATABASE_NAME)
-                    .openHelperFactory(SupportOpenHelperFactory(passphrase))
+                    .openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf()))
                     .build()
-                // Room abre sob demanda, mas a factory conserva esta mesma
-                // ByteArray. Abra agora antes de zerá-la no finally.
+                // Force a abertura inicial para detectar imediatamente erros
+                // de chave ou de migracao.
                 database.openHelper.writableDatabase
                 if (snapshot != null) restoreSnapshot(database, snapshot)
                 backup?.deleteRecursively()
