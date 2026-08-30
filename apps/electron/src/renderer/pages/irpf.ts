@@ -1,5 +1,5 @@
 import { td } from '../i18n';
-import { invoke } from '../api';
+import { getPathForFile, invoke } from '../api';
 import { formatCurrency } from '../../shared/utils';
 import { setTopbarActions } from '../components/topbar';
 import { showAlert } from '../components/alertDialog';
@@ -276,7 +276,7 @@ async function openImportModal(): Promise<void> {
     const fileInput = overlay.querySelector<HTMLInputElement>('#imp-file')!;
     const file = fileInput.files?.[0];
     if (!file) { showAlert('Selecione um arquivo CSV.'); return; }
-    const filePath = (file as File & { path?: string }).path ?? '';
+    const filePath = getPathForFile(file);
     if (!filePath) { showAlert('Não foi possível ler o caminho do arquivo.'); return; }
 
     previewData = await invoke<IRPFImportPreview>('irpf:previewImport', filePath);

@@ -13,6 +13,13 @@ import kotlinx.coroutines.flow.Flow
 
 data class SyncOutcome(val created: Int, val duplicate: Int, val rejected: Int)
 
+internal fun validatePendingTransaction(description: String, amount: Double, type: String, date: String) {
+    require(description.isNotBlank()) { "Informe uma descrição." }
+    require(amount.isFinite() && amount > 0) { "Informe um valor financeiro válido." }
+    require(type == "expense") { "O Fina Mobile aceita apenas despesas." }
+    require(runCatching { java.time.LocalDate.parse(date) }.isSuccess) { "Informe uma data válida." }
+}
+
 /**
  * Ponto unico entre a UI e o protocolo de sincronizacao: abre a sessao TCP
  * (via [SyncClient]), decide se precisa parear primeiro, atualiza o cache
@@ -67,6 +74,7 @@ class SyncRepository(
         date: String,
         notes: String?,
     ) {
+        validatePendingTransaction(description, amount, type, date)
         pendingTransactionDao.insert(
             PendingTransactionEntity(
                 clientId = UUID.randomUUID().toString(),
@@ -79,6 +87,33 @@ class SyncRepository(
                 notes = notes,
                 createdAt = System.currentTimeMillis(),
                 syncStatus = SyncStatus.PENDING,
+            ),
+        )
+    }
+
+    suspend fun correctTransaction(
+        clientId: String,
+        accountId: String,
+        categoryId: String,
+        description: String,
+        amount: Double,
+        type: String,
+        date: String,
+        notes: String?,
+    ) {
+        validatePendingTransaction(description, amount, type, date)
+        val current = pendingTransactionDao.get(clientId) ?: throw IllegalArgumentException("Lançamento não encontrado.")
+        pendingTransactionDao.update(
+            current.copy(
+                accountId = accountId,
+                categoryId = categoryId,
+                description = description,
+                amount = amount,
+                type = type,
+                date = date,
+                notes = notes,
+                syncStatus = SyncStatus.PENDING,
+                rejectionReason = null,
             ),
         )
     }

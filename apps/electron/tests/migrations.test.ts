@@ -3,6 +3,27 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { applyMigrationAtomically } from '../src/main/database';
+
+test('confirma schema e marcador da migração na mesma transação', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec('CREATE TABLE schema_migrations (filename TEXT PRIMARY KEY); CREATE TABLE sample (id TEXT PRIMARY KEY);');
+    assert.throws(() => applyMigrationAtomically(db, 'broken.sql', `
+      ALTER TABLE sample ADD COLUMN value TEXT;
+      INSERT INTO table_that_does_not_exist VALUES (1);
+    `));
+
+    const columns = db.prepare('PRAGMA table_info(sample)').all() as { name: string }[];
+    assert.equal(columns.some(column => column.name === 'value'), false);
+    assert.equal(db.prepare('SELECT 1 FROM schema_migrations WHERE filename = ?').get('broken.sql'), undefined);
+
+    applyMigrationAtomically(db, 'ok.sql', 'ALTER TABLE sample ADD COLUMN value TEXT;');
+    assert.ok(db.prepare('SELECT 1 FROM schema_migrations WHERE filename = ?').get('ok.sql'));
+  } finally {
+    db.close();
+  }
+});
 
 test('executa toda a cadeia de migrações e cria a hierarquia de categorias', () => {
   const db = new DatabaseSync(':memory:');

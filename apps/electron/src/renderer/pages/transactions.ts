@@ -1,5 +1,5 @@
 import { td } from '../i18n';
-import { invoke } from '../api';
+import { getPathForFile, invoke } from '../api';
 import { isBrazilLocale, locale } from '../i18n';
 import { formatCurrency, formatDate, calculateMonthlySummary, isCreditLikeAccountType, isPixEligibleAccountType, isVoucherAccountType } from '../../shared/utils';
 import { openModal } from '../components/modal';
@@ -129,7 +129,19 @@ export async function render(el: HTMLElement): Promise<void> {
     const dateTo   = `${toYear}-${String(toMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     await invoke('export:csv', { dateFrom, dateTo, type: typeFilter || undefined });
   });
-  document.getElementById('btn-import')?.addEventListener('click', () => openImportModal());
+  document.getElementById('btn-import')?.addEventListener('click', () => openImportModal(async ({ dateFrom, dateTo }) => {
+    const [fromY, fromM] = dateFrom.split('-').map(Number);
+    const [toY, toM] = dateTo.split('-').map(Number);
+    fromYear = fromY; fromMonth = fromM;
+    toYear = toY; toMonth = toM;
+    typeFilter = '';
+    ownerFilter = '';
+    categoryFilter = '';
+    accountFilter = '';
+    statusFilter = '';
+    weekdayFilter = null;
+    await renderPage();
+  }));
 
   async function renderPage(): Promise<void> {
     const dateFrom = `${fromYear}-${String(fromMonth).padStart(2, '0')}-01`;
@@ -798,7 +810,7 @@ async function checkCategorySuggestion(overlay: HTMLElement): Promise<void> {
   });
 }
 
-function openImportModal(): void {
+function openImportModal(onImported: (range: { dateFrom: string; dateTo: string }) => Promise<void>): void {
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.innerHTML = `
@@ -810,11 +822,19 @@ function openImportModal(): void {
       <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
         <div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.2);border-radius:8px;padding:12px;font-size:0.82rem;color:var(--text-2)">
           <i class="ti ti-info-circle" style="color:var(--accent)"></i>
-          Formatos suportados: <strong>CSV</strong> (Nubank, Itaú, Bradesco, Santander) e <strong>OFX/QFX</strong>.
+          Formatos suportados: <strong>CSV</strong>, <strong>OFX/QFX</strong> e <strong>PDF de conta do Bradesco</strong>.
         </div>
         <div class="form-group">
           <label class="form-label">Arquivo</label>
-          <input class="form-ctrl" id="imp-file" type="file" accept=".csv,.ofx,.qfx">
+          <input class="form-ctrl" id="imp-file" type="file" accept=".csv,.ofx,.qfx,.pdf">
+        </div>
+        <div class="form-group">
+          <label class="form-label">O que deseja importar? *</label>
+          <select class="form-ctrl" id="imp-direction">
+            <option value="both">Débitos e receitas</option>
+            <option value="expenses">Somente débitos</option>
+            <option value="income">Somente receitas</option>
+          </select>
         </div>
         <div class="form-group">
           <label class="form-label">Conta ou cartão de destino *</label>
@@ -823,11 +843,18 @@ function openImportModal(): void {
             ${accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Categoria padrão *</label>
-          <select class="form-ctrl" id="imp-category">
+        <div class="form-group" id="imp-expense-category-group">
+          <label class="form-label">Categoria padrão para débitos *</label>
+          <select class="form-ctrl" id="imp-expense-category">
             <option value="">— Selecione —</option>
-            ${categoryOptions(categories)}
+            ${categoryOptions(categories.filter(category => category.type === 'expense'))}
+          </select>
+        </div>
+        <div class="form-group" id="imp-income-category-group">
+          <label class="form-label">Categoria padrão para receitas *</label>
+          <select class="form-ctrl" id="imp-income-category">
+            <option value="">— Selecione —</option>
+            ${categoryOptions(categories.filter(category => category.type === 'income'))}
           </select>
         </div>
         <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text-2)">
@@ -835,13 +862,14 @@ function openImportModal(): void {
           Usar categoria sugerida quando houver correspondência
         </label>
         <div id="imp-preview"></div>
+        <div id="imp-status" role="status" aria-live="polite" style="min-height:20px;font-size:0.82rem;color:var(--text-2)"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary modal-close">Cancelar</button>
         <button class="btn btn-secondary" id="btn-imp-preview">
           <i class="ti ti-eye"></i> Pré-visualizar
         </button>
-        <button class="btn btn-primary" id="btn-imp-confirm" disabled>
+        <button class="btn btn-primary" id="btn-imp-confirm">
           <i class="ti ti-check"></i> Importar
         </button>
       </div>
@@ -852,15 +880,39 @@ function openImportModal(): void {
 
   let previewedRows: unknown[] = [];
 
-  overlay.querySelector('#btn-imp-preview')?.addEventListener('click', async () => {
+  const directionSelect = overlay.querySelector<HTMLSelectElement>('#imp-direction')!;
+  const syncDirectionFields = (): void => {
+    const direction = directionSelect.value;
+    overlay.querySelector<HTMLElement>('#imp-expense-category-group')!.style.display = direction === 'income' ? 'none' : '';
+    overlay.querySelector<HTMLElement>('#imp-income-category-group')!.style.display = direction === 'expenses' ? 'none' : '';
+    previewedRows = [];
+    overlay.querySelector('#imp-preview')!.innerHTML = '';
+    overlay.querySelector<HTMLElement>('#imp-status')!.textContent = '';
+  };
+  directionSelect.addEventListener('change', syncDirectionFields);
+  overlay.querySelector('#imp-file')?.addEventListener('change', syncDirectionFields);
+  syncDirectionFields();
+
+  const loadImportPreview = async (): Promise<boolean> => {
+    const statusEl = overlay.querySelector<HTMLElement>('#imp-status')!;
     const fileInput = overlay.querySelector<HTMLInputElement>('#imp-file')!;
     const file = fileInput.files?.[0];
-    if (!file) { showAlert('Selecione um arquivo.'); return; }
+    if (!file) { await showAlert('Selecione um arquivo.'); return false; }
 
-    const filePath = (file as File & { path?: string }).path ?? '';
-    if (!filePath) { showAlert('Não foi possível ler o caminho do arquivo.'); return; }
+    const filePath = getPathForFile(file);
+    if (!filePath) { await showAlert('Não foi possível ler o caminho do arquivo.'); return false; }
 
-    const preview = await invoke<{ rows: unknown[]; format: string; total: number; duplicates: number; invalid: number }>('import:preview', filePath);
+    const direction = directionSelect.value;
+    let preview: { rows: unknown[]; format: string; total: number; duplicates: number; invalid: number };
+    statusEl.textContent = 'Lendo e validando o extrato…';
+    try {
+      preview = await invoke('import:preview', { filePath, direction });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Não foi possível ler o extrato.';
+      statusEl.textContent = `Falha ao ler o extrato: ${detail}`;
+      await showAlert(statusEl.textContent);
+      return false;
+    }
     previewedRows = preview.rows;
 
     const previewEl = overlay.querySelector('#imp-preview')!;
@@ -869,7 +921,7 @@ function openImportModal(): void {
         <strong>${preview.total}</strong> transações encontradas
         ${preview.duplicates > 0 ? `· <span style="color:var(--warning)">${preview.duplicates} duplicata${preview.duplicates !== 1 ? 's' : ''} serão ignoradas</span>` : ''}
         ${preview.invalid > 0 ? `· <span style="color:var(--danger)">${preview.invalid} linha${preview.invalid !== 1 ? 's' : ''} do arquivo com data ou valor inválido, ignorada${preview.invalid !== 1 ? 's' : ''}</span>` : ''}
-        · Formato: <strong>${preview.format.toUpperCase()}</strong>
+        · Formato: <strong>${preview.format === 'pdf-bradesco' ? 'PDF BRADESCO' : preview.format.toUpperCase()}</strong>
       </div>
       <div style="max-height:220px;overflow-y:auto;font-size:0.78rem;border:1px solid var(--border);border-radius:6px">
         <table class="table" style="margin:0">
@@ -889,25 +941,48 @@ function openImportModal(): void {
         </table>
       </div>`;
 
-    (overlay.querySelector('#btn-imp-confirm') as HTMLButtonElement).disabled = preview.total === 0;
-  });
+    statusEl.textContent = preview.total > 0
+      ? `${preview.total} transações prontas para importar.`
+      : 'Nenhuma transação encontrada para o filtro selecionado.';
+    return preview.total > 0;
+  };
+
+  overlay.querySelector('#btn-imp-preview')?.addEventListener('click', () => { void loadImportPreview(); });
 
   overlay.querySelector('#btn-imp-confirm')?.addEventListener('click', async () => {
+    if (previewedRows.length === 0 && !await loadImportPreview()) return;
     const accountId  = (overlay.querySelector<HTMLSelectElement>('#imp-account')!).value;
-    const categoryId = (overlay.querySelector<HTMLSelectElement>('#imp-category')!).value;
+    const expenseCategoryId = (overlay.querySelector<HTMLSelectElement>('#imp-expense-category')!).value;
+    const incomeCategoryId = (overlay.querySelector<HTMLSelectElement>('#imp-income-category')!).value;
+    const direction = directionSelect.value;
     const useSuggestions = overlay.querySelector<HTMLInputElement>('#imp-use-suggestions')!.checked;
-    if (!accountId || !categoryId) { showAlert('Selecione a conta e a categoria de destino.'); return; }
+    if (!accountId || (direction !== 'income' && !expenseCategoryId) || (direction !== 'expenses' && !incomeCategoryId)) {
+      await showAlert('Selecione a conta e as categorias padrão necessárias.');
+      return;
+    }
 
-    const result = await invoke<{ imported: number; skipped: number }>('import:confirm', {
-      rows: previewedRows,
-      accountId,
-      categoryId,
-      useSuggestions,
-    });
+    const confirmButton = overlay.querySelector<HTMLButtonElement>('#btn-imp-confirm')!;
+    const statusEl = overlay.querySelector<HTMLElement>('#imp-status')!;
+    confirmButton.disabled = true;
+    statusEl.textContent = 'Importando transações…';
+    try {
+      const result = await invoke<{ imported: number; skipped: number; dateFrom: string | null; dateTo: string | null }>('import:confirm', {
+        rows: previewedRows,
+        accountId,
+        expenseCategoryId,
+        incomeCategoryId,
+        useSuggestions,
+      });
 
-    overlay.remove();
-    showAlert(td("Importação concluída: {value} transações importadas, {value} ignoradas.", [result.imported, result.skipped]));
-    await invoke('transactions:list', {});
+      overlay.remove();
+      if (result.dateFrom && result.dateTo) await onImported({ dateFrom: result.dateFrom, dateTo: result.dateTo });
+      await showAlert(td("Importação concluída: {value} transações importadas, {value} ignoradas.", [result.imported, result.skipped]));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+':\s*/, '') : String(error);
+      statusEl.textContent = td('Falha na importação: {value}', [detail]);
+      await showAlert(statusEl.textContent);
+      confirmButton.disabled = false;
+    }
   });
 }
 

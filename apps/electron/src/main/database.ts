@@ -186,9 +186,42 @@ export function runMigrations(): void {
     if (already) continue;
 
     const sql = fs.readFileSync(path.join(migsDir, file), 'utf-8');
-    database.exec(sql);
-    database.prepare('INSERT INTO schema_migrations (filename) VALUES (?)').run(file);
+    applyMigrationAtomically(database, file, sql);
     console.log(`Migration executada: ${file}`);
+  }
+}
+
+interface MigrationDatabase {
+  exec(sql: string): unknown;
+}
+
+// O schema e o marcador precisam ser confirmados juntos. Sem isso, uma queda
+// entre `ALTER TABLE` e o INSERT em schema_migrations deixa a coluna criada,
+// mas faz a próxima inicialização repetir o ALTER e falhar para sempre.
+// Algumas migrações antigas já trazem BEGIN/COMMIT porque precisam desligar
+// foreign_keys antes de recriar tabelas; nesses casos o marcador é injetado
+// imediatamente antes do COMMIT existente.
+export function applyMigrationAtomically(database: MigrationDatabase, filename: string, sql: string): void {
+  const marker = `INSERT INTO schema_migrations (filename) VALUES ('${filename.replace(/'/g, "''")}');`;
+  const explicitCommit = /\bCOMMIT\s*;/gi;
+  const commits = [...sql.matchAll(explicitCommit)];
+  const hasExplicitBegin = /\bBEGIN(?:\s+TRANSACTION)?\s*;/i.test(sql);
+
+  try {
+    if (hasExplicitBegin && commits.length) {
+      const last = commits[commits.length - 1];
+      const offset = last.index!;
+      database.exec(`${sql.slice(0, offset)}${marker}\n${sql.slice(offset)}`);
+    } else {
+      database.exec(`BEGIN IMMEDIATE;\n${sql}\n${marker}\nCOMMIT;`);
+    }
+  } catch (error) {
+    try { database.exec('ROLLBACK;'); } catch { /* a própria migração pode já ter revertido */ }
+    throw error;
+  } finally {
+    // 006 desliga FKs fora da transação. Se ela falhar antes do PRAGMA final,
+    // não deixe a conexão inteira seguir desprotegida.
+    try { database.exec('PRAGMA foreign_keys = ON;'); } catch { /* preserva o erro original */ }
   }
 }
 

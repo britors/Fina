@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 const ALLOWED_INVOKE_PREFIXES = [
   'accounts:', 'ai:', 'anomalies:', 'app:', 'assets:', 'backgroundService:',
@@ -17,6 +17,7 @@ function assertAllowed(channel: string, prefixes: string[]): void {
 }
 
 contextBridge.exposeInMainWorld('api', {
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   invoke: (channel: string, data?: unknown) => {
     assertAllowed(channel, ALLOWED_INVOKE_PREFIXES);
     return ipcRenderer.invoke(channel, data);

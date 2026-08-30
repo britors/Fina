@@ -9,9 +9,10 @@ export function resolveMainLocale(): AppLocale {
   const candidates = [
     ...(process.env.LANGUAGE ?? '').split(':'),
     process.env.LANG,
-    app.getLocale(),
+    ...app.getPreferredSystemLanguages(),
     process.env.LC_MESSAGES,
     process.env.LC_ALL,
+    app.getLocale(),
   ];
   for (const candidate of candidates) {
     const normalized = (candidate ?? '').replace('_', '-').toLowerCase();

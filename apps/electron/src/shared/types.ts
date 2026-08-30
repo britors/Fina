@@ -709,6 +709,8 @@ export interface ImportPreviewRow {
   suggested_category_reason?: string | null;
 }
 
+export type ImportDirection = 'expenses' | 'income' | 'both';
+
 export interface CategorySuggestion {
   categoryId: string;
   categoryName: string;
@@ -719,7 +721,7 @@ export interface CategorySuggestion {
 
 export interface ImportPreview {
   rows: ImportPreviewRow[];
-  format: 'csv' | 'ofx';
+  format: 'csv' | 'ofx' | 'pdf-bradesco';
   total: number;
   duplicates: number;
   // Linhas do arquivo original com data ou valor malformado/zerado,
