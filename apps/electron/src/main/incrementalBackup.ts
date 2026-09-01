@@ -7,6 +7,7 @@ import { getDb } from './database';
 import { recomputeAllAccountBalances } from './accountBalances';
 import type { IncrementalBackupResult } from '../shared/types';
 import { roundMoney } from '../shared/money';
+import { normalizeMoneyWireTables, resolveMoneyWireFormat, type MoneyWireFormat } from './moneyWireFormat';
 
 // Backup incremental complementa (não substitui) o backup completo: grava as
 // linhas alteradas e tombstones desde a última exportação incremental, num
@@ -59,6 +60,7 @@ const PARENT_CHILD_TABLES: ParentChildConfig[] = [
 type Row = Record<string, unknown>;
 
 interface IncrementalPatch {
+  money_format: MoneyWireFormat;
   since: string;
   generated_at: string;
   tables: Record<string, Row[]>;
@@ -121,9 +123,11 @@ function validatePatch(value: unknown): IncrementalPatch {
     throw new Error('Patch incremental inválido: metadados ausentes.');
   }
 
+  const moneyFormat = resolveMoneyWireFormat(patch.money_format);
+  const normalizedTables = normalizeMoneyWireTables(patch.tables as Record<string, Row[]>, moneyFormat);
   const knownTables = configuredTables();
   let totalRows = 0;
-  for (const [table, rows] of Object.entries(patch.tables)) {
+  for (const [table, rows] of Object.entries(normalizedTables)) {
     if (!knownTables.has(table)) throw new Error(`Patch incremental inválido: tabela não autorizada (${table}).`);
     validateRows(table, rows);
     totalRows += rows.length;
@@ -151,10 +155,10 @@ function validatePatch(value: unknown): IncrementalPatch {
     if (documentBytes > MAX_DOCUMENT_TOTAL_BYTES) throw new Error('Patch incremental excede o limite de anexos.');
   }
   const deletedDocumentIds = new Set((deleted.financial_documents ?? []).map(row => row.id));
-  if ((patch.tables.financial_documents ?? []).some(row => deletedDocumentIds.has(String(row.id)))) {
+  if ((normalizedTables.financial_documents ?? []).some(row => deletedDocumentIds.has(String(row.id)))) {
     throw new Error('Patch incremental inválido.');
   }
-  return { ...(patch as IncrementalPatch), deleted, document_files: documentFiles };
+  return { ...(patch as IncrementalPatch), money_format: moneyFormat, tables: normalizedTables, deleted, document_files: documentFiles };
 }
 
 const PORTABLE_ITERATIONS = 310_000;
@@ -471,7 +475,7 @@ function buildPatch(sinceIso: string): { patch: IncrementalPatch; tableCounts: R
   const generatedAt = sqliteNow();
   const deleted = collectDeletedRows(sinceIso);
   const documentFiles = collectDocumentFiles(tables.financial_documents ?? []);
-  const patch: IncrementalPatch = { since: sinceIso, generated_at: generatedAt, tables, deleted, document_files: documentFiles };
+  const patch: IncrementalPatch = { money_format: 'decimal-v1', since: sinceIso, generated_at: generatedAt, tables, deleted, document_files: documentFiles };
   return { patch, tableCounts };
 }
 

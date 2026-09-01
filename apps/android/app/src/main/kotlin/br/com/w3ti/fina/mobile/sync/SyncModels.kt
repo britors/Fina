@@ -11,6 +11,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class HandshakeInit(
+    val protocolVersion: Int = 2,
     val identityPublicKey: String,
     /** 16 bytes aleatórios (base64) — amarra a prova de identidade do desktop a esta conexão específica. */
     val nonce: String,
@@ -20,6 +21,8 @@ data class HandshakeInit(
 
 @Serializable
 data class HandshakeResponse(
+    /** Ausente em desktops v1; nesse caso o cliente mantém `amount` decimal. */
+    val protocolVersion: Int = 1,
     val ephemeralPublicKey: String,
     /** Identidade X25519 de longo prazo do desktop (SPKI/DER, base64) — ver mobileSync.ts. */
     val identityPublicKey: String,
@@ -45,13 +48,41 @@ data class TransactionInputDto(
     @SerialName("account_id") val accountId: String,
     @SerialName("category_id") val categoryId: String,
     val description: String,
-    val amount: Double,
+    val amount: Double? = null,
+    @SerialName("amount_cents") val amountCents: Long? = null,
     /** "income" ou "expense". */
     val type: String,
     /** ISO 8601 (yyyy-MM-dd). */
     val date: String,
     val notes: String? = null,
 )
+
+internal fun transactionInputForProtocol(
+    clientId: String,
+    accountId: String,
+    categoryId: String,
+    description: String,
+    amount: Double,
+    type: String,
+    date: String,
+    notes: String?,
+    protocolVersion: Int,
+): TransactionInputDto {
+    val cents = java.math.BigDecimal.valueOf(amount)
+        .movePointRight(2)
+        .longValueExact()
+    return TransactionInputDto(
+        clientId = clientId,
+        accountId = accountId,
+        categoryId = categoryId,
+        description = description,
+        amount = if (protocolVersion >= 2) null else amount,
+        amountCents = if (protocolVersion >= 2) cents else null,
+        type = type,
+        date = date,
+        notes = notes,
+    )
+}
 
 @Serializable
 data class PushResultDto(

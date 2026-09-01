@@ -46,8 +46,8 @@ Não são centavos:
 
 - O IPC público continua usando valores decimais durante a transição. A
   conversão para centavos ocorre imediatamente no processo principal.
-- O protocolo mobile v1 continua aceitando `amount`; uma futura versão pode
-  negociar `amount_cents` sem invalidar celulares antigos.
+- O protocolo mobile v1 continua aceitando `amount`; v2 negocia
+  `amount_cents` sem invalidar celulares ou desktops antigos.
 - Backups completos carregam o próprio schema e passam pelas migrações normais.
 - Patches incrementais precisam declarar a unidade/formato antes de transportar
   colunas em centavos. Importação de patch antigo converte uma única vez.
@@ -75,6 +75,17 @@ O inventário executável e o preflight da etapa 2 ficam em
 `moneyMigrationAudit.ts`. A lista é deliberadamente estática: mudanças no
 schema exigem revisão explícita do que é dinheiro, evitando converter por
 engano percentuais, quantidades ou preços unitários fracionários.
+
+## Formatos de transporte
+
+- Patch incremental sem `money_format` é legado e equivale a `decimal-v1`.
+- `decimal-v1` usa os nomes históricos (`amount`, `balance` etc.).
+- `cents-v1` usa exclusivamente o sufixo `_cents`. Misturar os dois nomes na
+  mesma linha é erro, mesmo quando os valores parecem equivalentes.
+- O handshake mobile negocia `protocolVersion`: v1 envia `amount`; v2 envia
+  somente `amount_cents`. Campo ausente no handshake significa v1.
+- Inteiros recebidos em centavos precisam ser seguros em JavaScript. Valores
+  decimais legados passam por validação de precisão antes da persistência.
 
 ## Invariantes e rollback
 

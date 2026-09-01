@@ -127,7 +127,7 @@ class SyncRepository(
 
         val results = session.pushTransactions(
             pending.map {
-                TransactionInputDto(
+                transactionInputForProtocol(
                     clientId = it.clientId,
                     accountId = it.accountId,
                     categoryId = it.categoryId,
@@ -136,6 +136,7 @@ class SyncRepository(
                     type = it.type,
                     date = it.date,
                     notes = it.notes,
+                    protocolVersion = session.protocolVersion,
                 )
             },
         )

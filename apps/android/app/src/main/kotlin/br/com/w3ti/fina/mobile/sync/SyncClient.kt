@@ -30,7 +30,7 @@ private const val TAG = "FinaSync"
 // mensagens saiam como `{}` (sem "op"), o desktop recebia op=undefined e
 // nao respondia nada (nao bate com nenhum handler), travando o celular
 // esperando uma resposta que nunca viria.
-internal val protocolJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+internal val protocolJson = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
 
 const val CONNECT_TIMEOUT_MS = 8_000
 const val SYNC_READ_TIMEOUT_MS = 15_000
@@ -64,6 +64,8 @@ class SyncSession internal constructor(
     val alreadyPaired: Boolean,
     /** Identidade de longo prazo do desktop recebida nesta conexão — ver IdentityKeyStore.pinDesktopIdentity(). */
     val desktopIdentityPublicKey: String,
+    /** v1 envia `amount`; v2 envia `amount_cents`. */
+    val protocolVersion: Int,
 ) {
     fun close() {
         runCatching { socket.close() }
@@ -241,7 +243,10 @@ class SyncClient(private val identityStore: IdentityKeyStore) {
             val trusted = response.alreadyPaired && proofValid && knownDesktopIdentity == response.identityPublicKey
             Log.d(TAG, "connect: handshake ok, trusted=$trusted")
 
-            SyncSession(socket, frame, keys.sessionKey, keys.pairingCode, trusted, response.identityPublicKey)
+            SyncSession(
+                socket, frame, keys.sessionKey, keys.pairingCode, trusted,
+                response.identityPublicKey, response.protocolVersion.coerceIn(1, 2),
+            )
         } catch (e: SyncError) {
             socket.close()
             throw e

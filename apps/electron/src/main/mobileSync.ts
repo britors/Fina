@@ -15,6 +15,7 @@ import {
   FrameParser, generateX25519KeyPair, importPublicKey, packFrame,
 } from './mobileCrypto';
 import type { KeyPair } from './mobileCrypto';
+import { decodeMobileMoney } from './mobileMoneyWire';
 
 // Listener TCP local para o app mobile — só existe enquanto a tela
 // "Sincronizar celular" está aberta no desktop (ver render()/cleanup em
@@ -23,8 +24,8 @@ import type { KeyPair } from './mobileCrypto';
 // conexões de rede quando o usuário não está ativamente sincronizando.
 //
 // Handshake por conexão (o QR só carrega {ip, port} — nenhuma chave):
-//   1. Celular → desktop, texto claro: { identityPublicKey, nonce, knownDesktopIdentity }
-//   2. Desktop → celular, texto claro: { ephemeralPublicKey, identityPublicKey, identityProof }
+//   1. Celular → desktop, texto claro: { protocolVersion, identityPublicKey, nonce, knownDesktopIdentity }
+//   2. Desktop → celular, texto claro: { protocolVersion, ephemeralPublicKey, identityPublicKey, identityProof }
 //   3. Os dois lados derivam a mesma chave de sessão (ECDH X25519 + HKDF) e,
 //      se a conexão ainda não é considerada confiável (`trusted` abaixo), o
 //      mesmo código de 6 dígitos pra confirmação manual.
@@ -52,6 +53,7 @@ const PAIRING_TIMEOUT_MS = 2 * 60 * 1000;
 // fixa, uma unica regra (`firewall-cmd --add-port=47821/tcp --permanent`)
 // resolve de vez.
 const MOBILE_SYNC_PORT = 47821;
+const MOBILE_PROTOCOL_VERSION = 2;
 
 let cachedDesktopIdentity: KeyPair | null = null;
 
@@ -235,9 +237,12 @@ function handleConnection(socket: net.Socket): void {
         // Reaproveitar o WeakMap que já existe faz isso sem estado duplicado.
         if (!connectionIdentity.has(socket)) {
           const parsed = JSON.parse(frame.toString('utf8')) as {
-            identityPublicKey: string; nonce: string; knownDesktopIdentity?: string | null;
+            protocolVersion?: number; identityPublicKey: string; nonce: string; knownDesktopIdentity?: string | null;
           };
           const { identityPublicKey, nonce } = parsed;
+          const requestedProtocol = parsed.protocolVersion ?? 1;
+          if (!Number.isInteger(requestedProtocol) || requestedProtocol < 1) throw new Error('mobile-protocol-version-invalid');
+          const protocolVersion = Math.min(requestedProtocol, MOBILE_PROTOCOL_VERSION);
           const knownDesktopIdentity = parsed.knownDesktopIdentity ?? null;
           const peerPublicKey = importPublicKey(identityPublicKey);
           const salt = Buffer.concat([
@@ -283,6 +288,7 @@ function handleConnection(socket: net.Socket): void {
           const device = findPairedDevice(identityPublicKey);
           const trusted = Boolean(device) && knownDesktopIdentity === desktopIdentityPublicKey;
           socket.write(packFrame(Buffer.from(JSON.stringify({
+            protocolVersion,
             ephemeralPublicKey: exportPublicKey(desktopKeys.publicKey),
             identityPublicKey: desktopIdentityPublicKey,
             identityProof: identityProof.toString('base64'),
@@ -440,7 +446,8 @@ interface MobileTransactionInput {
   account_id: string;
   category_id: string;
   description: string;
-  amount: number;
+  amount?: number;
+  amount_cents?: number;
   type: 'income' | 'expense';
   date: string;
   notes?: string | null;
@@ -458,11 +465,13 @@ function pushTransaction(device: PairedDevice, item: MobileTransactionInput): Pu
   if (!category) return { client_id: item.client_id, status: 'rejected', reason: 'category_not_found' };
 
   try {
+    const amount = decodeMobileMoney(item);
+    if (amount <= 0) throw new Error('mobile-money-amount-invalid');
     insertConfirmedTransaction({
       account_id: item.account_id,
       category_id: item.category_id,
       description: item.description,
-      amount: item.amount,
+      amount,
       type: item.type,
       date: item.date,
       notes: item.notes ?? null,
