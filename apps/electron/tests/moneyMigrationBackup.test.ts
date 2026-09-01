@@ -18,7 +18,12 @@ test('backup pré-migração é consistente, protegido e idempotente', () => {
       db as unknown as MoneyMigrationBackupDatabase,
       databasePath,
     );
-    assert.equal(statSync(backupPath).mode & 0o777, 0o600);
+    const backupStat = statSync(backupPath);
+    assert.ok(backupStat.size > 0);
+    // Windows expõe ACLs NTFS, não bits POSIX; `chmod(0600)` é aceito, mas
+    // `stat().mode` continua reportando 0666. O isolamento por 0600 é
+    // verificável somente nas plataformas POSIX.
+    if (process.platform !== 'win32') assert.equal(backupStat.mode & 0o777, 0o600);
 
     const backup = new DatabaseSync(backupPath, { readOnly: true });
     try {
