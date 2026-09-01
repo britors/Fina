@@ -7,6 +7,7 @@ import https from 'node:https';
 import { getDb } from './database';
 import { getLocalSecret } from './localSecrets';
 import { localizeMainText } from './i18n';
+import { addCents, asCents, fromCents } from '../shared/money';
 
 function getSetting(key: string, fallback = 'true'): string {
   const row = getDb().prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined;
@@ -345,23 +346,23 @@ export function checkAndNotify(): void {
     const year  = now.getFullYear();
 
     const budgets = db.prepare(`
-      SELECT b.id, c.name, b.limit_amount,
+      SELECT b.id, c.name, b.limit_amount_cents,
              COALESCE((
-               SELECT SUM(tc.amount) FROM transaction_categories tc
+               SELECT SUM(tc.amount_cents) FROM transaction_categories tc
                JOIN transactions t ON t.id = tc.transaction_id
                WHERE tc.category_id = b.category_id
                  AND t.type = 'expense'
                  AND t.status = 'confirmed'
                  AND strftime('%m', t.date) = printf('%02d', b.month)
                  AND strftime('%Y', t.date) = CAST(b.year AS TEXT)
-             ), 0) AS spent
+             ), 0) AS spent_cents
       FROM budgets b
       JOIN categories c ON c.id = b.category_id
       WHERE b.month = ? AND b.year = ?
-    `).all(month, year) as { id: string; name: string; limit_amount: number; spent: number }[];
+    `).all(month, year) as { id: string; name: string; limit_amount_cents: number; spent_cents: number }[];
 
     for (const bud of budgets) {
-      const pct = bud.limit_amount > 0 ? bud.spent / bud.limit_amount : 0;
+      const pct = bud.limit_amount_cents > 0 ? bud.spent_cents / bud.limit_amount_cents : 0;
 
       if (pct >= 1 && !alreadySent('budget_over', bud.id)) {
         notify('Orçamento excedido', `Orçamento de ${bud.name} ultrapassado`);
@@ -375,19 +376,20 @@ export function checkAndNotify(): void {
 
   if (notifSubscription) {
     const increases = db.prepare(`
-      SELECT b.id as bill_id, b.description, prev.amount as previous_amount, last.amount as new_amount, last.changed_at
+      SELECT b.id as bill_id, b.description,
+        prev.amount_cents / 100.0 as previous_amount, last.amount_cents / 100.0 as new_amount, last.changed_at
       FROM bills b
       JOIN (
-        SELECT bill_id, amount, changed_at,
+        SELECT bill_id, amount_cents, changed_at,
                ROW_NUMBER() OVER (PARTITION BY bill_id ORDER BY changed_at DESC, rowid DESC) as rn
         FROM bill_price_history
       ) last ON last.bill_id = b.id AND last.rn = 1
       JOIN (
-        SELECT bill_id, amount, changed_at,
+        SELECT bill_id, amount_cents, changed_at,
                ROW_NUMBER() OVER (PARTITION BY bill_id ORDER BY changed_at DESC, rowid DESC) as rn
         FROM bill_price_history
       ) prev ON prev.bill_id = b.id AND prev.rn = 2
-      WHERE b.recurring = 1 AND last.amount > prev.amount
+      WHERE b.recurring = 1 AND last.amount_cents > prev.amount_cents
     `).all() as { bill_id: string; description: string; previous_amount: number; new_amount: number; changed_at: string }[];
 
     for (const inc of increases) {
@@ -401,19 +403,20 @@ export function checkAndNotify(): void {
     }
 
     const receivableIncreases = db.prepare(`
-      SELECT r.id as receivable_id, r.description, prev.amount as previous_amount, last.amount as new_amount, last.changed_at
+      SELECT r.id as receivable_id, r.description,
+        prev.amount_cents / 100.0 as previous_amount, last.amount_cents / 100.0 as new_amount, last.changed_at
       FROM receivables r
       JOIN (
-        SELECT receivable_id, amount, changed_at,
+        SELECT receivable_id, amount_cents, changed_at,
                ROW_NUMBER() OVER (PARTITION BY receivable_id ORDER BY changed_at DESC, rowid DESC) as rn
         FROM receivable_price_history
       ) last ON last.receivable_id = r.id AND last.rn = 1
       JOIN (
-        SELECT receivable_id, amount, changed_at,
+        SELECT receivable_id, amount_cents, changed_at,
                ROW_NUMBER() OVER (PARTITION BY receivable_id ORDER BY changed_at DESC, rowid DESC) as rn
         FROM receivable_price_history
       ) prev ON prev.receivable_id = r.id AND prev.rn = 2
-      WHERE r.recurring = 1 AND last.amount > prev.amount
+      WHERE r.recurring = 1 AND last.amount_cents > prev.amount_cents
     `).all() as { receivable_id: string; description: string; previous_amount: number; new_amount: number; changed_at: string }[];
 
     for (const inc of receivableIncreases) {
@@ -467,20 +470,21 @@ function sendWeeklySummaryIfDue(): void {
   if (alreadySentEver('weekly_summary', weekKey)) return;
   const db = getDb();
   const tx = db.prepare(`
-    SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income,
-           COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense,
+    SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount_cents ELSE 0 END), 0) AS income_cents,
+           COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_cents ELSE 0 END), 0) AS expense_cents,
            COUNT(*) AS count
     FROM transactions WHERE status = 'confirmed' AND date >= date('now', '-7 days') AND date < date('now')
-  `).get() as { income: number; expense: number; count: number };
+  `).get() as { income_cents: number; expense_cents: number; count: number };
   const bills = db.prepare(`
-    SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS count FROM bills
+    SELECT COALESCE(SUM(amount_cents), 0) AS total_cents, COUNT(*) AS count FROM bills
     WHERE status != 'paid' AND due_date >= date('now') AND due_date <= date('now', '+7 days')
-  `).get() as { total: number; count: number };
-  const balance = tx.income - tx.expense;
+  `).get() as { total_cents: number; count: number };
+  const balance = fromCents(addCents(asCents(tx.income_cents), -asCents(tx.expense_cents)));
+  const billsTotal = fromCents(asCents(bills.total_cents));
   const sign = balance >= 0 ? '+' : '';
   notify(
     'Resumo financeiro da semana',
-    `${tx.count} lançamentos · saldo ${sign}R$ ${balance.toFixed(2).replace('.', ',')} · ${bills.count} conta${bills.count === 1 ? '' : 's'} vencendo (${`R$ ${bills.total.toFixed(2).replace('.', ',')}`}).`,
+    `${tx.count} lançamentos · saldo ${sign}R$ ${balance.toFixed(2).replace('.', ',')} · ${bills.count} conta${bills.count === 1 ? '' : 's'} vencendo (${`R$ ${billsTotal.toFixed(2).replace('.', ',')}`}).`,
   );
   logSent('weekly_summary', weekKey);
 }
