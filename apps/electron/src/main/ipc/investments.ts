@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import type { Investment, InvestmentOperation, InvestmentOperationWithInvestment, InvestmentSummary, InvestmentType } from '../../shared/types';
+import { fromCents, toExactCents } from '../../shared/money';
 
 type CreatePayload = Omit<Investment, 'id' | 'created_at' | 'updated_at'>;
 type CreateOperationPayload = Omit<InvestmentOperation, 'id' | 'created_at'>;
@@ -29,20 +30,24 @@ export function registerInvestmentHandlers(): void {
 
   ipcMain.handle('investments:create', (_e, data: CreatePayload) => {
     const id = randomUUID();
+    const appliedCents = toExactCents(data.applied_amount ?? 0);
+    const currentCents = toExactCents(data.current_value ?? 0);
     getDb().prepare(`
-      INSERT INTO investments (id, name, type, institution, applied_amount, current_value, application_date, maturity_date, notes)
-      VALUES (?,?,?,?,?,?,?,?,?)
-    `).run(id, data.name, data.type, data.institution ?? null, data.applied_amount ?? 0,
-           data.current_value ?? 0, data.application_date ?? null,
+      INSERT INTO investments (id, name, type, institution, applied_amount, applied_amount_cents, current_value, current_value_cents, application_date, maturity_date, notes)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    `).run(id, data.name, data.type, data.institution ?? null, fromCents(appliedCents), appliedCents,
+           fromCents(currentCents), currentCents, data.application_date ?? null,
            data.maturity_date ?? null, data.notes ?? null);
     return getDb().prepare('SELECT * FROM investments WHERE id = ?').get(id);
   });
 
   ipcMain.handle('investments:update', (_e, { id, ...data }: Partial<CreatePayload> & { id: string }) => {
+    const appliedCents = toExactCents(data.applied_amount ?? 0);
+    const currentCents = toExactCents(data.current_value ?? 0);
     getDb().prepare(`
-      UPDATE investments SET name=?, type=?, institution=?, applied_amount=?, current_value=?,
+      UPDATE investments SET name=?, type=?, institution=?, applied_amount_cents=?, current_value_cents=?,
         application_date=?, maturity_date=?, notes=?, updated_at=datetime('now') WHERE id=?
-    `).run(data.name, data.type, data.institution ?? null, data.applied_amount, data.current_value,
+    `).run(data.name, data.type, data.institution ?? null, appliedCents, currentCents,
            data.application_date ?? null, data.maturity_date ?? null, data.notes ?? null, id);
     return getDb().prepare('SELECT * FROM investments WHERE id = ?').get(id);
   });
@@ -100,14 +105,15 @@ export function registerInvestmentHandlers(): void {
     if (!Number.isFinite(data.quantity) || data.quantity <= 0) throw new Error('Informe uma quantidade válida.');
     if (!Number.isFinite(data.unit_price) || data.unit_price < 0) throw new Error('Informe um preço unitário válido.');
     if (!data.date) throw new Error('Informe a data da operação.');
+    const feesCents = toExactCents(data.fees ?? 0);
     const db = getDb();
     const id = randomUUID();
     db.transaction(() => {
       db.prepare(`
-        INSERT INTO investment_operations (id, investment_id, type, quantity, unit_price, fees, date, notes)
-        VALUES (?,?,?,?,?,?,?,?)
+        INSERT INTO investment_operations (id, investment_id, type, quantity, unit_price, fees, fees_cents, date, notes)
+        VALUES (?,?,?,?,?,?,?,?,?)
       `).run(id, data.investment_id, data.type, data.quantity ?? 0, data.unit_price ?? 0,
-             data.fees ?? 0, data.date, data.notes ?? null);
+             fromCents(feesCents), feesCents, data.date, data.notes ?? null);
       // Toca updated_at do investimento pai para o backup incremental
       // ressincronizar as operações junto com ele.
       db.prepare(`UPDATE investments SET updated_at = datetime('now') WHERE id = ?`).run(data.investment_id);

@@ -137,7 +137,7 @@ function replaceBillPayments(billId: string, payments: PaymentSplit[]): void {
 
 function getBillPayments(billId: string): PaymentSplitWithAccount[] {
   return getDb().prepare(`
-    SELECT p.account_id, p.amount, p.is_pix, a.name as account_name
+    SELECT p.account_id, p.amount_cents / 100.0 AS amount, p.is_pix, a.name as account_name
     FROM bill_payments p
     JOIN accounts a ON a.id = p.account_id
     WHERE p.bill_id = ?
@@ -157,7 +157,7 @@ function replaceBillCategories(billId: string, categories: CategorySplit[]): voi
 
 function getBillCategories(billId: string): CategorySplitWithCategory[] {
   return getDb().prepare(`
-    SELECT bc.category_id, bc.amount, c.name as category_name, c.icon as category_icon, c.color as category_color
+    SELECT bc.category_id, bc.amount_cents / 100.0 AS amount, c.name as category_name, c.icon as category_icon, c.color as category_color
     FROM bill_categories bc
     JOIN categories c ON c.id = bc.category_id
     WHERE bc.bill_id = ?

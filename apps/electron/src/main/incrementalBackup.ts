@@ -6,8 +6,8 @@ import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from 'node:
 import { getDb } from './database';
 import { recomputeAllAccountBalances } from './accountBalances';
 import type { IncrementalBackupResult } from '../shared/types';
-import { roundMoney } from '../shared/money';
-import { encodeMoneyWireTables, normalizeMoneyWireTables, resolveMoneyWireFormat, type MoneyWireFormat } from './moneyWireFormat';
+import { toExactCents } from '../shared/money';
+import { CURRENT_MONEY_WIRE_FORMAT, encodeMoneyWireTables, normalizeMoneyWireTables, resolveMoneyWireFormat, type MoneyWireFormat } from './moneyWireFormat';
 
 // Backup incremental complementa (não substitui) o backup completo: grava as
 // linhas alteradas e tombstones desde a última exportação incremental, num
@@ -272,17 +272,22 @@ function upsertAccountRows(rows: Row[], generatedAt: string): void {
 
     const sourceIsOpenFinance = typeof row.openfinance_provider === 'string' && !!row.openfinance_provider;
     const localIsOpenFinance = typeof local.openfinance_provider === 'string' && !!local.openfinance_provider;
-    const preserved = new Set(['id', 'balance', 'opening_balance_brl', 'remote_balance', 'original_balance', 'currency']);
+    const preserved = new Set([
+      'id', 'balance', 'balance_cents', 'opening_balance_brl', 'opening_balance_brl_cents',
+      'remote_balance', 'remote_balance_cents', 'original_balance', 'original_balance_cents', 'currency',
+    ]);
     const columns = Object.keys(row).filter(column => !preserved.has(column));
     const assignments = columns.map(column => `${column}=?`);
     const values = columns.map(column => row[column]);
 
     if (localIsOpenFinance || sourceIsOpenFinance) {
-      const previousRemote = Number(local.remote_balance ?? local.balance ?? 0);
-      const localDelta = Number(local.balance ?? 0) - previousRemote;
-      const sourceRemote = Number(row.remote_balance ?? row.balance ?? 0);
-      assignments.push('balance=?', 'remote_balance=?');
-      values.push(roundMoney(sourceRemote + localDelta), sourceRemote);
+      const localBalanceCents = Number(local.balance_cents ?? toExactCents(Number(local.balance ?? 0)));
+      const previousRemoteCents = Number(local.remote_balance_cents
+        ?? (local.remote_balance == null ? localBalanceCents : toExactCents(Number(local.remote_balance))));
+      const localDeltaCents = localBalanceCents - previousRemoteCents;
+      const sourceRemoteCents = toExactCents(Number(row.remote_balance ?? row.balance ?? 0));
+      assignments.push('balance_cents=?', 'remote_balance_cents=?');
+      values.push(sourceRemoteCents + localDeltaCents, sourceRemoteCents);
     }
 
     if (!assignments.length) continue;
@@ -476,10 +481,10 @@ function buildPatch(sinceIso: string): { patch: IncrementalPatch; tableCounts: R
   const deleted = collectDeletedRows(sinceIso);
   const documentFiles = collectDocumentFiles(tables.financial_documents ?? []);
   const patch: IncrementalPatch = {
-    money_format: 'decimal-v1',
+    money_format: CURRENT_MONEY_WIRE_FORMAT,
     since: sinceIso,
     generated_at: generatedAt,
-    tables: encodeMoneyWireTables(tables, 'decimal-v1'),
+    tables: encodeMoneyWireTables(tables, CURRENT_MONEY_WIRE_FORMAT),
     deleted,
     document_files: documentFiles,
   };

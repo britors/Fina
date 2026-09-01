@@ -277,7 +277,7 @@ export function checkAndNotify(): void {
   if (notifBills) {
     // Contas a vencer em até 3 dias
     const upcoming = db.prepare(`
-      SELECT id, description, amount, due_date
+      SELECT id, description, amount_cents / 100.0 AS amount, due_date
       FROM bills
       WHERE status = 'pending'
         AND due_date >= date('now')
@@ -297,7 +297,7 @@ export function checkAndNotify(): void {
 
     // Contas vencidas
     const overdue = db.prepare(`
-      SELECT id, description, amount FROM bills WHERE status = 'overdue'
+      SELECT id, description, amount_cents / 100.0 AS amount FROM bills WHERE status = 'overdue'
     `).all() as { id: string; description: string; amount: number }[];
 
     for (const b of overdue) {
@@ -310,7 +310,7 @@ export function checkAndNotify(): void {
   if (notifReceivables) {
     // Recebimentos a vencer em até 3 dias
     const upcoming = db.prepare(`
-      SELECT id, description, amount, due_date
+      SELECT id, description, amount_cents / 100.0 AS amount, due_date
       FROM receivables
       WHERE status = 'pending'
         AND due_date >= date('now')
@@ -330,7 +330,7 @@ export function checkAndNotify(): void {
 
     // Recebimentos vencidos
     const overdue = db.prepare(`
-      SELECT id, description, amount FROM receivables WHERE status = 'overdue'
+      SELECT id, description, amount_cents / 100.0 AS amount FROM receivables WHERE status = 'overdue'
     `).all() as { id: string; description: string; amount: number }[];
 
     for (const r of overdue) {

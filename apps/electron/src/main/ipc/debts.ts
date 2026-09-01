@@ -56,27 +56,33 @@ export function registerDebtHandlers(): void {
 
   ipcMain.handle('debts:create', (_e, data: CreatePayload) => {
     const id = randomUUID();
+    const originalCents = toExactCents(data.original_amount ?? 0);
+    const outstandingCents = toExactCents(data.outstanding_balance ?? 0);
+    const installmentCents = toExactCents(data.installment_amount ?? 0);
     getDb().prepare(`
-      INSERT INTO debts (id, description, type, creditor, original_amount, outstanding_balance,
-        interest_rate, installments_total, installments_remaining, installment_amount, next_due_date, status)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      INSERT INTO debts (id, description, type, creditor, original_amount, original_amount_cents, outstanding_balance, outstanding_balance_cents,
+        interest_rate, installments_total, installments_remaining, installment_amount, installment_amount_cents, next_due_date, status)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(id, data.description, data.type, data.creditor ?? null,
-           data.original_amount ?? 0, data.outstanding_balance ?? 0,
+           fromCents(originalCents), originalCents, fromCents(outstandingCents), outstandingCents,
            data.interest_rate ?? 0, data.installments_total ?? 1,
-           data.installments_remaining ?? 1, data.installment_amount ?? 0,
+           data.installments_remaining ?? 1, fromCents(installmentCents), installmentCents,
            data.next_due_date ?? null, data.status ?? 'em_dia');
     return getDb().prepare('SELECT * FROM debts WHERE id = ?').get(id);
   });
 
   ipcMain.handle('debts:update', (_e, { id, ...data }: Partial<CreatePayload> & { id: string }) => {
+    const originalCents = toExactCents(data.original_amount ?? 0);
+    const outstandingCents = toExactCents(data.outstanding_balance ?? 0);
+    const installmentCents = toExactCents(data.installment_amount ?? 0);
     getDb().prepare(`
-      UPDATE debts SET description=?, type=?, creditor=?, original_amount=?, outstanding_balance=?,
-        interest_rate=?, installments_total=?, installments_remaining=?, installment_amount=?,
+      UPDATE debts SET description=?, type=?, creditor=?, original_amount_cents=?, outstanding_balance_cents=?,
+        interest_rate=?, installments_total=?, installments_remaining=?, installment_amount_cents=?,
         next_due_date=?, status=?, updated_at=datetime('now')
       WHERE id=?
     `).run(data.description, data.type, data.creditor ?? null,
-           data.original_amount, data.outstanding_balance, data.interest_rate,
-           data.installments_total, data.installments_remaining, data.installment_amount,
+           originalCents, outstandingCents, data.interest_rate,
+           data.installments_total, data.installments_remaining, installmentCents,
            data.next_due_date ?? null, data.status, id);
     return getDb().prepare('SELECT * FROM debts WHERE id = ?').get(id);
   });

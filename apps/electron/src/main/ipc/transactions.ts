@@ -180,7 +180,7 @@ function replaceTransactionMemberSplits(transactionId: string, splits: Transacti
 
 function getTransactionMemberSplits(transactionId: string): TransactionMemberSplitWithMember[] {
   return getDb().prepare(`
-    SELECT s.member_id, s.share_amount, m.name AS member_name
+    SELECT s.member_id, s.share_amount_cents / 100.0 AS share_amount, m.name AS member_name
     FROM transaction_member_splits s JOIN family_members m ON m.id = s.member_id
     WHERE s.transaction_id = ?
   `).all(transactionId) as TransactionMemberSplitWithMember[];
@@ -208,7 +208,7 @@ function replaceTransactionCategories(transactionId: string, categories: Categor
 
 function getTransactionCategories(transactionId: string): CategorySplitWithCategory[] {
   return getDb().prepare(`
-    SELECT tc.category_id, tc.amount, c.name as category_name, c.icon as category_icon, c.color as category_color
+    SELECT tc.category_id, tc.amount_cents / 100.0 AS amount, c.name as category_name, c.icon as category_icon, c.color as category_color
     FROM transaction_categories tc
     JOIN categories c ON c.id = tc.category_id
     WHERE tc.transaction_id = ?
@@ -309,7 +309,7 @@ function assertCanInstall(data: InstallmentTransactionInput, payments: PaymentSp
 
 function getTransactionPayments(transactionId: string): PaymentSplitWithAccount[] {
   return getDb().prepare(`
-    SELECT p.account_id, p.amount, p.invoice_id, p.is_pix, a.name as account_name
+    SELECT p.account_id, p.amount_cents / 100.0 AS amount, p.invoice_id, p.is_pix, a.name as account_name
     FROM transaction_payments p
     JOIN accounts a ON a.id = p.account_id
     WHERE p.transaction_id = ?
@@ -615,8 +615,8 @@ export function registerTransactionHandlers(): void {
       const old = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as Transaction | undefined;
       const oldPayments = old ? getTransactionPayments(id) : [];
       db.prepare(
-        `UPDATE transactions SET account_id=?, to_account_id=?, category_id=?, description=?, amount=?, amount_cents=?, type=?, date=?, status=?, notes=?, recurring=?, owner=?, is_mei_revenue=?, paid_by_member_id=?, updated_at=datetime('now') WHERE id=?`
-      ).run(primaryAccountId, data.to_account_id ?? null, primaryCategoryId, data.description, fromCents(amountCents), amountCents, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null, data.is_mei_revenue ? 1 : 0, data.paid_by_member_id ?? null, id);
+        `UPDATE transactions SET account_id=?, to_account_id=?, category_id=?, description=?, amount_cents=?, type=?, date=?, status=?, notes=?, recurring=?, owner=?, is_mei_revenue=?, paid_by_member_id=?, updated_at=datetime('now') WHERE id=?`
+      ).run(primaryAccountId, data.to_account_id ?? null, primaryCategoryId, data.description, amountCents, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null, data.is_mei_revenue ? 1 : 0, data.paid_by_member_id ?? null, id);
 
       if (old) {
         const wasConfirmed = old.status === 'confirmed';

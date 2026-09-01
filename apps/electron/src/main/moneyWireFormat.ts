@@ -2,6 +2,7 @@ import { fromCents, toCents, toExactCents } from '../shared/money';
 import { MONEY_COLUMNS } from './moneyMigrationAudit';
 
 export type MoneyWireFormat = 'decimal-v1' | 'cents-v1';
+export const CURRENT_MONEY_WIRE_FORMAT: MoneyWireFormat = 'cents-v1';
 export type WireRow = Record<string, unknown>;
 
 const columnsByTable = MONEY_COLUMNS.reduce<Map<string, string[]>>((result, item) => {

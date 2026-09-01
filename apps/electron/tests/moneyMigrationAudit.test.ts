@@ -59,19 +59,14 @@ describe('money migration preflight', () => {
     assert.deepEqual(violations, []);
   });
 
-  test('escritas da agenda e recorrências incluem a coluna canônica', () => {
+  test('todas as inserções monetárias incluem a coluna canônica', () => {
     const sourceRoot = join(process.cwd(), 'src/main');
-    const agendaTables = new Set([
-      'bills', 'bill_payments', 'bill_categories', 'bill_price_history',
-      'receivables', 'receivable_payments', 'receivable_categories', 'receivable_price_history',
-    ]);
     const moneyByTable = new Map<string, string[]>();
     for (const item of MONEY_COLUMNS) {
-      if (!agendaTables.has(item.table)) continue;
       moneyByTable.set(item.table, [...(moneyByTable.get(item.table) ?? []), item.column]);
     }
     const violations: string[] = [];
-    const insert = /INSERT\s+INTO\s+["']?([a-z_]+)["']?\s*\(([^)]*)\)/gi;
+    const insert = /INSERT(?:\s+OR\s+\w+)?\s+INTO\s+["']?([a-z_]+)["']?\s*\(([^)]*)\)/gi;
 
     for (const file of typescriptFiles(sourceRoot)) {
       const source = readFileSync(file, 'utf8');
@@ -81,6 +76,32 @@ describe('money migration preflight', () => {
         const insertedColumns = new Set(match[2].split(',').map(column => column.trim().replace(/["']/g, '')));
         for (const column of monetaryColumns) {
           if (insertedColumns.has(column) && !insertedColumns.has(`${column}_cents`)) {
+            violations.push(`${relative(sourceRoot, file)}: ${match[1]}.${column}`);
+          }
+        }
+      }
+    }
+
+    assert.deepEqual(violations, []);
+  });
+
+  test('updates monetários do processo principal não alteram o legado', () => {
+    const sourceRoot = join(process.cwd(), 'src/main');
+    const moneyByTable = new Map<string, string[]>();
+    for (const item of MONEY_COLUMNS) {
+      moneyByTable.set(item.table, [...(moneyByTable.get(item.table) ?? []), item.column]);
+    }
+    const violations: string[] = [];
+    const update = /UPDATE\s+["']?([a-z_]+)["']?\s+SET\s+([\s\S]*?)\s+WHERE\b/gi;
+
+    for (const file of typescriptFiles(sourceRoot)) {
+      const source = readFileSync(file, 'utf8');
+      for (const match of source.matchAll(update)) {
+        const monetaryColumns = moneyByTable.get(match[1]);
+        if (!monetaryColumns) continue;
+        for (const column of monetaryColumns) {
+          const legacyAssignment = new RegExp(`(?:^|[,\\s])${column}\\s*=`, 'i');
+          if (legacyAssignment.test(match[2])) {
             violations.push(`${relative(sourceRoot, file)}: ${match[1]}.${column}`);
           }
         }

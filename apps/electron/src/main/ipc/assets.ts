@@ -4,6 +4,7 @@ import { getDb } from '../database';
 import type { Asset, AssetReminder, AssetReminderWithAsset } from '../../shared/types';
 import { getDaysUntilDue, isCreditLikeAccountType } from '../../shared/utils';
 import { formatMainDate } from '../i18n';
+import { fromCents, toExactCents } from '../../shared/money';
 
 type CreatePayload = Omit<Asset, 'id' | 'created_at' | 'updated_at'>;
 type CreateReminderPayload = Omit<AssetReminder, 'id' | 'dismissed_at' | 'created_at' | 'updated_at'>;
@@ -15,19 +16,23 @@ export function registerAssetHandlers(): void {
 
   ipcMain.handle('assets:create', (_e, data: CreatePayload) => {
     const id = randomUUID();
+    const acquisitionCents = toExactCents(data.acquisition_value ?? 0);
+    const currentCents = toExactCents(data.current_value ?? 0);
     getDb().prepare(`
-      INSERT INTO assets (id, name, type, acquisition_value, current_value, acquisition_date, description)
-      VALUES (?,?,?,?,?,?,?)
-    `).run(id, data.name, data.type, data.acquisition_value ?? 0, data.current_value ?? 0,
+      INSERT INTO assets (id, name, type, acquisition_value, acquisition_value_cents, current_value, current_value_cents, acquisition_date, description)
+      VALUES (?,?,?,?,?,?,?,?,?)
+    `).run(id, data.name, data.type, fromCents(acquisitionCents), acquisitionCents, fromCents(currentCents), currentCents,
            data.acquisition_date ?? null, data.description ?? null);
     return getDb().prepare('SELECT * FROM assets WHERE id = ?').get(id);
   });
 
   ipcMain.handle('assets:update', (_e, { id, ...data }: Partial<CreatePayload> & { id: string }) => {
+    const acquisitionCents = toExactCents(data.acquisition_value ?? 0);
+    const currentCents = toExactCents(data.current_value ?? 0);
     getDb().prepare(`
-      UPDATE assets SET name=?, type=?, acquisition_value=?, current_value=?,
+      UPDATE assets SET name=?, type=?, acquisition_value_cents=?, current_value_cents=?,
         acquisition_date=?, description=?, updated_at=datetime('now') WHERE id=?
-    `).run(data.name, data.type, data.acquisition_value, data.current_value,
+    `).run(data.name, data.type, acquisitionCents, currentCents,
            data.acquisition_date ?? null, data.description ?? null, id);
     return getDb().prepare('SELECT * FROM assets WHERE id = ?').get(id);
   });

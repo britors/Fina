@@ -4115,11 +4115,23 @@
     "es-ES": "Ingrese un valor de Pix válido.",
     "zh-CN": "输入有效的像素值。"
   },
+  "Informe um valor Pix válido com no máximo 2 casas decimais.": {
+    "pt-BR": "Informe um valor Pix válido com no máximo 2 casas decimais.",
+    "en-US": "Enter a valid Pix amount with no more than 2 decimal places.",
+    "es-ES": "Introduzca un importe Pix válido con un máximo de 2 decimales.",
+    "zh-CN": "输入有效的 Pix 金额，最多保留 2 位小数。"
+  },
   "Informe um valor de aporte válido.": {
     "pt-BR": "Informe um valor de aporte válido.",
     "en-US": "Enter a valid contribution amount.",
     "es-ES": "Ingrese un monto de contribución válido.",
     "zh-CN": "输入有效的捐款金额。"
+  },
+  "Informe um valor de aporte válido com no máximo 2 casas decimais.": {
+    "pt-BR": "Informe um valor de aporte válido com no máximo 2 casas decimais.",
+    "en-US": "Enter a valid contribution amount with no more than 2 decimal places.",
+    "es-ES": "Introduzca un aporte válido con un máximo de 2 decimales.",
+    "zh-CN": "输入有效的出资金额，最多保留 2 位小数。"
   },
   "Informe um valor válido para a conta a pagar.": {
     "pt-BR": "Informe um valor válido para a conta a pagar.",
@@ -4150,6 +4162,12 @@
     "en-US": "Enter a valid value for DAS.",
     "es-ES": "Introduzca un valor válido para DAS.",
     "zh-CN": "输入 DAS 的有效值。"
+  },
+  "Informe um valor válido para o DAS com no máximo 2 casas decimais.": {
+    "pt-BR": "Informe um valor válido para o DAS com no máximo 2 casas decimais.",
+    "en-US": "Enter a valid DAS amount with no more than 2 decimal places.",
+    "es-ES": "Introduzca un importe DAS válido con un máximo de 2 decimales.",
+    "zh-CN": "输入有效的 DAS 金额，最多保留 2 位小数。"
   },
   "Informe uma URL http(s) válida para ativar o webhook.": {
     "pt-BR": "Informe uma URL http(s) válida para ativar o webhook.",

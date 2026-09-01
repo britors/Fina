@@ -21,6 +21,7 @@ import type {
   OpenFinanceProviderOverview,
   TransactionType,
 } from '../../shared/types';
+import { fromCents, toExactCents } from '../../shared/money';
 
 type OpenFinanceProvider = 'pluggy' | 'belvo' | 'klavi';
 
@@ -764,34 +765,40 @@ async function loadPluggyTransactions(apiKey: string, account: RemoteAccount, da
 
 function upsertAccount(provider: OpenFinanceProvider, account: RemoteAccount): { id: string; created: boolean } {
   const db = getDb();
-  const existing = db.prepare('SELECT id, balance, remote_balance FROM accounts WHERE openfinance_provider = ? AND openfinance_id = ?')
+  const existing = db.prepare('SELECT id, balance_cents, remote_balance_cents FROM accounts WHERE openfinance_provider = ? AND openfinance_id = ?')
     .get(provider, account.id) as { id: string } | undefined;
+  const remoteBalanceCents = toExactCents(account.balance);
+  const creditLimitCents = account.creditLimit == null ? null : toExactCents(account.creditLimit);
   if (existing) {
-    const current = existing as { id: string; balance: number; remote_balance: number | null };
+    const current = existing as { id: string; balance_cents: number; remote_balance_cents: number | null };
     // Preserva lançamentos manuais feitos entre duas sincronizações. O saldo
     // remoto é a nova base; a diferença local continua sendo aplicada por
     // cima dela, sem ser apagada pelo provedor.
-    const previousRemote = current.remote_balance ?? current.balance;
-    const localDelta = current.balance - previousRemote;
+    const previousRemote = current.remote_balance_cents ?? current.balance_cents;
+    const localDelta = current.balance_cents - previousRemote;
     db.prepare(`
       UPDATE accounts
-      SET name=?, type=?, bank_name=?, balance=?, remote_balance=?, credit_limit=?, updated_at=datetime('now')
+      SET name=?, type=?, bank_name=?, balance_cents=?, remote_balance_cents=?, credit_limit_cents=?, updated_at=datetime('now')
       WHERE id=?
-    `).run(account.name, account.type, account.bankName, account.balance + localDelta, account.balance, account.creditLimit, current.id);
+    `).run(account.name, account.type, account.bankName, remoteBalanceCents + localDelta, remoteBalanceCents, creditLimitCents, current.id);
     return { id: existing.id, created: false };
   }
 
   const id = randomUUID();
   db.prepare(`
-    INSERT INTO accounts (id, name, type, bank_name, balance, credit_limit, color, currency, original_balance, opening_balance_brl, remote_balance, openfinance_provider, openfinance_id)
-    VALUES (?,?,?,?,?,?,NULL,'BRL',NULL,?,?,?,?)
-  `).run(id, account.name, account.type, account.bankName, account.balance, account.creditLimit, account.balance, account.balance, provider, account.id);
+    INSERT INTO accounts (id, name, type, bank_name, balance, balance_cents, credit_limit, credit_limit_cents, color, currency, original_balance, original_balance_cents, opening_balance_brl, opening_balance_brl_cents, remote_balance, remote_balance_cents, openfinance_provider, openfinance_id)
+    VALUES (?,?,?,?,?,?,?,?,NULL,'BRL',NULL,NULL,?,?,?,?,?,?)
+  `).run(id, account.name, account.type, account.bankName,
+    fromCents(remoteBalanceCents), remoteBalanceCents,
+    creditLimitCents == null ? null : fromCents(creditLimitCents), creditLimitCents,
+    fromCents(remoteBalanceCents), remoteBalanceCents, fromCents(remoteBalanceCents), remoteBalanceCents, provider, account.id);
   return { id, created: true };
 }
 
 function recordBalanceSnapshot(accountId: string, balance: number): void {
-  getDb().prepare(`INSERT INTO account_balance_snapshots (id, account_id, balance) VALUES (?,?,?)`)
-    .run(randomUUID(), accountId, balance);
+  const balanceCents = toExactCents(balance);
+  getDb().prepare(`INSERT INTO account_balance_snapshots (id, account_id, balance, balance_cents) VALUES (?,?,?,?)`)
+    .run(randomUUID(), accountId, fromCents(balanceCents), balanceCents);
 }
 
 function getBalanceAlertSettings(): BalanceAlertSettings {
@@ -820,27 +827,27 @@ function detectBalanceDrops(): BalanceDropAlert[] {
 
   const db = getDb();
   const accounts = db.prepare(`
-    SELECT id, name, bank_name, balance FROM accounts WHERE openfinance_provider IS NOT NULL
-  `).all() as { id: string; name: string; bank_name: string | null; balance: number }[];
+    SELECT id, name, bank_name, balance_cents FROM accounts WHERE openfinance_provider IS NOT NULL
+  `).all() as { id: string; name: string; bank_name: string | null; balance_cents: number }[];
 
   const alerts: BalanceDropAlert[] = [];
   for (const acc of accounts) {
     const snapshot = db.prepare(`
-      SELECT balance FROM account_balance_snapshots
+      SELECT balance_cents FROM account_balance_snapshots
       WHERE account_id = ? AND recorded_at <= datetime('now', '-' || ? || ' days')
       ORDER BY recorded_at DESC LIMIT 1
-    `).get(acc.id, settings.days) as { balance: number } | undefined;
-    if (!snapshot || snapshot.balance <= 0) continue;
+    `).get(acc.id, settings.days) as { balance_cents: number } | undefined;
+    if (!snapshot || snapshot.balance_cents <= 0) continue;
 
-    const dropPct = ((snapshot.balance - acc.balance) / snapshot.balance) * 100;
+    const dropPct = ((snapshot.balance_cents - acc.balance_cents) / snapshot.balance_cents) * 100;
     if (dropPct < settings.thresholdPct) continue;
 
     alerts.push({
       accountId: acc.id,
       accountName: acc.name,
       bankName: acc.bank_name ?? 'Open Finance',
-      currentBalance: acc.balance,
-      previousBalance: snapshot.balance,
+      currentBalance: fromCents(acc.balance_cents),
+      previousBalance: fromCents(snapshot.balance_cents),
       dropPct: Math.round(dropPct * 10) / 10,
       days: settings.days,
     });
@@ -864,22 +871,23 @@ function importTransaction(provider: OpenFinanceProvider, tx: RemoteTransaction,
   `).get(accountId, tx.type, `%HASH:${hash}%`);
   if (manualDuplicate) return false;
   const notes = `OPEN_FINANCE:${provider}|REMOTE_ID:${tx.id}|HASH:${hash}`;
+  const amountCents = toExactCents(tx.amount);
 
   db.prepare(`
-    INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring, openfinance_provider, openfinance_id)
-    VALUES (?,?,?,?,?,?,?,'confirmed',?,0,?,?)
-  `).run(id, accountId, categoryId, tx.description, tx.amount, tx.type, tx.date, notes, provider, tx.id);
+    INSERT INTO transactions (id, account_id, category_id, description, amount, amount_cents, type, date, status, notes, recurring, openfinance_provider, openfinance_id)
+    VALUES (?,?,?,?,?,?,?,?,'confirmed',?,0,?,?)
+  `).run(id, accountId, categoryId, tx.description, fromCents(amountCents), amountCents, tx.type, tx.date, notes, provider, tx.id);
   const paymentId = randomUUID();
   db.prepare(`
-    INSERT INTO transaction_payments (id, transaction_id, account_id, amount)
-    VALUES (?,?,?,?)
-  `).run(paymentId, id, accountId, tx.amount);
+    INSERT INTO transaction_payments (id, transaction_id, account_id, amount, amount_cents)
+    VALUES (?,?,?,?,?)
+  `).run(paymentId, id, accountId, fromCents(amountCents), amountCents);
   db.prepare(`
-    INSERT INTO transaction_categories (id, transaction_id, category_id, amount)
-    VALUES (?,?,?,?)
-  `).run(randomUUID(), id, categoryId, tx.amount);
+    INSERT INTO transaction_categories (id, transaction_id, category_id, amount, amount_cents)
+    VALUES (?,?,?,?,?)
+  `).run(randomUUID(), id, categoryId, fromCents(amountCents), amountCents);
   const account = db.prepare('SELECT type FROM accounts WHERE id = ?').get(accountId) as { type: AccountType } | undefined;
-  const rawDelta = balanceDelta(tx.type, tx.amount);
+  const rawDelta = balanceDelta(tx.type, fromCents(amountCents));
   const signedDelta = account && isCreditLikeAccountType(account.type) ? -rawDelta : rawDelta;
   const invoiceId = attachToInvoice(accountId, tx.date, signedDelta);
   if (invoiceId) db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?').run(invoiceId, paymentId);

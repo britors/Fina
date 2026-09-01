@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import type { PixKeyType, PixKeyValidation, PixPayment, PixPaymentFilters, PixPaymentStatus, PixRecipient } from '../../shared/types';
+import { fromCents, toExactCents } from '../../shared/money';
 
 const STATUSES: PixPaymentStatus[] = ['draft', 'pending', 'sent', 'confirmed', 'failed', 'cancelled'];
 const PROVIDERS = ['pluggy', 'belvo', 'klavi'] as const;
@@ -200,19 +201,22 @@ export function registerPixHandlers(): void {
     assertProvider(data.provider);
     const status = data.status ?? 'draft';
     assertStatus(status);
-    if (!Number.isFinite(data.amount) || data.amount <= 0) throw new Error('Informe um valor Pix válido.');
+    let amountCents: number;
+    try { amountCents = toExactCents(data.amount); } catch { throw new Error('Informe um valor Pix válido com no máximo 2 casas decimais.'); }
+    if (amountCents <= 0) throw new Error('Informe um valor Pix válido.');
 
     const id = randomUUID();
     getDb().prepare(`
       INSERT INTO pix_payments (
-        id, provider, source_account_id, amount, pix_key_masked, recipient_name, recipient_bank,
+        id, provider, source_account_id, amount, amount_cents, pix_key_masked, recipient_name, recipient_bank,
         description, status, external_id, error_message, metadata
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
       id,
       data.provider,
       data.source_account_id ?? null,
-      Math.round(data.amount * 100) / 100,
+      fromCents(amountCents),
+      amountCents,
       maskPixKey(data.pix_key),
       data.recipient_name?.trim() || null,
       data.recipient_bank?.trim() || null,
@@ -249,7 +253,9 @@ export function registerPixHandlers(): void {
     const validation = validatePixKey(data.pix_key);
     if (!validation.valid) throw new Error(validation.message);
     if (!data.source_account_id) throw new Error('Selecione a conta de origem.');
-    if (!Number.isFinite(data.amount) || data.amount <= 0) throw new Error('Informe um valor Pix válido.');
+    let amountCents: number;
+    try { amountCents = toExactCents(data.amount); } catch { throw new Error('Informe um valor Pix válido com no máximo 2 casas decimais.'); }
+    if (amountCents <= 0) throw new Error('Informe um valor Pix válido.');
 
     const account = getDb().prepare('SELECT id FROM accounts WHERE id = ? AND openfinance_provider IS NOT NULL').get(data.source_account_id);
     if (!account) throw new Error('Selecione uma conta conectada via Open Finance.');
@@ -257,14 +263,15 @@ export function registerPixHandlers(): void {
     const id = randomUUID();
     getDb().prepare(`
       INSERT INTO pix_payments (
-        id, provider, source_account_id, amount, pix_key_masked, recipient_name, recipient_bank,
+        id, provider, source_account_id, amount, amount_cents, pix_key_masked, recipient_name, recipient_bank,
         description, status, external_id, metadata
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
       id,
       data.provider,
       data.source_account_id,
-      Math.round(data.amount * 100) / 100,
+      fromCents(amountCents),
+      amountCents,
       maskPixKey(validation.normalizedKey),
       data.recipient_name?.trim() || null,
       data.recipient_bank?.trim() || null,

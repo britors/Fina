@@ -112,7 +112,7 @@ function replaceReceivablePayments(receivableId: string, payments: PaymentSplit[
 
 function getReceivablePayments(receivableId: string): PaymentSplitWithAccount[] {
   return getDb().prepare(`
-    SELECT p.account_id, p.amount, p.is_pix, a.name as account_name
+    SELECT p.account_id, p.amount_cents / 100.0 AS amount, p.is_pix, a.name as account_name
     FROM receivable_payments p
     JOIN accounts a ON a.id = p.account_id
     WHERE p.receivable_id = ?
@@ -132,7 +132,7 @@ function replaceReceivableCategories(receivableId: string, categories: CategoryS
 
 function getReceivableCategories(receivableId: string): CategorySplitWithCategory[] {
   return getDb().prepare(`
-    SELECT rc.category_id, rc.amount, c.name as category_name, c.icon as category_icon, c.color as category_color
+    SELECT rc.category_id, rc.amount_cents / 100.0 AS amount, c.name as category_name, c.icon as category_icon, c.color as category_color
     FROM receivable_categories rc
     JOIN categories c ON c.id = rc.category_id
     WHERE rc.receivable_id = ?

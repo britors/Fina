@@ -38,7 +38,7 @@ function computeSettlement(dateFrom?: string, dateTo?: string): FamilySettlement
   if (dateTo) { conds.push('t.date <= ?'); params.push(dateTo); }
 
   const rows = db.prepare(`
-    SELECT t.paid_by_member_id, s.member_id, s.share_amount
+    SELECT t.paid_by_member_id, s.member_id, s.share_amount_cents / 100.0 AS share_amount
     FROM transactions t JOIN transaction_member_splits s ON s.transaction_id = t.id
     WHERE ${conds.join(' AND ')}
   `).all(...params) as { paid_by_member_id: string; member_id: string; share_amount: number }[];

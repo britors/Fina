@@ -1,10 +1,14 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  encodeMoneyWireTables, normalizeMoneyWireTables, resolveMoneyWireFormat,
+  CURRENT_MONEY_WIRE_FORMAT, encodeMoneyWireTables, normalizeMoneyWireTables, resolveMoneyWireFormat,
 } from '../src/main/moneyWireFormat';
 
 describe('incremental patch money format', () => {
+  test('novos patches usam centavos por padrão', () => {
+    assert.equal(CURRENT_MONEY_WIRE_FORMAT, 'cents-v1');
+  });
+
   test('patch legado sem metadado continua decimal', () => {
     assert.equal(resolveMoneyWireFormat(undefined), 'decimal-v1');
     assert.deepEqual(

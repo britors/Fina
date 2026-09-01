@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyMigrationAtomically } from '../src/main/database';
-import { MONEY_COLUMNS } from '../src/main/moneyMigrationAudit';
+import { auditMoneyShadowConsistency, MONEY_COLUMNS, type MoneyAuditDatabase } from '../src/main/moneyMigrationAudit';
 
 test('confirma schema e marcador da migração na mesma transação', () => {
   const db = new DatabaseSync(':memory:');
@@ -78,6 +78,9 @@ test('executa toda a cadeia de migrações e cria a hierarquia de categorias', (
       .get('cents-invoice') as { amount: number; amount_cents: number };
     assert.equal(invoice.amount_cents, 30);
     assert.equal(invoice.amount, 0.3);
+    const diagnostic = auditMoneyShadowConsistency(db as unknown as MoneyAuditDatabase);
+    assert.equal(diagnostic.ok, true);
+    assert.equal(diagnostic.divergentRows, 0);
 
     const indexes = db.prepare("PRAGMA index_list('categories')").all() as { name: string }[];
     assert.ok(indexes.some(index => index.name === 'idx_categories_parent_id'));

@@ -11,6 +11,7 @@ import { localizeDialogOptions } from '../i18n';
 import { localizeMainHtml } from '../i18n';
 import { localizeMainText } from '../i18n';
 import { csvCell } from './export';
+import { fromCents, toExactCents } from '../../shared/money';
 
 export interface IRPFRendimento {
   category: string;
@@ -72,7 +73,8 @@ function isDedutivel(category: string, classification: FiscalClassification | nu
 // (computeCapitalGains) para poder ser testada sem depender de banco.
 export function calculateCapitalGains(year: number): CapitalGainsReport {
   const rows = getDb().prepare(`
-    SELECT o.investment_id, i.type AS investment_type, o.type, o.quantity, o.unit_price, o.fees, o.date
+    SELECT o.investment_id, i.type AS investment_type, o.type, o.quantity, o.unit_price,
+      o.fees_cents / 100.0 AS fees, o.date
     FROM investment_operations o JOIN investments i ON i.id = o.investment_id
     WHERE i.type IN ('renda_variavel','cripto')
     ORDER BY o.investment_id, o.date ASC, o.rowid ASC
@@ -182,13 +184,13 @@ export function registerIRPFHandlers(): void {
     const deducoesFiltradas = deducoes.filter(d => isDedutivel(d.categoria, d.classification));
 
     // Bens e direitos: contas + investimentos + patrimônio
-    const contas = db.prepare(`SELECT name, type, bank_name, balance FROM accounts WHERE balance > 0`).all() as
+    const contas = db.prepare(`SELECT name, type, bank_name, balance_cents / 100.0 AS balance FROM accounts WHERE balance_cents > 0`).all() as
       { name: string; type: string; bank_name: string | null; balance: number }[];
 
-    const investimentos = db.prepare(`SELECT name, type, institution, current_value FROM investments WHERE current_value > 0`).all() as
+    const investimentos = db.prepare(`SELECT name, type, institution, current_value_cents / 100.0 AS current_value FROM investments WHERE current_value_cents > 0`).all() as
       { name: string; type: string; institution: string | null; current_value: number }[];
 
-    const ativos = db.prepare(`SELECT name, type, current_value FROM assets WHERE current_value > 0`).all() as
+    const ativos = db.prepare(`SELECT name, type, current_value_cents / 100.0 AS current_value FROM assets WHERE current_value_cents > 0`).all() as
       { name: string; type: string; current_value: number }[];
 
     const bens: IRPFBem[] = [
@@ -211,8 +213,8 @@ export function registerIRPFHandlers(): void {
 
     // Dívidas e ônus
     const dividasRaw = db.prepare(`
-      SELECT description, creditor, outstanding_balance
-      FROM debts WHERE status NOT IN ('quitada') AND outstanding_balance > 0
+      SELECT description, creditor, outstanding_balance_cents / 100.0 AS outstanding_balance
+      FROM debts WHERE status NOT IN ('quitada') AND outstanding_balance_cents > 0
     `).all() as { description: string; creditor: string | null; outstanding_balance: number }[];
 
     const dividas: IRPFDivida[] = dividasRaw.map(d => ({
@@ -279,7 +281,7 @@ export function registerIRPFHandlers(): void {
 
     const txExists = db.prepare(`
       SELECT 1 FROM transactions
-      WHERE account_id = ? AND type = ? AND date = ? AND description = ? AND amount = ?
+      WHERE account_id = ? AND type = ? AND date = ? AND description = ? AND amount_cents = ?
         AND (notes = ? OR notes LIKE ?)
       LIMIT 1
     `);
@@ -287,7 +289,7 @@ export function registerIRPFHandlers(): void {
       SELECT 1 FROM assets WHERE name = ? AND description = ? LIMIT 1
     `);
     const debtExists = db.prepare(`
-      SELECT 1 FROM debts WHERE description = ? AND creditor IS ? AND original_amount = ? LIMIT 1
+      SELECT 1 FROM debts WHERE description = ? AND creditor IS ? AND original_amount_cents = ? LIMIT 1
     `);
 
     const doImport = db.transaction(() => {
@@ -295,7 +297,7 @@ export function registerIRPFHandlers(): void {
       for (const [index, r] of preview.rendimentos.entries()) {
         if (r.total <= 0) continue;
         const notes = `IRPF ${year}|rendimento:${index}`;
-        if (txExists.get(accountId, 'income', date, r.category, r.total, notes, `IRPF ${year}%`)) continue;
+        if (txExists.get(accountId, 'income', date, r.category, toExactCents(r.total), notes, `IRPF ${year}%`)) continue;
         insertConfirmedTransaction({
           account_id: accountId,
           category_id: catId(r.category, 'income'),
@@ -312,7 +314,7 @@ export function registerIRPFHandlers(): void {
       for (const [index, d] of preview.deducoes.entries()) {
         if (d.total <= 0) continue;
         const notes = `IRPF ${year}|deducao:${index}`;
-        if (txExists.get(accountId, 'expense', date, d.categoria, d.total, notes, `IRPF ${year}%`)) continue;
+        if (txExists.get(accountId, 'expense', date, d.categoria, toExactCents(d.total), notes, `IRPF ${year}%`)) continue;
         insertConfirmedTransaction({
           account_id: accountId,
           category_id: catId(d.categoria, 'expense'),
@@ -327,28 +329,32 @@ export function registerIRPFHandlers(): void {
 
       // Bens → assets (se nome não existir ainda)
       const insertAsset = db.prepare(`
-        INSERT OR IGNORE INTO assets (id, name, type, acquisition_value, current_value, description)
-        VALUES (?,?,?,?,?,?)
+        INSERT OR IGNORE INTO assets (id, name, type, acquisition_value, acquisition_value_cents, current_value, current_value_cents, description)
+        VALUES (?,?,?,?,?,?,?,?)
       `);
       for (const b of preview.bens) {
         if (b.valor <= 0) continue;
         const assetType = guessAssetType(b.tipo);
         if (assetExists.get(b.descricao, `Importado IRPF ${year}`)) continue;
-        insertAsset.run(randomUUID(), b.descricao, assetType, b.valor, b.valor, `Importado IRPF ${year}`);
+        const valueCents = toExactCents(b.valor);
+        insertAsset.run(randomUUID(), b.descricao, assetType, fromCents(valueCents), valueCents,
+          fromCents(valueCents), valueCents, `Importado IRPF ${year}`);
         imported++;
       }
 
       // Dívidas → debts (se descrição não existir ainda)
       const insertDebt = db.prepare(`
         INSERT OR IGNORE INTO debts
-          (id, description, type, creditor, original_amount, outstanding_balance,
-           interest_rate, installments_total, installments_remaining, installment_amount, status)
-        VALUES (?,?,?,?,?,?,0,1,1,0,'em_dia')
+          (id, description, type, creditor, original_amount, original_amount_cents, outstanding_balance, outstanding_balance_cents,
+           interest_rate, installments_total, installments_remaining, installment_amount, installment_amount_cents, status)
+        VALUES (?,?,?,?,?,?,?,?,0,1,1,0,0,'em_dia')
       `);
       for (const d of preview.dividas) {
         if (d.saldo <= 0) continue;
-        if (debtExists.get(d.descricao, d.credor ?? null, d.saldo)) continue;
-        insertDebt.run(randomUUID(), d.descricao, 'outro', d.credor, d.saldo, d.saldo);
+        const balanceCents = toExactCents(d.saldo);
+        if (debtExists.get(d.descricao, d.credor ?? null, balanceCents)) continue;
+        insertDebt.run(randomUUID(), d.descricao, 'outro', d.credor,
+          fromCents(balanceCents), balanceCents, fromCents(balanceCents), balanceCents);
         imported++;
       }
     });

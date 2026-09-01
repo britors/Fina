@@ -33,7 +33,7 @@ function detectRecurrences(type: 'expense' | 'income'): DetectedRecurrence[] {
   );
 
   const rows = db.prepare(`
-    SELECT description, amount, date
+    SELECT description, amount_cents / 100.0 AS amount, date
     FROM transactions
     WHERE type = ? AND status = 'confirmed' AND date >= date('now', '-12 months')
     ORDER BY date ASC

@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
+import { fromCents, toExactCents } from '../../shared/money';
 import { getDb } from '../database';
 import type { Budget, BudgetWithProgress } from '../../shared/types';
 import { CATEGORY_SPENT_MONTH_SQL, categoryOrChildPredicate } from '../categoryHierarchyQueries';
@@ -87,18 +88,20 @@ export function registerBudgetHandlers(): void {
   ipcMain.handle('budgets:create', (_e, data: Omit<Budget, 'id' | 'created_at' | 'updated_at'>) => {
     assertNoOverlappingBudget(data.category_id, data.month, data.year);
     const id = randomUUID();
+    const limitCents = toExactCents(data.limit_amount);
     getDb().prepare(
-      'INSERT INTO budgets (id, category_id, month, year, limit_amount, carry_over) VALUES (?,?,?,?,?,?)'
-    ).run(id, data.category_id, data.month, data.year, data.limit_amount, data.carry_over ? 1 : 0);
+      'INSERT INTO budgets (id, category_id, month, year, limit_amount, limit_amount_cents, carry_over) VALUES (?,?,?,?,?,?,?)'
+    ).run(id, data.category_id, data.month, data.year, fromCents(limitCents), limitCents, data.carry_over ? 1 : 0);
     return getDb().prepare('SELECT * FROM budgets WHERE id = ?').get(id);
   });
 
   ipcMain.handle('budgets:update', (_e, { id, ...data }: Partial<Budget> & { id: string }) => {
     if (!data.category_id || data.month == null || data.year == null) throw new Error('Preencha todos os campos do orçamento.');
     assertNoOverlappingBudget(data.category_id, data.month, data.year, id);
+    const limitCents = toExactCents(data.limit_amount ?? 0);
     getDb().prepare(
-      `UPDATE budgets SET category_id=?, month=?, year=?, limit_amount=?, carry_over=?, updated_at=datetime('now') WHERE id=?`
-    ).run(data.category_id, data.month, data.year, data.limit_amount, data.carry_over ? 1 : 0, id);
+      `UPDATE budgets SET category_id=?, month=?, year=?, limit_amount_cents=?, carry_over=?, updated_at=datetime('now') WHERE id=?`
+    ).run(data.category_id, data.month, data.year, limitCents, data.carry_over ? 1 : 0, id);
     return getDb().prepare('SELECT * FROM budgets WHERE id = ?').get(id);
   });
 

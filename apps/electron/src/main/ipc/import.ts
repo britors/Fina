@@ -10,6 +10,7 @@ import { adjustBalance, balanceDelta } from './transactions';
 import { attachToInvoice } from '../invoices';
 import { suggestCategoryFromHistory, learnCategoryRule } from './categorySuggestion';
 import type { ImportDirection, ImportPreview, ImportPreviewRow, TransactionType } from '../../shared/types';
+import { fromCents, toExactCents } from '../../shared/money';
 
 function txHash(date: string, amount: number, description: string): string {
   return createHash('md5').update(`${date}|${amount}|${description}`).digest('hex');
@@ -126,16 +127,16 @@ export function registerImportHandlers(): void {
     const importedDates: string[] = [];
 
     const insert = db.prepare(`
-      INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring)
-      VALUES (?,?,?,?,?,?,?,'confirmed',?,0)
+      INSERT INTO transactions (id, account_id, category_id, description, amount, amount_cents, type, date, status, notes, recurring)
+      VALUES (?,?,?,?,?,?,?,?,'confirmed',?,0)
     `);
     const insertPayment = db.prepare(`
-      INSERT INTO transaction_payments (id, transaction_id, account_id, amount)
-      VALUES (?,?,?,?)
+      INSERT INTO transaction_payments (id, transaction_id, account_id, amount, amount_cents)
+      VALUES (?,?,?,?,?)
     `);
     const insertCategory = db.prepare(`
-      INSERT INTO transaction_categories (id, transaction_id, category_id, amount)
-      VALUES (?,?,?,?)
+      INSERT INTO transaction_categories (id, transaction_id, category_id, amount, amount_cents)
+      VALUES (?,?,?,?,?)
     `);
     const linkInvoice = db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?');
     const duplicateByAccount = db.prepare(`
@@ -158,18 +159,19 @@ export function registerImportHandlers(): void {
         }
         const notes = row.fitid ? `FITID:${row.fitid}|HASH:${hash}` : `HASH:${hash}`;
         const id = randomUUID();
+        const amountCents = toExactCents(row.amount);
         const categoryId = payload.useSuggestions && row.suggested_category_id
           ? row.suggested_category_id
           : row.type === 'income' ? payload.incomeCategoryId! : payload.expenseCategoryId!;
         learnCategoryRule(row.description, row.type as TransactionType, categoryId);
         insert.run(id, payload.accountId, categoryId,
-                   row.description, row.amount, row.type as TransactionType,
+                   row.description, fromCents(amountCents), amountCents, row.type as TransactionType,
                    row.date, notes);
-        const signedDelta = adjustBalance(payload.accountId, balanceDelta(row.type as TransactionType, row.amount));
-        insertCategory.run(randomUUID(), id, categoryId, row.amount);
+        const signedDelta = adjustBalance(payload.accountId, balanceDelta(row.type as TransactionType, fromCents(amountCents)));
+        insertCategory.run(randomUUID(), id, categoryId, fromCents(amountCents), amountCents);
         if (row.type !== 'transfer') {
           const paymentId = randomUUID();
-          insertPayment.run(paymentId, id, payload.accountId, row.amount);
+          insertPayment.run(paymentId, id, payload.accountId, fromCents(amountCents), amountCents);
           const invoiceId = attachToInvoice(payload.accountId, row.date, signedDelta);
           if (invoiceId) linkInvoice.run(invoiceId, paymentId);
         }

@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import type { MeiDasPayment, MeiMonthRevenue, MeiReport } from '../../shared/types';
+import { fromCents, toExactCents } from '../../shared/money';
 
 // Limite anual de faturamento do MEI vigente na legislação atual. Constante
 // nomeada para facilitar o ajuste se o valor mudar em anos futuros.
@@ -53,11 +54,13 @@ export function registerMeiHandlers(): void {
 
   ipcMain.handle('mei:createDAS', (_e, data: { competencia: string; amount: number }) => {
     if (!/^\d{4}-\d{2}$/.test(data.competencia ?? '')) throw new Error('Informe a competência no formato AAAA-MM.');
-    if (!Number.isFinite(data.amount) || data.amount < 0) throw new Error('Informe um valor válido para o DAS.');
+    let amountCents: number;
+    try { amountCents = toExactCents(data.amount); } catch { throw new Error('Informe um valor válido para o DAS com no máximo 2 casas decimais.'); }
+    if (amountCents < 0) throw new Error('Informe um valor válido para o DAS.');
     const id = randomUUID();
     getDb().prepare(`
-      INSERT INTO mei_das_payments (id, competencia, amount, status) VALUES (?,?,?,'pendente')
-    `).run(id, data.competencia, data.amount ?? 0);
+      INSERT INTO mei_das_payments (id, competencia, amount, amount_cents, status) VALUES (?,?,?,?,'pendente')
+    `).run(id, data.competencia, fromCents(amountCents), amountCents);
     return getDb().prepare('SELECT * FROM mei_das_payments WHERE id = ?').get(id);
   });
 
