@@ -58,7 +58,7 @@ export function buildExpenseAnalyticsWhere(
 }
 
 export const EXPENSES_BY_ROOT_MONTH_SQL = `
-  SELECT root.id, root.name, root.color, SUM(tc.amount) as total
+  SELECT root.id, root.name, root.color, SUM(tc.amount_cents) / 100.0 as total
   FROM transactions t
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
@@ -71,7 +71,7 @@ export const EXPENSES_BY_ROOT_MONTH_SQL = `
 `;
 
 export const EXPENSES_BY_ROOT_RANGE_SQL = `
-  SELECT root.id, root.name, root.color, SUM(tc.amount) as total
+  SELECT root.id, root.name, root.color, SUM(tc.amount_cents) / 100.0 as total
   FROM transactions t
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
@@ -82,7 +82,7 @@ export const EXPENSES_BY_ROOT_RANGE_SQL = `
 `;
 
 export const CATEGORY_SPENT_MONTH_SQL = `
-  SELECT COALESCE(SUM(tc.amount), 0) as spent
+  SELECT COALESCE(SUM(tc.amount_cents), 0) / 100.0 as spent
   FROM transactions t
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
@@ -98,7 +98,7 @@ export const EXPENSE_SUBCATEGORY_BREAKDOWN_SQL = `
     CASE WHEN c.id = ? THEN NULL ELSE c.id END AS id,
     CASE WHEN c.id = ? THEN 'Sem subcategoria' ELSE c.name END AS name,
     c.color,
-    SUM(tc.amount) AS total
+    SUM(tc.amount_cents) / 100.0 AS total
   FROM transactions t
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
@@ -112,10 +112,10 @@ export const EXPENSE_SUBCATEGORY_BREAKDOWN_SQL = `
 
 export const EXPENSE_CATEGORY_DETAILS_SQL = `
   SELECT root.id, root.name, root.color,
-    SUM(tc.amount) AS total,
+    SUM(tc.amount_cents) / 100.0 AS total,
     COUNT(*) AS transaction_count,
-    AVG(tc.amount) AS average_amount,
-    MAX(tc.amount) AS largest_amount
+    AVG(tc.amount_cents) / 100.0 AS average_amount,
+    MAX(tc.amount_cents) / 100.0 AS largest_amount
   FROM transactions t
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
@@ -127,7 +127,7 @@ export const EXPENSE_CATEGORY_DETAILS_SQL = `
 
 export const EXPENSE_MONTHLY_ROOT_SERIES_SQL = `
   SELECT strftime('%Y-%m', t.date) AS month,
-    root.id, root.name, root.color, SUM(tc.amount) AS total
+    root.id, root.name, root.color, SUM(tc.amount_cents) / 100.0 AS total
   FROM transactions t
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id
@@ -141,7 +141,7 @@ export const EXPENSE_MONTHLY_SUBCATEGORY_SERIES_SQL = `
   SELECT strftime('%Y-%m', t.date) AS month,
     CASE WHEN c.id = ? THEN NULL ELSE c.id END AS id,
     CASE WHEN c.id = ? THEN 'Sem subcategoria' ELSE c.name END AS name,
-    c.color, SUM(tc.amount) AS total
+    c.color, SUM(tc.amount_cents) / 100.0 AS total
   FROM transactions t
   JOIN transaction_categories tc ON tc.transaction_id = t.id
   JOIN categories c ON c.id = tc.category_id

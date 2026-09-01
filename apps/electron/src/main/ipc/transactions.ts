@@ -352,7 +352,7 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
   const dimensionParams = detailMode ? [filters.rootCategoryId!, filters.rootCategoryId!] : [];
 
   const availableRoots = db.prepare(`
-    SELECT root.id, root.name, root.color, SUM(tc.amount) AS total
+    SELECT root.id, root.name, root.color, SUM(tc.amount_cents) / 100.0 AS total
     FROM transactions t
     JOIN transaction_categories tc ON tc.transaction_id=t.id
     JOIN categories c ON c.id=tc.category_id
@@ -362,8 +362,9 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
   `).all(...withoutCategory.params);
 
   const categories = db.prepare(`
-    SELECT ${dimension}, SUM(tc.amount) AS total,
-      COUNT(*) AS transaction_count, AVG(tc.amount) AS average_amount, MAX(tc.amount) AS largest_amount
+    SELECT ${dimension}, SUM(tc.amount_cents) / 100.0 AS total,
+      COUNT(*) AS transaction_count, AVG(tc.amount_cents) / 100.0 AS average_amount,
+      MAX(tc.amount_cents) / 100.0 AS largest_amount
     FROM transactions t
     JOIN transaction_categories tc ON tc.transaction_id=t.id
     JOIN categories c ON c.id=tc.category_id
@@ -373,7 +374,7 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
   `).all(...dimensionParams, ...filtered.params);
 
   const monthlySeries = db.prepare(`
-    SELECT strftime('%Y-%m',t.date) AS month, ${dimension}, SUM(tc.amount) AS total
+    SELECT strftime('%Y-%m',t.date) AS month, ${dimension}, SUM(tc.amount_cents) / 100.0 AS total
     FROM transactions t
     JOIN transaction_categories tc ON tc.transaction_id=t.id
     JOIN categories c ON c.id=tc.category_id
@@ -390,11 +391,11 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
     JOIN categories c ON c.id=t.category_id
     LEFT JOIN categories parent ON parent.id=c.parent_id
     WHERE ${filtered.sql}
-    ORDER BY t.amount DESC, t.date DESC LIMIT 10
+    ORDER BY t.amount_cents DESC, t.date DESC LIMIT 10
   `).all(...filtered.params);
 
   const kindBreakdown = db.prepare(`
-    SELECT root.kind AS kind, SUM(tc.amount) AS total
+    SELECT root.kind AS kind, SUM(tc.amount_cents) / 100.0 AS total
     FROM transactions t
     JOIN transaction_categories tc ON tc.transaction_id=t.id
     JOIN categories c ON c.id=tc.category_id
@@ -404,14 +405,15 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
   `).all(...filtered.params);
 
   const weekdayBreakdown = db.prepare(`
-    SELECT CAST(strftime('%w',t.date) AS INTEGER) AS weekday, SUM(t.amount) AS total, COUNT(*) AS transaction_count
+    SELECT CAST(strftime('%w',t.date) AS INTEGER) AS weekday,
+      SUM(t.amount_cents) / 100.0 AS total, COUNT(*) AS transaction_count
     FROM transactions t
     WHERE ${filtered.sql}
     GROUP BY weekday ORDER BY weekday
   `).all(...filtered.params);
 
   const accountBreakdown = db.prepare(`
-    SELECT a.id, a.name, SUM(p.amount) AS total
+    SELECT a.id, a.name, SUM(p.amount_cents) / 100.0 AS total
     FROM transactions t
     JOIN transaction_payments p ON p.transaction_id=t.id
     JOIN accounts a ON a.id=p.account_id
@@ -420,7 +422,8 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
   `).all(...filtered.params);
 
   const paymentMethodBreakdown = db.prepare(`
-    SELECT CASE WHEN p.is_pix THEN 'pix' ELSE 'outros' END AS method, SUM(p.amount) AS total, COUNT(*) AS transaction_count
+    SELECT CASE WHEN p.is_pix THEN 'pix' ELSE 'outros' END AS method,
+      SUM(p.amount_cents) / 100.0 AS total, COUNT(*) AS transaction_count
     FROM transactions t
     JOIN transaction_payments p ON p.transaction_id=t.id
     WHERE ${filtered.sql}
@@ -429,7 +432,7 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
 
   const ownerBreakdown = db.prepare(`
     SELECT COALESCE(NULLIF(TRIM(t.owner), ''), 'Sem responsável') AS owner,
-      SUM(t.amount) AS total, COUNT(*) AS transaction_count
+      SUM(t.amount_cents) / 100.0 AS total, COUNT(*) AS transaction_count
     FROM transactions t
     WHERE ${filtered.sql}
     GROUP BY owner ORDER BY total DESC
@@ -437,7 +440,8 @@ function getExpenseAnalytics(filters: ExpenseAnalyticsFilters, type: Transaction
 
   const destinationBreakdown = db.prepare(`
     SELECT LOWER(TRIM(t.description)) AS key, MIN(t.description) AS description,
-      SUM(t.amount) AS total, COUNT(*) AS transaction_count, AVG(t.amount) AS average_amount
+      SUM(t.amount_cents) / 100.0 AS total, COUNT(*) AS transaction_count,
+      AVG(t.amount_cents) / 100.0 AS average_amount
     FROM transactions t
     WHERE ${filtered.sql} AND TRIM(t.description) <> ''
     GROUP BY key ORDER BY total DESC LIMIT 15
@@ -468,8 +472,8 @@ function getFilteredMonthlyHistory(filters: ExpenseAnalyticsFilters): object[] {
 
   const rows = getDb().prepare(`
     SELECT strftime('%Y-%m',t.date) AS month,
-      SUM(CASE WHEN t.type='income' THEN t.amount ELSE 0 END) AS income,
-      SUM(CASE WHEN t.type='expense' THEN t.amount ELSE 0 END) AS expense
+      SUM(CASE WHEN t.type='income' THEN t.amount_cents ELSE 0 END) / 100.0 AS income,
+      SUM(CASE WHEN t.type='expense' THEN t.amount_cents ELSE 0 END) / 100.0 AS expense
     FROM transactions t WHERE ${clauses.join(' AND ')}
     GROUP BY month ORDER BY month
   `).all(...params) as { month: string; income: number; expense: number }[];
@@ -657,14 +661,16 @@ export function registerTransactionHandlers(): void {
   ipcMain.handle('transactions:getMonthlySummary', (_e, { month, year }: { month: number; year: number }) => {
     const row = getDb().prepare(`
       SELECT
-        COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END), 0) as income,
-        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expense
+        COALESCE(SUM(CASE WHEN type='income'  THEN amount_cents ELSE 0 END), 0) / 100.0 as income,
+        COALESCE(SUM(CASE WHEN type='expense' THEN amount_cents ELSE 0 END), 0) / 100.0 as expense,
+        (COALESCE(SUM(CASE WHEN type='income' THEN amount_cents ELSE 0 END), 0)
+          - COALESCE(SUM(CASE WHEN type='expense' THEN amount_cents ELSE 0 END), 0)) / 100.0 as balance
         FROM transactions
         WHERE CAST(strftime('%m', date) AS INTEGER) = ?
           AND CAST(strftime('%Y', date) AS INTEGER) = ?
           AND status = 'confirmed'
-    `).get(month, year) as { income: number; expense: number };
-    return { ...row, balance: row.income - row.expense };
+    `).get(month, year) as { income: number; expense: number; balance: number };
+    return row;
   });
 
   // Soma, por cartão e por mês futuro, as parcelas já contratadas (via
@@ -672,7 +678,8 @@ export function registerTransactionHandlers(): void {
   // futuro" que o card de Contas mostra para cada cartão.
   ipcMain.handle('transactions:getInstallmentCommitments', () => {
     return getDb().prepare(`
-      SELECT a.id AS account_id, a.name AS account_name, strftime('%Y-%m', t.date) AS month, SUM(t.amount) AS total
+      SELECT a.id AS account_id, a.name AS account_name, strftime('%Y-%m', t.date) AS month,
+        SUM(t.amount_cents) / 100.0 AS total
       FROM transactions t
       JOIN accounts a ON a.id = t.account_id
       WHERE t.installment_group_id IS NOT NULL
@@ -696,8 +703,8 @@ export function registerTransactionHandlers(): void {
       const label = formatMainDate(d, { month: 'short' });
       const row = getDb().prepare(`
         SELECT
-          COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END), 0) as income,
-          COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expense
+          COALESCE(SUM(CASE WHEN type='income'  THEN amount_cents ELSE 0 END), 0) / 100.0 as income,
+          COALESCE(SUM(CASE WHEN type='expense' THEN amount_cents ELSE 0 END), 0) / 100.0 as expense
         FROM transactions
         WHERE CAST(strftime('%m', date) AS INTEGER) = ?
           AND CAST(strftime('%Y', date) AS INTEGER) = ?
@@ -717,12 +724,14 @@ export function registerTransactionHandlers(): void {
   ipcMain.handle('transactions:getSummaryRange', (_e, { dateFrom, dateTo }: { dateFrom: string; dateTo: string }) => {
     const row = getDb().prepare(`
       SELECT
-        COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END), 0) as income,
-        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expense
+        COALESCE(SUM(CASE WHEN type='income'  THEN amount_cents ELSE 0 END), 0) / 100.0 as income,
+        COALESCE(SUM(CASE WHEN type='expense' THEN amount_cents ELSE 0 END), 0) / 100.0 as expense,
+        (COALESCE(SUM(CASE WHEN type='income' THEN amount_cents ELSE 0 END), 0)
+          - COALESCE(SUM(CASE WHEN type='expense' THEN amount_cents ELSE 0 END), 0)) / 100.0 as balance
       FROM transactions
       WHERE date >= ? AND date <= ? AND status = 'confirmed'
-    `).get(dateFrom, dateTo) as { income: number; expense: number };
-    return { ...row, balance: row.income - row.expense };
+    `).get(dateFrom, dateTo) as { income: number; expense: number; balance: number };
+    return row;
   });
 
   ipcMain.handle('transactions:getExpensesByCategoryRange', (_e, { dateFrom, dateTo }: { dateFrom: string; dateTo: string }) => {

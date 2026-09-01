@@ -28,6 +28,7 @@ beforeEach(() => {
       id TEXT PRIMARY KEY,
       category_id TEXT NOT NULL REFERENCES categories(id),
       amount REAL NOT NULL,
+      amount_cents INTEGER NOT NULL,
       type TEXT NOT NULL,
       date TEXT NOT NULL,
       account_id TEXT NOT NULL DEFAULT 'account-a',
@@ -35,24 +36,27 @@ beforeEach(() => {
       status TEXT NOT NULL DEFAULT 'confirmed'
     );
     CREATE TABLE transaction_payments (transaction_id TEXT NOT NULL, account_id TEXT NOT NULL);
-    CREATE TABLE transaction_categories (transaction_id TEXT NOT NULL, category_id TEXT NOT NULL, amount REAL NOT NULL);
+    CREATE TABLE transaction_categories (
+      transaction_id TEXT NOT NULL, category_id TEXT NOT NULL,
+      amount REAL NOT NULL, amount_cents INTEGER NOT NULL
+    );
     INSERT INTO categories VALUES
       ('food', 'Alimentação', '#f00', NULL),
       ('market', 'Mercado', '#f10', 'food'),
       ('restaurant', 'Restaurante', '#f20', 'food'),
       ('home', 'Moradia', '#00f', NULL);
-    INSERT INTO transactions (id,category_id,amount,type,date) VALUES
-      ('direct', 'food', 50, 'expense', '2026-07-01'),
-      ('market-1', 'market', 200, 'expense', '2026-07-02'),
-      ('restaurant-1', 'restaurant', 100, 'expense', '2026-07-03'),
-      ('home-1', 'home', 500, 'expense', '2026-07-04'),
-      ('income', 'food', 1000, 'income', '2026-07-05'),
-      ('old', 'market', 75, 'expense', '2026-06-30');
+    INSERT INTO transactions (id,category_id,amount,amount_cents,type,date) VALUES
+      ('direct', 'food', 50, 5000, 'expense', '2026-07-01'),
+      ('market-1', 'market', 200, 20000, 'expense', '2026-07-02'),
+      ('restaurant-1', 'restaurant', 100, 10000, 'expense', '2026-07-03'),
+      ('home-1', 'home', 500, 50000, 'expense', '2026-07-04'),
+      ('income', 'food', 1000, 100000, 'income', '2026-07-05'),
+      ('old', 'market', 75, 7500, 'expense', '2026-06-30');
     UPDATE transactions SET owner='Ana' WHERE id IN ('market-1','restaurant-1');
     UPDATE transactions SET status='pending' WHERE id='restaurant-1';
     INSERT INTO transaction_payments VALUES ('market-1','account-b');
-    INSERT INTO transaction_categories (transaction_id, category_id, amount)
-      SELECT id, category_id, amount FROM transactions;
+    INSERT INTO transaction_categories (transaction_id, category_id, amount, amount_cents)
+      SELECT id, category_id, amount, amount_cents FROM transactions;
   `);
 });
 
@@ -63,6 +67,12 @@ describe('agregação hierárquica de despesas', () => {
     const rows = db.prepare(EXPENSES_BY_ROOT_MONTH_SQL).all(7, 2026) as { id: string; total: number }[];
     assert.deepEqual(rows.map(row => [row.id, row.total]), [['home', 500], ['food', 250]]);
     assert.equal(rows.reduce((sum, row) => sum + row.total, 0), 750);
+  });
+
+  test('usa centavos como fonte mesmo se a coluna decimal divergir', () => {
+    db.prepare("UPDATE transaction_categories SET amount = 999999 WHERE transaction_id = 'direct'").run();
+    const rows = db.prepare(EXPENSES_BY_ROOT_MONTH_SQL).all(7, 2026) as { id: string; total: number }[];
+    assert.deepEqual(rows.map(row => [row.id, row.total]), [['home', 500], ['food', 250]]);
   });
 
   test('respeita intervalo de datas', () => {
