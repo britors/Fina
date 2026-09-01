@@ -49,6 +49,7 @@ import { localizeDialogOptions, localizeMainText, resolveMainLocale } from './i1
 import { isNewerDesktopVersion, selectLatestDesktopRelease, type GitHubRelease } from './desktopRelease';
 import { initializeRequiredSchema } from './startup';
 import { assertSafeIpcArguments } from './ipcValidation';
+import { MainWindowLifecycle } from './mainWindowLifecycle';
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -61,7 +62,6 @@ if (!app.requestSingleInstanceLock()) {
 // interface normal.
 const isBackgroundRun = process.argv.includes('--background-tasks');
 let databaseInitializationFailed = false;
-let schedulersStarted = false;
 
 function loadAppIcon(): Electron.NativeImage | undefined {
   const candidates = [
@@ -179,28 +179,29 @@ function createMainWindow(): BrowserWindow {
   return hardenWindow(w);
 }
 
-function startSchedulersOnce(): void {
-  if (schedulersStarted) return;
-  schedulersStarted = true;
+function startSchedulers(): void {
   runRecurrenceCycle();
   setInterval(runRecurrenceCycle, 60 * 60 * 1000);
   startNotificationScheduler();
   startAutoBackupScheduler();
 }
 
+const mainWindowLifecycle = new MainWindowLifecycle({
+  createWindow: createMainWindow,
+  configureWindow: win => {
+    initUpdater(win);
+    setMobileSyncWindow(win);
+  },
+  startServices: startSchedulers,
+});
+
 function openMainWindow(options?: { splash?: BrowserWindow; unlock?: BrowserWindow | null }): BrowserWindow {
-  const win = createMainWindow();
-  initUpdater(win);
-  setMobileSyncWindow(win);
-  win.once('ready-to-show', () => {
-    win.show();
+  return mainWindowLifecycle.open(() => {
     const splash = options?.splash;
     const unlock = options?.unlock;
     if (splash && !splash.isDestroyed()) splash.destroy();
     if (unlock && !unlock.isDestroyed()) unlock.close();
-    startSchedulersOnce();
   });
-  return win;
 }
 
 function registerHandlers(): void {

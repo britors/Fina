@@ -1,17 +1,15 @@
 import { autoUpdater } from 'electron-updater';
 import { ipcMain, app, type BrowserWindow } from 'electron';
+import { UpdaterWindowState } from './updaterWindowState';
 
 // No Linux o Fina é distribuído como .deb/.rpm/AUR, que o electron-updater não
 // sabe baixar nem instalar sozinho — esses usuários seguem usando a checagem
 // manual via GitHub (ver ipcMain.handle('app:checkUpdate', ...) em index.ts).
 const SUPPORTED = process.platform === 'win32';
-let targetWindow: BrowserWindow | null = null;
-let initialized = false;
+const windows = new UpdaterWindowState<BrowserWindow>();
 
 export function initUpdater(window: BrowserWindow): void {
-  targetWindow = window;
-  if (initialized) return;
-  initialized = true;
+  if (!windows.attach(window)) return;
   ipcMain.handle('updater:supported', () => SUPPORTED);
   if (!SUPPORTED) return;
 
@@ -19,7 +17,7 @@ export function initUpdater(window: BrowserWindow): void {
   autoUpdater.autoInstallOnAppQuit = true;
 
   const notify = (status: Record<string, unknown>) => {
-    if (targetWindow && !targetWindow.isDestroyed()) targetWindow.webContents.send('updater:status', status);
+    windows.send('updater:status', status);
   };
 
   autoUpdater.on('checking-for-update', () => notify({ state: 'checking' }));
