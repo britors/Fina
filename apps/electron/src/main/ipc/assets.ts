@@ -38,7 +38,7 @@ export function registerAssetHandlers(): void {
 
   ipcMain.handle('assets:getSummary', () => {
     const rows = getDb().prepare(`
-      SELECT type, SUM(current_value) as total FROM assets GROUP BY type
+      SELECT type, SUM(current_value_cents) / 100.0 as total FROM assets GROUP BY type
     `).all() as { type: string; total: number }[];
     const total = rows.reduce((s, r) => s + r.total, 0);
     return { total, by_type: rows };
@@ -53,15 +53,15 @@ export function registerAssetHandlers(): void {
   // varia de fato mês a mês).
   ipcMain.handle('assets:getNetWorthHistory', (_e, months = 12) => {
     const db = getDb();
-    const accounts = db.prepare('SELECT type, balance FROM accounts').all() as { type: string; balance: number }[];
+    const accounts = db.prepare('SELECT type, balance_cents / 100.0 AS balance FROM accounts').all() as { type: string; balance: number }[];
     const currentAccountBalance = accounts.reduce((sum, account) =>
       sum + (isCreditLikeAccountType(account.type) ? -account.balance : account.balance), 0);
-    const investmentsTotal = (db.prepare('SELECT COALESCE(SUM(current_value),0) AS total FROM investments').get() as { total: number }).total;
-    const assetsTotal = (db.prepare('SELECT COALESCE(SUM(current_value),0) AS total FROM assets').get() as { total: number }).total;
-    const debtsTotal = (db.prepare(`SELECT COALESCE(SUM(outstanding_balance),0) AS total FROM debts WHERE status NOT IN ('quitada')`).get() as { total: number }).total;
+    const investmentsTotal = (db.prepare('SELECT COALESCE(SUM(current_value_cents),0) / 100.0 AS total FROM investments').get() as { total: number }).total;
+    const assetsTotal = (db.prepare('SELECT COALESCE(SUM(current_value_cents),0) / 100.0 AS total FROM assets').get() as { total: number }).total;
+    const debtsTotal = (db.prepare(`SELECT COALESCE(SUM(outstanding_balance_cents),0) / 100.0 AS total FROM debts WHERE status NOT IN ('quitada')`).get() as { total: number }).total;
 
     const netAfterCutoff = db.prepare(`
-      SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount WHEN type='expense' THEN -amount ELSE 0 END), 0) AS net
+      SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount_cents WHEN type='expense' THEN -amount_cents ELSE 0 END), 0) / 100.0 AS net
       FROM transactions WHERE status = 'confirmed' AND date > ?
     `);
 

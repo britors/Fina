@@ -53,7 +53,8 @@ export function registerInvestmentHandlers(): void {
 
   ipcMain.handle('investments:getSummary', (): InvestmentSummary => {
     const rows = getDb().prepare(`
-      SELECT type, SUM(applied_amount) as applied, SUM(current_value) as current
+      SELECT type, SUM(applied_amount_cents) / 100.0 as applied,
+        SUM(current_value_cents) / 100.0 as current
       FROM investments GROUP BY type
     `).all() as { type: InvestmentType; applied: number; current: number }[];
 

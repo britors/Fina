@@ -114,7 +114,7 @@ export function registerDebtHandlers(): void {
 
   ipcMain.handle('debts:getSummary', () => {
     const row = getDb().prepare(`
-      SELECT COALESCE(SUM(outstanding_balance),0) AS total_debt
+      SELECT COALESCE(SUM(outstanding_balance_cents),0) / 100.0 AS total_debt
       FROM debts WHERE status NOT IN ('quitada')
     `).get() as { total_debt: number };
     return row;

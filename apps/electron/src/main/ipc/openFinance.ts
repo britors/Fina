@@ -289,7 +289,8 @@ function getOverview(): OpenFinanceOverview {
   const s = settings();
   const connections = listConnectionRows();
   const rows = getDb().prepare(`
-    SELECT id, name, type, bank_name, balance, credit_limit, openfinance_provider, openfinance_id
+    SELECT id, name, type, bank_name, balance_cents / 100.0 AS balance,
+      credit_limit_cents / 100.0 AS credit_limit, openfinance_provider, openfinance_id
     FROM accounts
     WHERE openfinance_provider IS NOT NULL
     ORDER BY openfinance_provider, bank_name, name
@@ -339,7 +340,7 @@ function assertProvider(provider: string): asserts provider is OpenFinanceProvid
 function getConsolidatedBalance(): ConsolidatedBalance {
   const db = getDb();
   const accounts = db.prepare(`
-    SELECT id, name, type, bank_name, balance
+    SELECT id, name, type, bank_name, balance_cents / 100.0 AS balance
     FROM accounts
     WHERE openfinance_provider IS NOT NULL
     ORDER BY bank_name, name
@@ -370,26 +371,26 @@ function getCashFlowForecast(weeksAhead = 8): CashFlowForecast {
   if (linkedIds.length === 0) return { weeks: [], factors: [] };
 
   const placeholders = linkedIds.map(() => '?').join(',');
-  const { total } = db.prepare(`SELECT COALESCE(SUM(balance),0) as total FROM accounts WHERE id IN (${placeholders})`)
+  const { total } = db.prepare(`SELECT COALESCE(SUM(balance_cents),0) / 100.0 as total FROM accounts WHERE id IN (${placeholders})`)
     .get(...linkedIds) as { total: number };
 
   const horizonDays = weeksAhead * 7;
   const futureTxs = db.prepare(`
-    SELECT date, type, description, amount
+    SELECT date, type, description, amount_cents / 100.0 AS amount
     FROM transactions
     WHERE status = 'confirmed' AND date > date('now') AND date <= date('now', '+' || ? || ' days')
       AND account_id IN (${placeholders})
   `).all(horizonDays, ...linkedIds) as { date: string; type: string; description: string; amount: number }[];
 
   const futureBills = db.prepare(`
-    SELECT due_date as date, description, amount, recurring
+    SELECT due_date as date, description, amount_cents / 100.0 AS amount, recurring
     FROM bills
     WHERE status != 'paid' AND due_date >= date('now') AND due_date <= date('now', '+' || ? || ' days')
       AND account_id IN (${placeholders})
   `).all(horizonDays, ...linkedIds) as { date: string; description: string; amount: number; recurring: number }[];
 
   const futureReceivables = db.prepare(`
-    SELECT due_date as date, description, amount, recurring
+    SELECT due_date as date, description, amount_cents / 100.0 AS amount, recurring
     FROM receivables
     WHERE status != 'received' AND due_date >= date('now') AND due_date <= date('now', '+' || ? || ' days')
       AND account_id IN (${placeholders})

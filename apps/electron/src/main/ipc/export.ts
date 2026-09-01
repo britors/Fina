@@ -135,8 +135,8 @@ export function registerExportHandlers(): void {
 
     const summary = db.prepare(`
       SELECT
-        COALESCE(SUM(CASE WHEN t.type='income'  THEN t.amount ELSE 0 END),0) AS income,
-        COALESCE(SUM(CASE WHEN t.type='expense' THEN t.amount ELSE 0 END),0) AS expense
+        COALESCE(SUM(CASE WHEN t.type='income'  THEN t.amount_cents ELSE 0 END),0) / 100.0 AS income,
+        COALESCE(SUM(CASE WHEN t.type='expense' THEN t.amount_cents ELSE 0 END),0) / 100.0 AS expense
       FROM transactions t WHERE ${where.join(' AND ')}
     `).get(...params) as { income: number; expense: number };
 

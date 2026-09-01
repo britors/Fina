@@ -117,7 +117,7 @@ export function registerBudgetHandlers(): void {
     const db = getDb();
     return categoryIds.filter(Boolean).map(categoryId => {
       const row = db.prepare(`
-        SELECT COALESCE(SUM(b.limit_amount), 0) AS budgeted,
+        SELECT COALESCE(SUM(b.limit_amount_cents), 0) / 100.0 AS budgeted,
           COUNT(DISTINCT printf('%04d-%02d', b.year, b.month)) AS budgeted_months
         FROM budgets b
         WHERE ${categoryOrChildPredicate('b.category_id')}

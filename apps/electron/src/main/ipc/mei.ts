@@ -11,7 +11,7 @@ export function registerMeiHandlers(): void {
   ipcMain.handle('mei:getReport', (_e, year: number): MeiReport => {
     const db = getDb();
     const rows = db.prepare(`
-      SELECT strftime('%Y-%m', date) AS month, SUM(amount) AS revenue
+      SELECT strftime('%Y-%m', date) AS month, SUM(amount_cents) / 100.0 AS revenue
       FROM transactions
       WHERE type = 'income' AND status = 'confirmed' AND is_mei_revenue = 1 AND strftime('%Y', date) = ?
       GROUP BY month ORDER BY month

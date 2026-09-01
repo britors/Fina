@@ -204,7 +204,7 @@ function financialSummary(): object {
   const currentMonth = String(month).padStart(2, '0');
 
   const accounts = db.prepare(`
-    SELECT type, COUNT(*) as count, COALESCE(SUM(balance),0) as total
+    SELECT type, COUNT(*) as count, COALESCE(SUM(balance_cents),0) / 100.0 as total
     FROM accounts
     GROUP BY type
   `).all() as { type: string; count: number; total: number }[];
@@ -216,8 +216,8 @@ function financialSummary(): object {
     const y = String(d.getFullYear());
     const row = db.prepare(`
       SELECT
-        COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) as income,
-        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) as expense
+        COALESCE(SUM(CASE WHEN type='income' THEN amount_cents ELSE 0 END),0) / 100.0 as income,
+        COALESCE(SUM(CASE WHEN type='expense' THEN amount_cents ELSE 0 END),0) / 100.0 as expense
       FROM transactions
       WHERE status='confirmed' AND strftime('%m', date)=? AND strftime('%Y', date)=?
     `).get(m, y) as { income: number; expense: number };
@@ -225,7 +225,7 @@ function financialSummary(): object {
   }
 
   const expensesByCategory = db.prepare(`
-    SELECT root.name as category, SUM(t.amount) as total
+    SELECT root.name as category, SUM(t.amount_cents) / 100.0 as total
     FROM transactions t
     JOIN categories c ON t.category_id = c.id
     JOIN categories root ON root.id = COALESCE(c.parent_id, c.id)
@@ -240,8 +240,8 @@ function financialSummary(): object {
 
   const debts = db.prepare(`
     SELECT type, status, COUNT(*) as count,
-           COALESCE(SUM(outstanding_balance),0) as outstanding,
-           COALESCE(SUM(installment_amount),0) as monthly_payment,
+           COALESCE(SUM(outstanding_balance_cents),0) / 100.0 as outstanding,
+           COALESCE(SUM(installment_amount_cents),0) / 100.0 as monthly_payment,
            COALESCE(AVG(interest_rate),0) as avg_interest_rate
     FROM debts
     WHERE status != 'quitada'
@@ -249,9 +249,10 @@ function financialSummary(): object {
   `).all();
 
   const budgets = db.prepare(`
-    SELECT CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END as category, b.limit_amount,
+    SELECT CASE WHEN parent.id IS NULL THEN c.name ELSE parent.name || ' › ' || c.name END as category,
+      b.limit_amount_cents / 100.0 AS limit_amount,
       COALESCE((
-        SELECT SUM(t.amount) FROM transactions t
+        SELECT SUM(t.amount_cents) / 100.0 FROM transactions t
         WHERE (t.category_id=b.category_id OR EXISTS (
             SELECT 1 FROM categories child WHERE child.id=t.category_id AND child.parent_id=b.category_id
           ))
@@ -267,23 +268,23 @@ function financialSummary(): object {
 
   const goals = db.prepare(`
     SELECT type, COUNT(*) as count,
-           COALESCE(SUM(target_amount),0) as target,
-           COALESCE(SUM(current_amount),0) as current
+           COALESCE(SUM(target_amount_cents),0) / 100.0 as target,
+           COALESCE(SUM(current_amount_cents),0) / 100.0 as current
     FROM goals
     GROUP BY type
   `).all();
 
   const investments = db.prepare(`
     SELECT type, COUNT(*) as count,
-           COALESCE(SUM(applied_amount),0) as applied,
-           COALESCE(SUM(current_value),0) as current
+           COALESCE(SUM(applied_amount_cents),0) / 100.0 as applied,
+           COALESCE(SUM(current_value_cents),0) / 100.0 as current
     FROM investments
     GROUP BY type
   `).all();
 
   const assets = db.prepare(`
     SELECT type, COUNT(*) as count,
-           COALESCE(SUM(current_value),0) as current
+           COALESCE(SUM(current_value_cents),0) / 100.0 as current
     FROM assets
     GROUP BY type
   `).all();
@@ -386,14 +387,14 @@ function periodSummary(period: SummaryPeriod): object {
   const dateTo = now.toISOString().slice(0, 10);
 
   const totals = db.prepare(`
-    SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) as income,
-           COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) as expense
+    SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount_cents ELSE 0 END),0) / 100.0 as income,
+           COALESCE(SUM(CASE WHEN type='expense' THEN amount_cents ELSE 0 END),0) / 100.0 as expense
     FROM transactions
     WHERE status='confirmed' AND date >= ? AND date <= ?
   `).get(dateFrom, dateTo) as { income: number; expense: number };
 
   const topExpenseCategories = db.prepare(`
-    SELECT root.name as category, SUM(t.amount) as total
+    SELECT root.name as category, SUM(t.amount_cents) / 100.0 as total
     FROM transactions t
     JOIN categories c ON t.category_id = c.id
     JOIN categories root ON root.id = COALESCE(c.parent_id, c.id)

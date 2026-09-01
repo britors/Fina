@@ -151,7 +151,8 @@ export function registerIRPFHandlers(): void {
     // prioridade; só cai no matching de texto legado se a categoria nunca
     // foi classificada.
     const incomes = db.prepare(`
-      SELECT c.name AS category, c.fiscal_classification AS classification, SUM(t.amount) AS total
+      SELECT c.name AS category, c.fiscal_classification AS classification,
+        SUM(t.amount_cents) / 100.0 AS total
       FROM transactions t
       JOIN categories c ON c.id = t.category_id
       WHERE t.type = 'income'
@@ -168,7 +169,8 @@ export function registerIRPFHandlers(): void {
 
     // Deduções (despesas em categorias dedutíveis)
     const deducoes = db.prepare(`
-      SELECT c.name AS categoria, c.fiscal_classification AS classification, SUM(t.amount) AS total
+      SELECT c.name AS categoria, c.fiscal_classification AS classification,
+        SUM(t.amount_cents) / 100.0 AS total
       FROM transactions t
       JOIN categories c ON c.id = t.category_id
       WHERE t.type = 'expense'

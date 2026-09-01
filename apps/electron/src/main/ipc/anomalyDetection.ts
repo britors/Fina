@@ -6,6 +6,7 @@ interface RecentTx {
   id: string;
   description: string;
   amount: number;
+  amount_cents: number;
   date: string;
   account_id: string;
   category_id: string | null;
@@ -18,14 +19,14 @@ function normalizeKey(description: string): string {
 
 function detectHighAmounts(db: ReturnType<typeof getDb>, recent: RecentTx[], dismissed: Set<string>): SpendingAnomaly[] {
   const baselines = db.prepare(`
-    SELECT category_id, AVG(amount) as avg_amount,
-           AVG(amount * amount) - AVG(amount) * AVG(amount) as variance
+    SELECT category_id, AVG(amount_cents) as avg_amount_cents,
+           AVG(amount_cents * amount_cents) - AVG(amount_cents) * AVG(amount_cents) as variance_cents
     FROM transactions
     WHERE type = 'expense' AND status = 'confirmed' AND category_id IS NOT NULL
       AND date >= date('now', '-6 months')
     GROUP BY category_id
     HAVING COUNT(*) >= 5
-  `).all() as { category_id: string; avg_amount: number; variance: number }[];
+  `).all() as { category_id: string; avg_amount_cents: number; variance_cents: number }[];
   const baselineByCategory = new Map(baselines.map(b => [b.category_id, b]));
 
   const findings: SpendingAnomaly[] = [];
@@ -33,9 +34,9 @@ function detectHighAmounts(db: ReturnType<typeof getDb>, recent: RecentTx[], dis
     if (dismissed.has(tx.id) || !tx.category_id) continue;
     const baseline = baselineByCategory.get(tx.category_id);
     if (!baseline) continue;
-    const stddev = Math.sqrt(Math.max(baseline.variance, 0));
-    const threshold = stddev > 0 ? baseline.avg_amount + 2.5 * stddev : baseline.avg_amount * 2.5;
-    if (tx.amount <= threshold || tx.amount <= baseline.avg_amount * 1.5) continue;
+    const stddev = Math.sqrt(Math.max(baseline.variance_cents, 0));
+    const threshold = stddev > 0 ? baseline.avg_amount_cents + 2.5 * stddev : baseline.avg_amount_cents * 2.5;
+    if (tx.amount_cents <= threshold || tx.amount_cents <= baseline.avg_amount_cents * 1.5) continue;
 
     findings.push({
       transactionId: tx.id,
@@ -44,7 +45,7 @@ function detectHighAmounts(db: ReturnType<typeof getDb>, recent: RecentTx[], dis
       date: tx.date,
       accountName: tx.account_name,
       type: 'high_amount',
-      reason: `Valor bem acima da média recente da categoria (média: ${baseline.avg_amount.toFixed(2)}).`,
+      reason: `Valor bem acima da média recente da categoria (média: ${(baseline.avg_amount_cents / 100).toFixed(2)}).`,
     });
   }
   return findings;
@@ -57,7 +58,7 @@ function detectDuplicates(recent: RecentTx[], dismissed: Set<string>): SpendingA
       const a = recent[i], b = recent[j];
       if (dismissed.has(a.id)) continue;
       if (a.account_id !== b.account_id) continue;
-      if (Math.abs(a.amount - b.amount) > 0.01) continue;
+      if (a.amount_cents !== b.amount_cents) continue;
       if (normalizeKey(a.description) !== normalizeKey(b.description)) continue;
       const days = Math.abs(new Date(a.date + 'T00:00:00').getTime() - new Date(b.date + 'T00:00:00').getTime()) / 86_400_000;
       if (days > 2) continue;
@@ -79,18 +80,18 @@ function detectDuplicates(recent: RecentTx[], dismissed: Set<string>): SpendingA
 
 function detectRecurringChanges(db: ReturnType<typeof getDb>, recent: RecentTx[], dismissed: Set<string>): SpendingAnomaly[] {
   const history = db.prepare(`
-    SELECT description, amount, date
+    SELECT description, amount_cents, date
     FROM transactions
     WHERE type = 'expense' AND status = 'confirmed' AND date >= date('now', '-12 months')
     ORDER BY date ASC
-  `).all() as { description: string; amount: number; date: string }[];
+  `).all() as { description: string; amount_cents: number; date: string }[];
 
-  const groups = new Map<string, { amount: number; date: string }[]>();
+  const groups = new Map<string, { amount_cents: number; date: string }[]>();
   for (const row of history) {
     const key = normalizeKey(row.description);
     if (!key) continue;
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push({ amount: row.amount, date: row.date });
+    groups.get(key)!.push({ amount_cents: row.amount_cents, date: row.date });
   }
 
   const findings: SpendingAnomaly[] = [];
@@ -99,9 +100,9 @@ function detectRecurringChanges(db: ReturnType<typeof getDb>, recent: RecentTx[]
     const previous = (groups.get(normalizeKey(tx.description)) ?? []).filter(x => x.date < tx.date);
     if (previous.length < 3) continue;
 
-    const avgPrevious = previous.reduce((s, v) => s + v.amount, 0) / previous.length;
+    const avgPrevious = previous.reduce((s, v) => s + v.amount_cents, 0) / previous.length;
     if (avgPrevious <= 0) continue;
-    const deviation = Math.abs(tx.amount - avgPrevious) / avgPrevious;
+    const deviation = Math.abs(tx.amount_cents - avgPrevious) / avgPrevious;
     if (deviation < 0.25) continue;
 
     findings.push({
@@ -111,7 +112,7 @@ function detectRecurringChanges(db: ReturnType<typeof getDb>, recent: RecentTx[]
       date: tx.date,
       accountName: tx.account_name,
       type: 'recurring_change',
-      reason: `Cobrança recorrente com valor ${tx.amount > avgPrevious ? 'maior' : 'menor'} que o habitual (média anterior: ${avgPrevious.toFixed(2)}).`,
+      reason: `Cobrança recorrente com valor ${tx.amount_cents > avgPrevious ? 'maior' : 'menor'} que o habitual (média anterior: ${(avgPrevious / 100).toFixed(2)}).`,
     });
   }
   return findings;
@@ -126,7 +127,8 @@ function detectAnomalies(): SpendingAnomaly[] {
   );
 
   const recent = db.prepare(`
-    SELECT t.id, t.description, t.amount, t.date, t.account_id, t.category_id, a.name as account_name
+    SELECT t.id, t.description, t.amount_cents / 100.0 AS amount, t.amount_cents,
+      t.date, t.account_id, t.category_id, a.name as account_name
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
     WHERE t.type = 'expense' AND t.status = 'confirmed' AND t.date >= date('now', '-60 days')
