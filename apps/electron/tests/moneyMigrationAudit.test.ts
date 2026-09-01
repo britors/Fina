@@ -1,6 +1,8 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import {
   assertMoneyMigrationReady, auditMoneyMigration, MONEY_COLUMNS, type MoneyAuditDatabase,
 } from '../src/main/moneyMigrationAudit';
@@ -17,6 +19,14 @@ function auditDb(db: DatabaseSync): MoneyAuditDatabase {
   return db as unknown as MoneyAuditDatabase;
 }
 
+function typescriptFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return typescriptFiles(path);
+    return entry.isFile() && entry.name.endsWith('.ts') ? [path] : [];
+  });
+}
+
 describe('money migration preflight', () => {
   test('inventário não mistura percentuais, quantidades ou preço unitário', () => {
     const keys = MONEY_COLUMNS.map(item => `${item.table}.${item.column}`);
@@ -26,6 +36,27 @@ describe('money migration preflight', () => {
     assert.equal(keys.includes('debts.interest_rate'), false);
     assert.equal(keys.includes('investment_operations.quantity'), false);
     assert.equal(keys.includes('investment_operations.unit_price'), false);
+  });
+
+  test('processo principal não agrega diretamente colunas monetárias legadas', () => {
+    const sourceRoot = join(process.cwd(), 'src/main');
+    const legacyColumns = [...new Set(MONEY_COLUMNS.map(item => item.column))]
+      .map(column => column.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|');
+    const legacyReference = new RegExp(`\\b(?:${legacyColumns})\\b`, 'i');
+    const aggregate = /\b(?:SUM|AVG|MIN|MAX)\s*\(([^)]*)\)/g;
+    const violations: string[] = [];
+
+    for (const file of typescriptFiles(sourceRoot)) {
+      const source = readFileSync(file, 'utf8');
+      for (const match of source.matchAll(aggregate)) {
+        if (legacyReference.test(match[1])) {
+          violations.push(`${relative(sourceRoot, file)}: ${match[0].replace(/\s+/g, ' ')}`);
+        }
+      }
+    }
+
+    assert.deepEqual(violations, []);
   });
 
   test('reconcilia positivos, negativos, zero e inteiros em centavos', () => {
