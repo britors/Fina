@@ -6,6 +6,7 @@ import { attachToInvoice } from '../invoices';
 import type { Bill, BillInterval, BillPriceIncrease, CategorySplit, CategorySplitWithCategory, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOrChildPredicate } from '../categoryHierarchyQueries';
 import { isPixEligibleAccountType } from '../../shared/utils';
+import { roundMoney } from '../../shared/money';
 
 type BillInput = Omit<Bill, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[]; categories?: CategorySplit[] };
 type BillUpdateInput = Partial<Bill> & { id: string; payments?: PaymentSplit[]; categories?: CategorySplit[] };
@@ -40,10 +41,6 @@ export function addInterval(dueDate: string, interval: BillInterval, multiplier:
   const lastDay = new Date(newYear, newMonth, 0).getDate();
   const newDay = Math.min(day, lastDay);
   return `${newYear}-${String(newMonth).padStart(2, '0')}-${String(newDay).padStart(2, '0')}`;
-}
-
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
 }
 
 function normalizePayments(data: { amount: number; account_id?: string | null; payments?: PaymentSplit[] }, allowEmpty: boolean): PaymentSplit[] {

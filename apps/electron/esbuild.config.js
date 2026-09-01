@@ -50,7 +50,7 @@ function cleanOutput() {
 async function buildTests() {
   await esbuild.build({
     ...shared,
-    entryPoints: ['tests/accounts.test.ts', 'tests/transactions.test.ts', 'tests/invoices.test.ts', 'tests/klavi.test.ts', 'tests/belvo.test.ts', 'tests/categories.test.ts', 'tests/categoryQueries.test.ts', 'tests/migrations.test.ts', 'tests/debts.test.ts', 'tests/family.test.ts', 'tests/irpf.test.ts', 'tests/i18n.test.ts', 'tests/ipcChannels.test.ts', 'tests/ipcValidation.test.ts', 'tests/mobileCrypto.test.ts', 'tests/settingsPolicy.test.ts', 'tests/startup.test.ts', 'tests/incrementalBackup.test.ts', 'tests/bradescoPdfParser.test.ts', 'tests/desktopRelease.test.ts'],
+    entryPoints: ['tests/accounts.test.ts', 'tests/transactions.test.ts', 'tests/invoices.test.ts', 'tests/klavi.test.ts', 'tests/belvo.test.ts', 'tests/categories.test.ts', 'tests/categoryQueries.test.ts', 'tests/migrations.test.ts', 'tests/debts.test.ts', 'tests/family.test.ts', 'tests/irpf.test.ts', 'tests/i18n.test.ts', 'tests/ipcChannels.test.ts', 'tests/ipcValidation.test.ts', 'tests/mobileCrypto.test.ts', 'tests/money.test.ts', 'tests/settingsPolicy.test.ts', 'tests/startup.test.ts', 'tests/incrementalBackup.test.ts', 'tests/bradescoPdfParser.test.ts', 'tests/desktopRelease.test.ts'],
     outdir: 'out/tests',
     platform: 'node',
     format: 'cjs',

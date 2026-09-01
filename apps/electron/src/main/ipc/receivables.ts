@@ -7,6 +7,7 @@ import { addInterval } from './bills';
 import type { CategorySplit, CategorySplitWithCategory, Receivable, ReceivableInterval, ReceivablePriceIncrease, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOrChildPredicate } from '../categoryHierarchyQueries';
 import { isPixEligibleAccountType } from '../../shared/utils';
+import { roundMoney } from '../../shared/money';
 
 type ReceivableInput = Omit<Receivable, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[]; categories?: CategorySplit[] };
 type ReceivableUpdateInput = Partial<Receivable> & { id: string; payments?: PaymentSplit[]; categories?: CategorySplit[] };
@@ -15,10 +16,6 @@ function autoMarkOverdue(): void {
   getDb().prepare(
     `UPDATE receivables SET status='overdue', updated_at=datetime('now') WHERE status='pending' AND due_date < date('now')`
   ).run();
-}
-
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
 }
 
 function normalizePayments(data: { amount: number; account_id?: string | null; payments?: PaymentSplit[] }, allowEmpty: boolean): PaymentSplit[] {

@@ -6,6 +6,7 @@ import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from 'node:
 import { getDb } from './database';
 import { recomputeAllAccountBalances } from './accountBalances';
 import type { IncrementalBackupResult } from '../shared/types';
+import { roundMoney } from '../shared/money';
 
 // Backup incremental complementa (não substitui) o backup completo: grava as
 // linhas alteradas e tombstones desde a última exportação incremental, num
@@ -277,16 +278,12 @@ function upsertAccountRows(rows: Row[], generatedAt: string): void {
       const localDelta = Number(local.balance ?? 0) - previousRemote;
       const sourceRemote = Number(row.remote_balance ?? row.balance ?? 0);
       assignments.push('balance=?', 'remote_balance=?');
-      values.push(roundNumber(sourceRemote + localDelta), sourceRemote);
+      values.push(roundMoney(sourceRemote + localDelta), sourceRemote);
     }
 
     if (!assignments.length) continue;
     db.prepare(`UPDATE accounts SET ${assignments.join(',')} WHERE id=?`).run(...values, row.id);
   }
-}
-
-function roundNumber(value: number): number {
-  return Math.round(value * 100) / 100;
 }
 
 export interface StagedDocument {

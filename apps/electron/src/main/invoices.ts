@@ -1,11 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from './database';
+import { roundMoney } from '../shared/money';
 import { invoicePeriodClosingDate, invoiceDueDate } from '../shared/utils';
 import type { CreditCardInvoice } from '../shared/types';
-
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
-}
 
 function creditCardCycleFields(accountId: string): { closing_day: number; due_day: number } | null {
   const account = getDb().prepare('SELECT type, closing_day, due_day FROM accounts WHERE id = ?').get(accountId) as

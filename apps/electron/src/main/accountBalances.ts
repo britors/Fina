@@ -1,8 +1,7 @@
 import { getDb } from './database';
+import { roundMoney } from '../shared/money';
 
-export function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
-}
+export { roundMoney } from '../shared/money';
 
 // Valores de transações são lançados em BRL no app, inclusive quando o meio
 // de pagamento é uma conta em USD/EUR. O saldo inicial convertido fica em

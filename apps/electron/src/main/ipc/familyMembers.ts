@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import { simplifyDebts } from '../../shared/utils';
 import type { FamilyMember, FamilySettlement } from '../../shared/types';
+import { roundMoney } from '../../shared/money';
 
 // Backfill preguiçoso: se a tabela nova ainda está vazia e existe a lista em
 // texto livre legada (`app_settings.family_members`, CSV), popula a tabela a
@@ -24,7 +25,7 @@ function backfillFromLegacySetting(): void {
 }
 
 function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return roundMoney(n);
 }
 
 function computeSettlement(dateFrom?: string, dateTo?: string): FamilySettlement {

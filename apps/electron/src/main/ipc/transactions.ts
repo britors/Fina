@@ -7,6 +7,7 @@ import { attachToInvoice, adjustInvoiceAmount } from '../invoices';
 import { buildExpenseAnalyticsWhere, categoryOrChildPredicate, transactionCategoryOrChildPredicate, EXPENSES_BY_ROOT_MONTH_SQL, EXPENSES_BY_ROOT_RANGE_SQL, EXPENSE_CATEGORY_DETAILS_SQL, EXPENSE_MONTHLY_ROOT_SERIES_SQL, EXPENSE_MONTHLY_SUBCATEGORY_SERIES_SQL, EXPENSE_SUBCATEGORY_BREAKDOWN_SQL } from '../categoryHierarchyQueries';
 import type { ExpenseAnalyticsFilters } from '../categoryHierarchyQueries';
 import { formatMainDate } from '../i18n';
+import { fromCents, roundMoney, splitCents, toCents } from '../../shared/money';
 
 const JOIN = `
   SELECT t.*, a.name as account_name,
@@ -106,10 +107,6 @@ function assertPixEligible(payment: PaymentSplit): void {
   if (!account || !isPixEligibleAccountType(account.type)) {
     throw new Error('Pix só está disponível para pagamentos em conta corrente ou cartão de crédito.');
   }
-}
-
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
 }
 
 function normalizeCategories(data: { type: TransactionType; category_id: string; amount: number; categories?: CategorySplit[] }): CategorySplit[] {
@@ -267,10 +264,7 @@ export function insertConfirmedTransaction(input: {
 }
 
 function splitInstallmentAmounts(amount: number, installments: number): number[] {
-  const cents = Math.round(amount * 100);
-  const base = Math.floor(cents / installments);
-  const remainder = cents % installments;
-  return Array.from({ length: installments }, (_, index) => (base + (index < remainder ? 1 : 0)) / 100);
+  return splitCents(toCents(amount), installments).map(fromCents);
 }
 
 function addMonthsIso(date: string, months: number): string {
