@@ -28,8 +28,6 @@ jobs:
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v6
-        with:
-          build-root-directory: apps/android
 
       - name: Unit tests
         working-directory: apps/android

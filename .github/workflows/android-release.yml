@@ -22,8 +22,6 @@ jobs:
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v6
-        with:
-          build-root-directory: apps/android
 
       # Caminho absoluto de propósito: signingConfigs.release.storeFile em
       # app/build.gradle.kts resolve `file(SIGNING_STORE_FILE)` relativo ao
