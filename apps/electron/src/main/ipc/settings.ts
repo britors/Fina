@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { getDb } from '../database';
 import { deleteLocalSecret, getLocalSecret, setLocalSecret } from '../localSecrets';
+import { filterPublicSettings, validatePublicSettingEntries } from '../settingsPolicy';
 
 function migrateLegacySmtpPassword(): void {
   const row = getDb().prepare('SELECT value FROM app_settings WHERE key = ?').get('smtp_pass') as { value: string } | undefined;
@@ -40,18 +41,20 @@ export function registerSettingsHandlers(): void {
     const rows = getDb()
       .prepare('SELECT key, value FROM app_settings')
       .all() as { key: string; value: string }[];
-    const result = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    const result = filterPublicSettings(rows);
     // Senhas ficam somente no cofre do sistema e nunca atravessam o IPC.
     result.smtp_pass = '';
     return result;
   });
 
-  ipcMain.handle('settings:set', (_e, { key, value }: { key: string; value: string }) => {
-    persistEntries({ [key]: value });
+  ipcMain.handle('settings:set', (_e, payload: unknown) => {
+    const raw = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
+    if (typeof raw.key !== 'string') throw new Error('settings-payload-invalid');
+    persistEntries(validatePublicSettingEntries({ [raw.key]: raw.value }));
   });
 
-  ipcMain.handle('settings:setMany', (_e, entries: Record<string, string>) => {
-    persistEntries(entries);
+  ipcMain.handle('settings:setMany', (_e, entries: unknown) => {
+    persistEntries(validatePublicSettingEntries(entries));
   });
 
   ipcMain.handle('settings:clearSmtpPassword', () => {

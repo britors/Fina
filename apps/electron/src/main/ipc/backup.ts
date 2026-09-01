@@ -5,6 +5,8 @@ import * as path from 'node:path';
 import Database from 'better-sqlite3-multiple-ciphers';
 import { getDb, closeDatabase, openDatabase, reopenWithCurrentCredentials, runMigrations, dbPath, validateDatabaseFile } from '../database';
 import { exportPortableIncrementalBackup, getLastIncrementalBackupAt, importIncrementalPatch, incrementalBackupFileName, incrementalCursorNow, setLastIncrementalBackupAt } from '../incrementalBackup';
+import { confirmIpcAction } from '../ipcConfirmation';
+import { requireRecord, requireString } from '../ipcValidation';
 
 const SQLITE_PLAINTEXT_HEADER = 'SQLite format 3\0';
 
@@ -197,7 +199,7 @@ export function registerBackupHandlers(): void {
     return filePaths?.[0] ?? null;
   });
 
-  ipcMain.handle('backup:import', async () => {
+  ipcMain.handle('backup:import', async (event) => {
     const { filePaths } = await dialog.showOpenDialog(localizeDialogOptions({
       title: 'Importar backup',
       filters: [{ name: 'Backup Fina', extensions: ['fin'] }],
@@ -206,11 +208,23 @@ export function registerBackupHandlers(): void {
     const filePath = filePaths?.[0];
     if (!filePath) return { imported: false };
 
+    const confirmed = await confirmIpcAction(event, {
+      type: 'warning',
+      title: 'Importar backup',
+      message: 'Importar um backup substituirá TODOS os dados atuais do app. Esta ação não pode ser desfeita. Deseja continuar?',
+      buttons: ['Importar', 'Cancelar'],
+      defaultId: 1,
+      cancelId: 1,
+    });
+    if (!confirmed) return { imported: false };
+
     restoreFromFile(filePath);
     return { imported: true };
   });
 
-  ipcMain.handle('backup:exportIncremental', async (_event, payload?: { password?: string }) => {
+  ipcMain.handle('backup:exportIncremental', async (_event, value: unknown) => {
+    const payload = requireRecord(value, 'patch-payload');
+    const password = requireString(payload.password, { name: 'patch-password', maxLength: 1_024 });
     const { filePath } = await dialog.showSaveDialog(localizeDialogOptions({
       title: 'Exportar backup incremental',
       defaultPath: incrementalBackupFileName(),
@@ -218,12 +232,14 @@ export function registerBackupHandlers(): void {
     }));
     if (!filePath) return null;
 
-    const result = exportPortableIncrementalBackup(getLastIncrementalBackupAt('portable'), filePath, payload?.password ?? '');
+    const result = exportPortableIncrementalBackup(getLastIncrementalBackupAt('portable'), filePath, password);
     setLastIncrementalBackupAt(incrementalCursorNow(), 'portable');
     return result;
   });
 
-  ipcMain.handle('backup:importIncremental', async (_event, payload?: { password?: string }) => {
+  ipcMain.handle('backup:importIncremental', async (event, value: unknown) => {
+    const payload = requireRecord(value, 'patch-payload');
+    const password = requireString(payload.password, { name: 'patch-password', maxLength: 1_024 });
     const { filePaths } = await dialog.showOpenDialog(localizeDialogOptions({
       title: 'Importar backup incremental',
       filters: [{ name: 'Patch incremental Fina', extensions: ['finpatch'] }],
@@ -232,7 +248,17 @@ export function registerBackupHandlers(): void {
     const filePath = filePaths?.[0];
     if (!filePath) return { imported: false };
 
-    importIncrementalPatch(filePath, payload?.password);
+    const confirmed = await confirmIpcAction(event, {
+      type: 'warning',
+      title: 'Importar backup incremental',
+      message: 'Importar um patch incremental? Ele pode atualizar ou remover registros correspondentes ao arquivo. Deseja continuar?',
+      buttons: ['Importar', 'Cancelar'],
+      defaultId: 1,
+      cancelId: 1,
+    });
+    if (!confirmed) return { imported: false };
+
+    importIncrementalPatch(filePath, password);
     return { imported: true };
   });
 }

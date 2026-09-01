@@ -1,6 +1,7 @@
 import { invoke } from '../api';
 import { openModal } from './modal';
 import { showAlert } from './alertDialog';
+import type { InvokeChannel } from '../../shared/ipcChannels';
 
 type AIProvider = 'openai' | 'gemini';
 
@@ -19,7 +20,7 @@ interface AIAnswer {
 export interface AIActionOptions {
   title: string;
   consentText: string;
-  channel: string;
+  channel: Extract<InvokeChannel, 'ai:explainDecision' | 'ai:renegotiationDraft'>;
   payload?: Record<string, unknown>;
 }
 

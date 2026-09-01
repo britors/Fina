@@ -645,7 +645,6 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
   });
 
   el.querySelector('#btn-import-incremental')?.addEventListener('click', async () => {
-    if (!await showConfirm('Importar um patch incremental? Ele pode atualizar ou remover registros correspondentes ao arquivo. Deseja continuar?', { okLabel: 'Importar', danger: true })) return;
     const password = await askPatchPassword('import');
     if (!password) return;
     try {
@@ -657,7 +656,6 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
   });
 
   el.querySelector('#btn-import-backup')?.addEventListener('click', async () => {
-    if (!await showConfirm('Importar um backup substituirá TODOS os dados atuais do app. Esta ação não pode ser desfeita. Deseja continuar?', { danger: true, okLabel: 'Importar' })) return;
     try {
       const result = await invoke<{ imported: boolean }>('backup:import');
       if (result.imported) {
@@ -718,7 +716,6 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
 
   el.querySelector('#btn-sync-pull')?.addEventListener('click', async () => {
     if (!s.sync_folder) { showAlert('Escolha uma pasta sincronizada antes.'); return; }
-    if (!await showConfirm('Receber a versão sincronizada substituirá TODOS os dados atuais deste dispositivo. Deseja continuar?', { danger: true, okLabel: 'Receber' })) return;
     try {
       await invoke('sync:pull', s.sync_folder);
       showAlert('Sincronização recebida. O aplicativo será reiniciado.');

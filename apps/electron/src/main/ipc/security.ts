@@ -7,6 +7,7 @@ import {
   disableEncryption,
 } from '../database';
 import { localizeMainText } from '../i18n';
+import { requireRecord, requireString } from '../ipcValidation';
 
 // As primeiras tentativas erradas não têm custo, mas a partir daí o atraso
 // cresce exponencialmente — não impede um ataque offline (que depende só do
@@ -21,7 +22,8 @@ let unlockBlockedUntil = 0;
 
 // Registrado bem cedo, antes da tela de desbloqueio carregar (ver index.ts).
 export function registerUnlockHandler(): void {
-  ipcMain.handle('security:unlock', (_e, password: string) => {
+  ipcMain.handle('security:unlock', (_e, value: unknown) => {
+    const password = requireString(value, { name: 'password', allowEmpty: true, maxLength: 1_024 });
     const now = Date.now();
     if (now < unlockBlockedUntil) {
       console.warn(`[Security] tentativa de unlock bloqueada por throttle (${unlockFailures} falhas consecutivas)`);
@@ -47,17 +49,22 @@ export function registerUnlockHandler(): void {
 export function registerSecurityHandlers(): void {
   ipcMain.handle('security:status', () => ({ active: isEncryptionActive() }));
 
-  ipcMain.handle('security:enable', (_e, password: string) => {
+  ipcMain.handle('security:enable', (_e, value: unknown) => {
+    const password = requireString(value, { name: 'password', maxLength: 1_024 });
     if (!password || password.length < 8) throw new Error('Use uma senha de pelo menos 8 caracteres.');
     enableEncryption(password);
   });
 
-  ipcMain.handle('security:changePassword', (_e, { oldPassword, newPassword }: { oldPassword: string; newPassword: string }) => {
+  ipcMain.handle('security:changePassword', (_e, value: unknown) => {
+    const payload = requireRecord(value, 'password-payload');
+    const oldPassword = requireString(payload.oldPassword, { name: 'old-password', allowEmpty: true, maxLength: 1_024 });
+    const newPassword = requireString(payload.newPassword, { name: 'new-password', maxLength: 1_024 });
     if (!newPassword || newPassword.length < 8) throw new Error('Use uma senha de pelo menos 8 caracteres.');
     changeEncryptionPassword(oldPassword ?? '', newPassword);
   });
 
-  ipcMain.handle('security:disable', (_e, currentPasswordInput: string) => {
+  ipcMain.handle('security:disable', (_e, value: unknown) => {
+    const currentPasswordInput = requireString(value, { name: 'password', allowEmpty: true, maxLength: 1_024 });
     disableEncryption(currentPasswordInput ?? '');
   });
 }

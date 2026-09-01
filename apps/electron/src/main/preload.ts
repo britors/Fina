@@ -1,17 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import { EVENT_CHANNELS, INVOKE_CHANNELS, SEND_CHANNELS, isAllowedChannel } from '../shared/ipcChannels';
 
-const ALLOWED_INVOKE_PREFIXES = [
-  'accounts:', 'ai:', 'anomalies:', 'app:', 'assets:', 'backgroundService:',
-  'backup:', 'bills:', 'budgets:', 'categories:', 'db:', 'debts:', 'dialog:',
-  'documents:', 'export:', 'family:', 'familyMembers:', 'forecast:', 'goals:',
-  'import:', 'investments:', 'invoices:', 'irpf:', 'market:', 'mei:', 'mobileSync:', 'ocr:',
-  'openFinance:', 'pix:', 'radar:', 'receivables:', 'recurrenceDetection:',
-  'security:', 'settings:', 'sync:', 'transactions:', 'updater:', 'weeklyReview:',
-  'window:',
-];
-
-function assertAllowed(channel: string, prefixes: string[]): void {
-  if (typeof channel !== 'string' || !prefixes.some(prefix => channel.startsWith(prefix))) {
+function assertAllowed(channel: unknown, allowed: readonly string[]): asserts channel is string {
+  if (!isAllowedChannel(channel, allowed)) {
     throw new Error(`Canal IPC não autorizado: ${String(channel)}`);
   }
 }
@@ -19,15 +10,15 @@ function assertAllowed(channel: string, prefixes: string[]): void {
 contextBridge.exposeInMainWorld('api', {
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   invoke: (channel: string, data?: unknown) => {
-    assertAllowed(channel, ALLOWED_INVOKE_PREFIXES);
+    assertAllowed(channel, INVOKE_CHANNELS);
     return ipcRenderer.invoke(channel, data);
   },
   send: (channel: string, data?: unknown) => {
-    assertAllowed(channel, ['security:unlocked', 'shell:openExternal']);
+    assertAllowed(channel, SEND_CHANNELS);
     ipcRenderer.send(channel, data);
   },
   on: (channel: string, cb: (...args: unknown[]) => void) => {
-    assertAllowed(channel, ['updater:status', 'mobileSync:event']);
+    assertAllowed(channel, EVENT_CHANNELS);
     ipcRenderer.on(channel, (_event, ...args) => cb(...args));
   },
 });

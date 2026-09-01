@@ -35,6 +35,21 @@ jobs:
         working-directory: apps/android
         run: ./gradlew testDebugUnitTest --console=plain
 
+      - name: Android lint
+        working-directory: apps/android
+        run: ./gradlew lintDebug --console=plain
+
+      - name: Upload lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-lint-debug
+          path: |
+            apps/android/app/build/reports/lint-results-debug.html
+            apps/android/app/build/reports/lint-results-debug.sarif
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Assemble debug APK
         working-directory: apps/android
         run: ./gradlew assembleDebug --console=plain

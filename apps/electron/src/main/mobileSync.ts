@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { BrowserWindow } from 'electron';
 import { getDb } from './database';
 import { localizeMainText } from './i18n';
+import { getLocalSecret, setLocalSecret } from './localSecrets';
 import { insertConfirmedTransaction } from './ipc/transactions';
 import type { PairedDevice } from '../shared/types';
 import {
@@ -53,6 +54,7 @@ const MOBILE_SYNC_PORT = 47821;
 
 const DESKTOP_IDENTITY_PUBLIC_KEY = 'mobile_sync_identity_public';
 const DESKTOP_IDENTITY_PRIVATE_KEY = 'mobile_sync_identity_private';
+const DESKTOP_IDENTITY_PRIVATE_SECRET = 'mobile_sync_identity_private';
 
 let cachedDesktopIdentity: KeyPair | null = null;
 
@@ -66,15 +68,23 @@ function getOrCreateDesktopIdentity(): KeyPair {
   if (cachedDesktopIdentity) return cachedDesktopIdentity;
   const db = getDb();
   const pub = db.prepare(`SELECT value FROM app_settings WHERE key = ?`).get(DESKTOP_IDENTITY_PUBLIC_KEY) as { value: string } | undefined;
-  const priv = db.prepare(`SELECT value FROM app_settings WHERE key = ?`).get(DESKTOP_IDENTITY_PRIVATE_KEY) as { value: string } | undefined;
-  if (pub && priv) {
-    cachedDesktopIdentity = { publicKey: importPublicKey(pub.value), privateKey: importPrivateKey(priv.value) };
+  const legacyPriv = db.prepare(`SELECT value FROM app_settings WHERE key = ?`).get(DESKTOP_IDENTITY_PRIVATE_KEY) as { value: string } | undefined;
+  const storedPrivateKey = getLocalSecret(DESKTOP_IDENTITY_PRIVATE_SECRET);
+  if (pub && (storedPrivateKey || legacyPriv?.value)) {
+    const privateKey = storedPrivateKey ?? legacyPriv!.value;
+    // Migração idempotente: só apaga o legado depois que o cofre confirmou a
+    // gravação. Se safeStorage estiver indisponível, a exceção preserva a
+    // identidade anterior e impede gerar silenciosamente outra chave.
+    if (!storedPrivateKey) setLocalSecret(DESKTOP_IDENTITY_PRIVATE_SECRET, privateKey);
+    db.prepare('DELETE FROM app_settings WHERE key = ?').run(DESKTOP_IDENTITY_PRIVATE_KEY);
+    cachedDesktopIdentity = { publicKey: importPublicKey(pub.value), privateKey: importPrivateKey(privateKey) };
     return cachedDesktopIdentity;
   }
   const generated = generateX25519KeyPair();
+  setLocalSecret(DESKTOP_IDENTITY_PRIVATE_SECRET, exportPrivateKey(generated.privateKey));
   const stmt = db.prepare(`INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)`);
   stmt.run(DESKTOP_IDENTITY_PUBLIC_KEY, exportPublicKey(generated.publicKey));
-  stmt.run(DESKTOP_IDENTITY_PRIVATE_KEY, exportPrivateKey(generated.privateKey));
+  db.prepare('DELETE FROM app_settings WHERE key = ?').run(DESKTOP_IDENTITY_PRIVATE_KEY);
   cachedDesktopIdentity = generated;
   return generated;
 }

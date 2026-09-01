@@ -47,6 +47,8 @@ import { runBackgroundTasksAndExit } from './backgroundRunner';
 import { registerBackgroundServiceHandlers } from './ipc/backgroundService';
 import { localizeDialogOptions, localizeMainText, resolveMainLocale } from './i18n';
 import { isNewerDesktopVersion, selectLatestDesktopRelease, type GitHubRelease } from './desktopRelease';
+import { initializeRequiredSchema } from './startup';
+import { assertSafeIpcArguments } from './ipcValidation';
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -58,6 +60,8 @@ if (!app.requestSingleInstanceLock()) {
 // encerra, sem nunca criar uma janela nem registrar os handlers de IPC da
 // interface normal.
 const isBackgroundRun = process.argv.includes('--background-tasks');
+let databaseInitializationFailed = false;
+let schedulersStarted = false;
 
 function loadAppIcon(): Electron.NativeImage | undefined {
   const candidates = [
@@ -95,6 +99,7 @@ function hardenIpc(): void {
   ipcMain.handle = ((channel: string, listener: (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
     originalHandle(channel, (event, ...args) => {
       assertTrustedIpcSender(event);
+      assertSafeIpcArguments(args);
       return listener(event, ...args);
     });
   }) as typeof ipcMain.handle;
@@ -172,6 +177,30 @@ function createMainWindow(): BrowserWindow {
   }
 
   return hardenWindow(w);
+}
+
+function startSchedulersOnce(): void {
+  if (schedulersStarted) return;
+  schedulersStarted = true;
+  runRecurrenceCycle();
+  setInterval(runRecurrenceCycle, 60 * 60 * 1000);
+  startNotificationScheduler();
+  startAutoBackupScheduler();
+}
+
+function openMainWindow(options?: { splash?: BrowserWindow; unlock?: BrowserWindow | null }): BrowserWindow {
+  const win = createMainWindow();
+  initUpdater(win);
+  setMobileSyncWindow(win);
+  win.once('ready-to-show', () => {
+    win.show();
+    const splash = options?.splash;
+    const unlock = options?.unlock;
+    if (splash && !splash.isDestroyed()) splash.destroy();
+    if (unlock && !unlock.isDestroyed()) unlock.close();
+    startSchedulersOnce();
+  });
+  return win;
 }
 
 function registerHandlers(): void {
@@ -337,12 +366,20 @@ app.whenReady().then(async () => {
     finalizePragmas();
   }
 
-  try {
-    runMigrations();
-    runAutoBackup('on_open');
-  } catch (err) {
-    console.error('[DB] Erro na inicialização:', err);
+  const schema = initializeRequiredSchema(runMigrations);
+  if (!schema.ok) {
+    databaseInitializationFailed = true;
+    console.error('[DB] Erro fatal ao executar migrações:', schema.error);
+    if (!splash.isDestroyed()) splash.destroy();
+    if (unlockWin && !unlockWin.isDestroyed()) unlockWin.close();
+    dialog.showErrorBox(
+      localizeMainText('Não foi possível abrir o banco de dados'),
+      localizeMainText('Verifique as permissões e o caminho configurado para o banco do Fina.'),
+    );
+    app.quit();
+    return;
   }
+  runAutoBackup('on_open');
 
   registerHandlers();
 
@@ -351,21 +388,10 @@ app.whenReady().then(async () => {
     await new Promise<void>(r => setTimeout(r, Math.max(0, 1800 - elapsed)));
   }
 
-  const win = createMainWindow();
-  initUpdater(win);
-  setMobileSyncWindow(win);
-  win.once('ready-to-show', () => {
-    win.show();
-    if (!splash.isDestroyed()) splash.destroy();
-    if (unlockWin && !unlockWin.isDestroyed()) unlockWin.close();
-    runRecurrenceCycle();
-    setInterval(runRecurrenceCycle, 60 * 60 * 1000);
-    startNotificationScheduler();
-    startAutoBackupScheduler();
-  });
+  openMainWindow({ splash, unlock: unlockWin });
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+    if (BrowserWindow.getAllWindows().length === 0) openMainWindow();
   });
 });
 
@@ -374,6 +400,10 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  if (databaseInitializationFailed) {
+    closeDatabase();
+    return;
+  }
   runAutoBackup('on_close');
   try {
     const sync = getSyncStatus();
