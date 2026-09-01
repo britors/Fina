@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyMigrationAtomically } from '../src/main/database';
+import { MONEY_COLUMNS } from '../src/main/moneyMigrationAudit';
 
 test('confirma schema e marcador da migração na mesma transação', () => {
   const db = new DatabaseSync(':memory:');
@@ -47,6 +48,24 @@ test('executa toda a cadeia de migrações e cria a hierarquia de categorias', (
     assert.ok(accountColumns.some(column => column.name === 'remote_balance'));
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='incremental_tombstones'").get());
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='incremental_tombstone_financial_documents'").get());
+    assert.ok(files.includes('045_money_shadow_cents.sql'));
+    for (const item of MONEY_COLUMNS) {
+      const columns = db.prepare(`PRAGMA table_info("${item.table}")`).all() as { name: string }[];
+      assert.ok(columns.some(column => column.name === `${item.column}_cents`), `${item.table}.${item.column}_cents ausente`);
+    }
+
+    db.prepare("INSERT INTO accounts (id, name, type, balance) VALUES ('shadow-account', 'Shadow', 'checking', 1.23)").run();
+    let shadow = db.prepare('SELECT balance, balance_cents FROM accounts WHERE id = ?').get('shadow-account') as { balance: number; balance_cents: number };
+    assert.equal(shadow.balance, 1.23);
+    assert.equal(shadow.balance_cents, 123);
+    db.prepare('UPDATE accounts SET balance = ? WHERE id = ?').run(4.56, 'shadow-account');
+    shadow = db.prepare('SELECT balance, balance_cents FROM accounts WHERE id = ?').get('shadow-account') as { balance: number; balance_cents: number };
+    assert.equal(shadow.balance, 4.56);
+    assert.equal(shadow.balance_cents, 456);
+    db.prepare('UPDATE accounts SET balance_cents = ? WHERE id = ?').run(789, 'shadow-account');
+    shadow = db.prepare('SELECT balance, balance_cents FROM accounts WHERE id = ?').get('shadow-account') as { balance: number; balance_cents: number };
+    assert.equal(shadow.balance, 7.89);
+    assert.equal(shadow.balance_cents, 789);
 
     const indexes = db.prepare("PRAGMA index_list('categories')").all() as { name: string }[];
     assert.ok(indexes.some(index => index.name === 'idx_categories_parent_id'));
@@ -100,7 +119,7 @@ test('separa o saldo inicial dos movimentos do livro-caixa', () => {
   db.exec('PRAGMA foreign_keys = ON');
   const migrationsDir = join(process.cwd(), 'src/main/migrations');
   const files = readdirSync(migrationsDir)
-    .filter(file => file.endsWith('.sql') && file !== '043_account_balance_bases.sql')
+    .filter(file => file.endsWith('.sql') && !['043_account_balance_bases.sql', '045_money_shadow_cents.sql'].includes(file))
     .sort();
 
   try {

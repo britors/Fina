@@ -46,4 +46,23 @@ describe('incremental patch money format', () => {
       /money-precision-unsupported/,
     );
   });
+
+  test('dual-write equivalente exporta somente a unidade declarada', () => {
+    const dual = { transactions: [{ id: 'tx', amount: 10.01, amount_cents: 1001 }] };
+    assert.deepEqual(encodeMoneyWireTables(dual, 'decimal-v1'), {
+      transactions: [{ id: 'tx', amount: 10.01 }],
+    });
+    assert.deepEqual(encodeMoneyWireTables(dual, 'cents-v1'), {
+      transactions: [{ id: 'tx', amount_cents: 1001 }],
+    });
+    assert.deepEqual(encodeMoneyWireTables({
+      transactions: [{ id: 'noise', amount: 0.1 + 0.2, amount_cents: 30 }],
+    }, 'decimal-v1'), {
+      transactions: [{ id: 'noise', amount: 0.1 + 0.2 }],
+    });
+    assert.throws(
+      () => encodeMoneyWireTables({ transactions: [{ id: 'tx', amount: 10.01, amount_cents: 1000 }] }, 'decimal-v1'),
+      /money-wire-units-diverged/,
+    );
+  });
 });

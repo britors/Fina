@@ -7,7 +7,7 @@ import { getDb } from './database';
 import { recomputeAllAccountBalances } from './accountBalances';
 import type { IncrementalBackupResult } from '../shared/types';
 import { roundMoney } from '../shared/money';
-import { normalizeMoneyWireTables, resolveMoneyWireFormat, type MoneyWireFormat } from './moneyWireFormat';
+import { encodeMoneyWireTables, normalizeMoneyWireTables, resolveMoneyWireFormat, type MoneyWireFormat } from './moneyWireFormat';
 
 // Backup incremental complementa (não substitui) o backup completo: grava as
 // linhas alteradas e tombstones desde a última exportação incremental, num
@@ -475,7 +475,14 @@ function buildPatch(sinceIso: string): { patch: IncrementalPatch; tableCounts: R
   const generatedAt = sqliteNow();
   const deleted = collectDeletedRows(sinceIso);
   const documentFiles = collectDocumentFiles(tables.financial_documents ?? []);
-  const patch: IncrementalPatch = { money_format: 'decimal-v1', since: sinceIso, generated_at: generatedAt, tables, deleted, document_files: documentFiles };
+  const patch: IncrementalPatch = {
+    money_format: 'decimal-v1',
+    since: sinceIso,
+    generated_at: generatedAt,
+    tables: encodeMoneyWireTables(tables, 'decimal-v1'),
+    deleted,
+    document_files: documentFiles,
+  };
   return { patch, tableCounts };
 }
 

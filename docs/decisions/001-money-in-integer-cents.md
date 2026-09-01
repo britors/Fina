@@ -76,6 +76,18 @@ O inventário executável e o preflight da etapa 2 ficam em
 schema exigem revisão explícita do que é dinheiro, evitando converter por
 engano percentuais, quantidades ou preços unitários fracionários.
 
+As etapas 2–4 foram materializadas na migration
+`045_money_shadow_cents.sql`. Antes dela, o runner:
+
+1. audita precisão, overflow, tipos SQLite e fechamento de rateios;
+2. cria `fina.db.pre-money-cents-v1.fin` com `VACUUM INTO` e permissão `0600`;
+3. só então executa, numa única transação, o backfill e a instalação dos
+   triggers de dual-write.
+
+O backup pré-migração é preservado para recuperação. Durante esta fase,
+versões anteriores ainda podem ler as colunas `REAL`; leitores novos podem
+adotar `*_cents` gradualmente sem divergência.
+
 ## Formatos de transporte
 
 - Patch incremental sem `money_format` é legado e equivale a `decimal-v1`.

@@ -1,5 +1,7 @@
 import { fromCents, toCents } from '../shared/money';
 
+const LEGACY_FLOAT_NOISE_TOLERANCE = 1e-7;
+
 export interface MoneyColumn {
   table: string;
   column: string;
@@ -66,6 +68,33 @@ export interface MoneyAuditResult {
   ok: boolean;
   columns: MoneyColumnSummary[];
   violations: MoneyViolation[];
+  allocationViolations: MoneyAllocationViolation[];
+}
+
+interface MoneyAllocation {
+  parentTable: string;
+  childTable: string;
+  foreignKey: string;
+  parentColumn: string;
+  childColumn: string;
+}
+
+const MONEY_ALLOCATIONS: readonly MoneyAllocation[] = [
+  { parentTable: 'transactions', childTable: 'transaction_payments', foreignKey: 'transaction_id', parentColumn: 'amount', childColumn: 'amount' },
+  { parentTable: 'transactions', childTable: 'transaction_categories', foreignKey: 'transaction_id', parentColumn: 'amount', childColumn: 'amount' },
+  { parentTable: 'transactions', childTable: 'transaction_member_splits', foreignKey: 'transaction_id', parentColumn: 'amount', childColumn: 'share_amount' },
+  { parentTable: 'bills', childTable: 'bill_payments', foreignKey: 'bill_id', parentColumn: 'amount', childColumn: 'amount' },
+  { parentTable: 'bills', childTable: 'bill_categories', foreignKey: 'bill_id', parentColumn: 'amount', childColumn: 'amount' },
+  { parentTable: 'receivables', childTable: 'receivable_payments', foreignKey: 'receivable_id', parentColumn: 'amount', childColumn: 'amount' },
+  { parentTable: 'receivables', childTable: 'receivable_categories', foreignKey: 'receivable_id', parentColumn: 'amount', childColumn: 'amount' },
+] as const;
+
+export interface MoneyAllocationViolation {
+  parentTable: string;
+  childTable: string;
+  parentRowId: number;
+  expectedCents: number;
+  actualCents: number;
 }
 
 function quoteIdentifier(value: string): string {
@@ -104,7 +133,11 @@ export function auditMoneyMigration(
         violations.push({ ...base, reason: 'out-of-range' });
         continue;
       }
-      if (fromCents(cents) !== row.monetary_value) {
+      // Bancos legados acumularam `number` em REAL e podem conter artefatos
+      // como 0.1 + 0.2 = 0.30000000000000004. Aceite somente ruído muito
+      // abaixo de meio centavo; precisão material (ex.: 1.005) continua
+      // bloqueando a migração.
+      if (Math.abs(fromCents(cents) - row.monetary_value) > LEGACY_FLOAT_NOISE_TOLERANCE) {
         violations.push({ ...base, reason: 'sub-cent' });
         continue;
       }
@@ -113,7 +146,36 @@ export function auditMoneyMigration(
     summaries.push({ ...spec, rows: rows.length, centsTotal });
   }
 
-  return { ok: violations.length === 0, columns: summaries, violations };
+  const auditedKeys = new Set(columns.map(item => `${item.table}.${item.column}`));
+  const allocationViolations: MoneyAllocationViolation[] = [];
+  for (const allocation of MONEY_ALLOCATIONS) {
+    if (!auditedKeys.has(`${allocation.parentTable}.${allocation.parentColumn}`)
+      || !auditedKeys.has(`${allocation.childTable}.${allocation.childColumn}`)) continue;
+    const rows = db.prepare(`
+      SELECT parent.rowid AS parent_row_id,
+        CAST(ROUND(parent.${quoteIdentifier(allocation.parentColumn)} * 100) AS INTEGER) AS expected_cents,
+        CAST(SUM(ROUND(child.${quoteIdentifier(allocation.childColumn)} * 100)) AS INTEGER) AS actual_cents
+      FROM ${quoteIdentifier(allocation.parentTable)} parent
+      JOIN ${quoteIdentifier(allocation.childTable)} child
+        ON child.${quoteIdentifier(allocation.foreignKey)} = parent.id
+      GROUP BY parent.rowid
+      HAVING expected_cents != actual_cents
+    `).all() as { parent_row_id: number; expected_cents: number; actual_cents: number }[];
+    allocationViolations.push(...rows.map(row => ({
+      parentTable: allocation.parentTable,
+      childTable: allocation.childTable,
+      parentRowId: row.parent_row_id,
+      expectedCents: row.expected_cents,
+      actualCents: row.actual_cents,
+    })));
+  }
+
+  return {
+    ok: violations.length === 0 && allocationViolations.length === 0,
+    columns: summaries,
+    violations,
+    allocationViolations,
+  };
 }
 
 export function assertMoneyMigrationReady(
@@ -122,10 +184,15 @@ export function assertMoneyMigrationReady(
 ): MoneyAuditResult {
   const result = auditMoneyMigration(db, columns);
   if (!result.ok) {
-    const sample = result.violations.slice(0, 10)
+    const columnSample = result.violations.slice(0, 10)
       .map(item => `${item.table}.${item.column}[rowid=${item.rowId}]:${item.reason}`)
       .join(', ');
-    throw new Error(`money-migration-audit-failed (${result.violations.length}): ${sample}`);
+    const allocationSample = result.allocationViolations.slice(0, 10)
+      .map(item => `${item.parentTable}->${item.childTable}[rowid=${item.parentRowId}]:${item.actualCents}/${item.expectedCents}`)
+      .join(', ');
+    const sample = [columnSample, allocationSample].filter(Boolean).join(', ');
+    const count = result.violations.length + result.allocationViolations.length;
+    throw new Error(`money-migration-audit-failed (${count}): ${sample}`);
   }
   return result;
 }

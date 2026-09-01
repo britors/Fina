@@ -1,4 +1,4 @@
-import { fromCents, toExactCents } from '../shared/money';
+import { fromCents, toCents, toExactCents } from '../shared/money';
 import { MONEY_COLUMNS } from './moneyMigrationAudit';
 
 export type MoneyWireFormat = 'decimal-v1' | 'cents-v1';
@@ -66,17 +66,37 @@ export function encodeMoneyWireTables(
   source: Record<string, WireRow[]>,
   format: MoneyWireFormat,
 ): Record<string, WireRow[]> {
-  if (format === 'decimal-v1') return normalizeMoneyWireTables(source, format);
-
   const encoded: Record<string, WireRow[]> = {};
   for (const [table, rows] of Object.entries(source)) {
     const moneyColumns = columnsByTable.get(table) ?? [];
     encoded[table] = rows.map(sourceRow => {
       const row = { ...sourceRow };
       for (const column of moneyColumns) {
-        if (!hasOwn(row, column)) continue;
         const centsColumn = `${column}_cents`;
-        if (hasOwn(row, centsColumn)) throw new Error(`money-wire-units-ambiguous:${table}.${column}`);
+        const hasDecimal = hasOwn(row, column);
+        const hasCents = hasOwn(row, centsColumn);
+        if (!hasDecimal && !hasCents) continue;
+
+        if (hasDecimal && hasCents) {
+          const decimal = row[column];
+          const cents = row[centsColumn];
+          const consistent = decimal === null && cents === null
+            || typeof decimal === 'number' && typeof cents === 'number'
+              && Number.isSafeInteger(cents) && toCents(decimal) === cents;
+          if (!consistent) throw new Error(`money-wire-units-diverged:${table}.${column}`);
+        }
+
+        if (format === 'decimal-v1') {
+          if (!hasDecimal) throw new Error(`money-wire-decimal-missing:${table}.${column}`);
+          delete row[centsColumn];
+          continue;
+        }
+
+        if (hasCents) {
+          delete row[column];
+          continue;
+        }
+
         const value = row[column];
         if (value === null) {
           row[centsColumn] = null;

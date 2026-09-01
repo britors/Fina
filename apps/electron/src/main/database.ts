@@ -2,6 +2,8 @@ import Database from 'better-sqlite3-multiple-ciphers';
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { assertMoneyMigrationReady } from './moneyMigrationAudit';
+import { createMoneyMigrationSafetyBackup } from './moneyMigrationBackup';
 
 let db: Database.Database | null = null;
 
@@ -186,6 +188,13 @@ export function runMigrations(): void {
     if (already) continue;
 
     const sql = fs.readFileSync(path.join(migsDir, file), 'utf-8');
+    if (file === '045_money_shadow_cents.sql') {
+      // Nunca altere a unidade persistida sem provar que todos os valores e
+      // rateios existentes são conversíveis e guardar uma cópia consistente.
+      assertMoneyMigrationReady(database);
+      const safetyCopy = createMoneyMigrationSafetyBackup(database, resolveDbPath());
+      console.log(`[Money] Backup pré-migração salvo em: ${safetyCopy}`);
+    }
     applyMigrationAtomically(database, file, sql);
     console.log(`Migration executada: ${file}`);
   }

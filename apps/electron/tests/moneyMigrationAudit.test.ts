@@ -32,11 +32,11 @@ describe('money migration preflight', () => {
     const db = database();
     try {
       const insert = db.prepare('INSERT INTO payments(amount) VALUES (?)');
-      for (const value of [10.01, -2.5, 0, 3]) insert.run(value);
+      for (const value of [10.01, -2.5, 0, 3, 0.1 + 0.2]) insert.run(value);
       const result = assertMoneyMigrationReady(auditDb(db), TEST_COLUMNS);
       assert.equal(result.ok, true);
-      assert.equal(result.columns[0].rows, 4);
-      assert.equal(result.columns[0].centsTotal, 1051n);
+      assert.equal(result.columns[0].rows, 5);
+      assert.equal(result.columns[0].centsTotal, 1081n);
     } finally {
       db.close();
     }
@@ -58,6 +58,31 @@ describe('money migration preflight', () => {
         /payments\.amount\[rowid=1\]:sub-cent/,
       );
       assert.equal(db.prepare('SELECT COUNT(*) AS total FROM payments').get()!.total, 3);
+    } finally {
+      db.close();
+    }
+  });
+
+  test('bloqueia rateio histórico cuja soma não fecha em centavos', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE transactions (id TEXT PRIMARY KEY, amount REAL);
+      CREATE TABLE transaction_payments (id TEXT PRIMARY KEY, transaction_id TEXT, amount REAL);
+      INSERT INTO transactions VALUES ('tx', 10.00);
+      INSERT INTO transaction_payments VALUES ('p1', 'tx', 3.33), ('p2', 'tx', 3.33), ('p3', 'tx', 3.33);
+    `);
+    const columns = [
+      { table: 'transactions', column: 'amount' },
+      { table: 'transaction_payments', column: 'amount' },
+    ] as const;
+    try {
+      const result = auditMoneyMigration(auditDb(db), columns);
+      assert.equal(result.ok, false);
+      assert.deepEqual(result.allocationViolations, [{
+        parentTable: 'transactions', childTable: 'transaction_payments', parentRowId: 1,
+        expectedCents: 1000, actualCents: 999,
+      }]);
+      assert.throws(() => assertMoneyMigrationReady(auditDb(db), columns), /999\/1000/);
     } finally {
       db.close();
     }
