@@ -1,7 +1,8 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fromCents, MAX_SAFE_CENTS, parseDecimalCents, roundMoney, splitCents, toCents,
+  fromCents, MAX_SAFE_CENTS, parseDecimalCents, reconcileMoneyParts, roundMoney,
+  splitCents, toCents, toExactCents,
 } from '../src/shared/money';
 
 describe('money primitives', () => {
@@ -40,5 +41,13 @@ describe('money primitives', () => {
     assert.equal(toCents(10_000_000_000_000.01), 1_000_000_000_000_001);
     assert.throws(() => parseDecimalCents('90071992547409.92'), /money-out-of-range/);
     assert.throws(() => toCents(90_071_992_547_410), /money-out-of-range/);
+  });
+
+  test('reconcilia rateios apenas depois de converter cada parte para centavos', () => {
+    assert.deepEqual(reconcileMoneyParts(0.3, [0.1, 0.2]), [0.1, 0.2]);
+    assert.deepEqual(reconcileMoneyParts(10, [3.34, 3.33, 3.33]), [3.34, 3.33, 3.33]);
+    assert.throws(() => reconcileMoneyParts(10, [3.333, 3.333, 3.334]), /money-precision-unsupported/);
+    assert.throws(() => reconcileMoneyParts(10, [3.33, 3.33, 3.33]), /money-total-mismatch/);
+    assert.throws(() => toExactCents(1.005), /money-precision-unsupported/);
   });
 });

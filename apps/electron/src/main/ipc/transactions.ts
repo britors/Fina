@@ -7,7 +7,7 @@ import { attachToInvoice, adjustInvoiceAmount } from '../invoices';
 import { buildExpenseAnalyticsWhere, categoryOrChildPredicate, transactionCategoryOrChildPredicate, EXPENSES_BY_ROOT_MONTH_SQL, EXPENSES_BY_ROOT_RANGE_SQL, EXPENSE_CATEGORY_DETAILS_SQL, EXPENSE_MONTHLY_ROOT_SERIES_SQL, EXPENSE_MONTHLY_SUBCATEGORY_SERIES_SQL, EXPENSE_SUBCATEGORY_BREAKDOWN_SQL } from '../categoryHierarchyQueries';
 import type { ExpenseAnalyticsFilters } from '../categoryHierarchyQueries';
 import { formatMainDate } from '../i18n';
-import { fromCents, roundMoney, splitCents, toCents } from '../../shared/money';
+import { fromCents, reconcileMoneyParts, splitCents, toCents } from '../../shared/money';
 
 const JOIN = `
   SELECT t.*, a.name as account_name,
@@ -83,22 +83,22 @@ function normalizePayments(data: { type: TransactionType; account_id: string; am
   if (data.type === 'transfer') return [];
   const payments = data.payments?.length ? data.payments : [{ account_id: data.account_id, amount: data.amount }];
   const seen = new Set<string>();
-  let total = 0;
-
   for (const payment of payments) {
     if (!payment.account_id) throw new Error('Selecione todas as contas ou cartões.');
     if (!Number.isFinite(payment.amount) || payment.amount <= 0) throw new Error('Informe valores válidos para as contas ou cartões.');
     if (seen.has(payment.account_id)) throw new Error('Não repita a mesma conta ou cartão no lançamento.');
     seen.add(payment.account_id);
-    total += payment.amount;
     assertPixEligible(payment);
   }
 
-  if (Math.abs(total - data.amount) > 0.005) {
+  let amounts: number[];
+  try {
+    amounts = reconcileMoneyParts(data.amount, payments.map(payment => payment.amount));
+  } catch {
     throw new Error('A soma das contas ou cartões deve ser igual ao valor total.');
   }
 
-  return payments.map(payment => ({ account_id: payment.account_id, amount: roundMoney(payment.amount), is_pix: payment.is_pix ? 1 : 0 }));
+  return payments.map((payment, index) => ({ account_id: payment.account_id, amount: amounts[index], is_pix: payment.is_pix ? 1 : 0 }));
 }
 
 function assertPixEligible(payment: PaymentSplit): void {
@@ -115,21 +115,22 @@ function normalizeCategories(data: { type: TransactionType; category_id: string;
   if (categories.length === 0) throw new Error('Defina pelo menos uma categoria.');
 
   const seen = new Set<string>();
-  let total = 0;
   for (const category of categories) {
     if (!category.category_id) throw new Error('Selecione todas as categorias.');
     if (!Number.isFinite(category.amount) || category.amount <= 0) throw new Error('Informe valores válidos para as categorias.');
     if (seen.has(category.category_id)) throw new Error('Não repita a mesma categoria.');
     seen.add(category.category_id);
-    total += category.amount;
     assertCategoryType(category.category_id, data.type);
   }
 
-  if (Math.abs(total - data.amount) > 0.005) {
+  let amounts: number[];
+  try {
+    amounts = reconcileMoneyParts(data.amount, categories.map(category => category.amount));
+  } catch {
     throw new Error('A soma das categorias deve ser igual ao valor total.');
   }
 
-  return categories.map(category => ({ category_id: category.category_id, amount: roundMoney(category.amount) }));
+  return categories.map((category, index) => ({ category_id: category.category_id, amount: amounts[index] }));
 }
 
 function assertCategoryType(categoryId: string, transactionType: TransactionType): void {
@@ -145,18 +146,19 @@ function assertCategoryType(categoryId: string, transactionType: TransactionType
 function normalizeMemberSplits(amount: number, splits?: TransactionMemberSplit[]): TransactionMemberSplit[] {
   if (!splits?.length) return [];
   const seen = new Set<string>();
-  let total = 0;
   for (const split of splits) {
     if (!split.member_id) throw new Error('Selecione todos os membros do rateio.');
     if (!Number.isFinite(split.share_amount) || split.share_amount <= 0) throw new Error('Informe valores válidos para o rateio entre membros.');
     if (seen.has(split.member_id)) throw new Error('Não repita o mesmo membro no rateio.');
     seen.add(split.member_id);
-    total += split.share_amount;
   }
-  if (Math.abs(total - amount) > 0.005) {
+  let amounts: number[];
+  try {
+    amounts = reconcileMoneyParts(amount, splits.map(split => split.share_amount));
+  } catch {
     throw new Error('A soma do rateio entre membros deve ser igual ao valor total.');
   }
-  return splits.map(split => ({ member_id: split.member_id, share_amount: roundMoney(split.share_amount) }));
+  return splits.map((split, index) => ({ member_id: split.member_id, share_amount: amounts[index] }));
 }
 
 function replaceTransactionMemberSplits(transactionId: string, splits: TransactionMemberSplit[]): void {

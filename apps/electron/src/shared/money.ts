@@ -26,6 +26,20 @@ export function roundMoney(value: number): number {
   return fromCents(toCents(value));
 }
 
+export function toExactCents(value: number): Cents {
+  const cents = toCents(value);
+  if (fromCents(cents) !== value) throw new Error('money-precision-unsupported');
+  return cents;
+}
+
+export function reconcileMoneyParts(total: number, parts: readonly number[]): number[] {
+  const totalCents = toExactCents(total);
+  const partCents = parts.map(toExactCents);
+  const sum = partCents.reduce((result, value) => result + BigInt(value), 0n);
+  if (sum !== BigInt(totalCents)) throw new Error('money-total-mismatch');
+  return partCents.map(fromCents);
+}
+
 // Parser canônico para integrações que já normalizaram o separador decimal.
 // Rejeita expoente e mais de duas casas para não arredondar silenciosamente.
 export function parseDecimalCents(value: string): Cents {

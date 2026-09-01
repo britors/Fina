@@ -6,7 +6,7 @@ import { attachToInvoice } from '../invoices';
 import type { Bill, BillInterval, BillPriceIncrease, CategorySplit, CategorySplitWithCategory, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOrChildPredicate } from '../categoryHierarchyQueries';
 import { isPixEligibleAccountType } from '../../shared/utils';
-import { roundMoney } from '../../shared/money';
+import { reconcileMoneyParts } from '../../shared/money';
 
 type BillInput = Omit<Bill, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[]; categories?: CategorySplit[] };
 type BillUpdateInput = Partial<Bill> & { id: string; payments?: PaymentSplit[]; categories?: CategorySplit[] };
@@ -54,21 +54,22 @@ function normalizePayments(data: { amount: number; account_id?: string | null; p
   if (payments.length === 0) throw new Error('Defina pelo menos uma conta ou cartão.');
 
   const seen = new Set<string>();
-  let total = 0;
   for (const payment of payments) {
     if (!payment.account_id) throw new Error('Selecione todas as contas ou cartões.');
     if (!Number.isFinite(payment.amount) || payment.amount <= 0) throw new Error('Informe valores válidos para as contas ou cartões.');
     if (seen.has(payment.account_id)) throw new Error('Não repita a mesma conta ou cartão.');
     seen.add(payment.account_id);
-    total += payment.amount;
     assertPixEligible(payment);
   }
 
-  if (Math.abs(total - data.amount) > 0.005) {
+  let amounts: number[];
+  try {
+    amounts = reconcileMoneyParts(data.amount, payments.map(payment => payment.amount));
+  } catch {
     throw new Error('A soma das contas ou cartões deve ser igual ao valor total.');
   }
 
-  return payments.map(payment => ({ account_id: payment.account_id, amount: roundMoney(payment.amount), is_pix: payment.is_pix ? 1 : 0 }));
+  return payments.map((payment, index) => ({ account_id: payment.account_id, amount: amounts[index], is_pix: payment.is_pix ? 1 : 0 }));
 }
 
 function assertPixEligible(payment: PaymentSplit): void {
@@ -90,21 +91,22 @@ function normalizeCategories(data: { amount: number; category_id?: string | null
   if (categories.length === 0) throw new Error('Defina pelo menos uma categoria.');
 
   const seen = new Set<string>();
-  let total = 0;
   for (const category of categories) {
     if (!category.category_id) throw new Error('Selecione todas as categorias.');
     if (!Number.isFinite(category.amount) || category.amount <= 0) throw new Error('Informe valores válidos para as categorias.');
     if (seen.has(category.category_id)) throw new Error('Não repita a mesma categoria.');
     seen.add(category.category_id);
-    total += category.amount;
     assertExpenseCategory(category.category_id);
   }
 
-  if (Math.abs(total - data.amount) > 0.005) {
+  let amounts: number[];
+  try {
+    amounts = reconcileMoneyParts(data.amount, categories.map(category => category.amount));
+  } catch {
     throw new Error('A soma das categorias deve ser igual ao valor total.');
   }
 
-  return categories.map(category => ({ category_id: category.category_id, amount: roundMoney(category.amount) }));
+  return categories.map((category, index) => ({ category_id: category.category_id, amount: amounts[index] }));
 }
 
 function assertExpenseCategory(categoryId: string): void {
