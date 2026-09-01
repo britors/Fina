@@ -2,7 +2,6 @@ import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electro
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
-import { fileURLToPath } from 'url';
 import { openDatabase, runMigrations, closeDatabase, dbPath, needsUnlock, finalizePragmas } from './database';
 import { registerUnlockHandler, registerSecurityHandlers } from './ipc/security';
 import { registerAccountHandlers } from './ipc/accounts';
@@ -48,8 +47,8 @@ import { registerBackgroundServiceHandlers } from './ipc/backgroundService';
 import { localizeDialogOptions, localizeMainText, resolveMainLocale } from './i18n';
 import { isNewerDesktopVersion, selectLatestDesktopRelease, type GitHubRelease } from './desktopRelease';
 import { initializeRequiredSchema } from './startup';
-import { assertSafeIpcArguments } from './ipcValidation';
 import { MainWindowLifecycle } from './mainWindowLifecycle';
+import { assertTrustedIpcSender, guardIpcListener, isTrustedRendererUrl } from './ipcGuard';
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -76,39 +75,21 @@ function loadAppIcon(): Electron.NativeImage | undefined {
   return undefined;
 }
 
-function isTrustedRendererUrl(url: string): boolean {
-  if (!url.startsWith('file://')) return false;
-  try {
-    const filePath = path.resolve(fileURLToPath(url));
-    const rendererRoot = path.resolve(path.join(__dirname, '../renderer'));
-    return filePath === rendererRoot || filePath.startsWith(rendererRoot + path.sep);
-  } catch {
-    return false;
-  }
-}
-
-function assertTrustedIpcSender(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): void {
-  const url = event.senderFrame?.url ?? event.sender.getURL();
-  if (!isTrustedRendererUrl(url)) throw new Error('Origem IPC não autorizada.');
-}
+const rendererRoot = path.join(__dirname, '../renderer');
 
 // Todos os handlers registrados pelos módulos passam por esta validação,
 // inclusive os que forem adicionados no futuro.
 function hardenIpc(): void {
   const originalHandle = ipcMain.handle.bind(ipcMain);
   ipcMain.handle = ((channel: string, listener: (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
-    originalHandle(channel, (event, ...args) => {
-      assertTrustedIpcSender(event);
-      assertSafeIpcArguments(args);
-      return listener(event, ...args);
-    });
+    originalHandle(channel, guardIpcListener(rendererRoot, listener));
   }) as typeof ipcMain.handle;
 }
 
 function hardenWindow(w: BrowserWindow): BrowserWindow {
   w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   w.webContents.on('will-navigate', (event, url) => {
-    if (!isTrustedRendererUrl(url)) event.preventDefault();
+    if (!isTrustedRendererUrl(url, rendererRoot)) event.preventDefault();
   });
   return w;
 }
@@ -306,7 +287,7 @@ function registerHandlers(): void {
   });
 
   ipcMain.on('shell:openExternal', (event, url: string) => {
-    assertTrustedIpcSender(event);
+    assertTrustedIpcSender(event, rendererRoot);
     if (typeof url === 'string' && url.startsWith('https://')) {
       shell.openExternal(url);
     }
@@ -357,7 +338,7 @@ app.whenReady().then(async () => {
     if (!splash.isDestroyed()) splash.destroy();
     await new Promise<void>(resolve => {
       ipcMain.once('security:unlocked', event => {
-        assertTrustedIpcSender(event);
+        assertTrustedIpcSender(event, rendererRoot);
         resolve();
       });
     });
