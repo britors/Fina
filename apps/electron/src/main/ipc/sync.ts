@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { getSyncStatus, pushSync, pullSync } from '../sync';
 import { requireString } from '../ipcValidation';
 import { confirmIpcAction } from '../ipcConfirmation';
+import { runConfirmedAction } from '../confirmedAction';
 
 function syncFolder(value: unknown): string {
   try {
@@ -21,15 +22,16 @@ export function registerSyncHandlers(): void {
 
   ipcMain.handle('sync:pull', async (event, value: unknown) => {
     const folder = syncFolder(value);
-    const confirmed = await confirmIpcAction(event, {
-      type: 'warning',
-      title: 'Sincronização',
-      message: 'Receber a versão sincronizada substituirá TODOS os dados atuais deste dispositivo. Deseja continuar?',
-      buttons: ['Receber', 'Cancelar'],
-      defaultId: 1,
-      cancelId: 1,
-    });
-    if (!confirmed) return;
-    pullSync(folder);
+    await runConfirmedAction(
+      () => confirmIpcAction(event, {
+        type: 'warning',
+        title: 'Sincronização',
+        message: 'Receber a versão sincronizada substituirá TODOS os dados atuais deste dispositivo. Deseja continuar?',
+        buttons: ['Receber', 'Cancelar'],
+        defaultId: 1,
+        cancelId: 1,
+      }),
+      () => { pullSync(folder); },
+    );
   });
 }

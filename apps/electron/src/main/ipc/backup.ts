@@ -7,6 +7,8 @@ import { getDb, closeDatabase, openDatabase, reopenWithCurrentCredentials, runMi
 import { exportPortableIncrementalBackup, getLastIncrementalBackupAt, importIncrementalPatch, incrementalBackupFileName, incrementalCursorNow, setLastIncrementalBackupAt } from '../incrementalBackup';
 import { confirmIpcAction } from '../ipcConfirmation';
 import { requireRecord, requireString } from '../ipcValidation';
+import { replaceDatabaseFile, validateRestoredDatabase } from '../databaseRestore';
+import { runConfirmedAction } from '../confirmedAction';
 
 const SQLITE_PLAINTEXT_HEADER = 'SQLite format 3\0';
 
@@ -136,43 +138,23 @@ export function restoreFromFile(filePath: string): void {
   // que ainda estejam no WAL.
   const safetyCopy = `${target}.bak-${Date.now()}`;
   performBackup(safetyCopy);
-
-  try {
-    closeDatabase();
-
-    // Remove arquivos de WAL/SHM do banco atual: o arquivo restaurado é único
-    // e autocontido, sem journal pendente.
-    for (const suffix of ['-wal', '-shm']) {
-      if (fs.existsSync(target + suffix)) fs.unlinkSync(target + suffix);
-    }
-
-    fs.copyFileSync(filePath, target);
-
-    // Se o arquivo restaurado estiver criptografado, não dá pra rodar
-    // migrações aqui sem a senha — o relaunch abaixo passa pela tela de
-    // desbloqueio normal, que roda as migrações depois de destravado.
-    openDatabase();
-    if (readHeader(target) === SQLITE_PLAINTEXT_HEADER) runMigrations();
-    else if (validateDatabaseFile(target) !== true) throw new Error('Não foi possível validar o backup criptografado com a senha atual.');
-  } catch (err) {
-    // Falhas de cópia, abertura ou migração não podem deixar o app apontando
-    // para um banco parcial. Restaura a cópia consistente criada acima.
-    try {
-      closeDatabase();
-      for (const suffix of ['-wal', '-shm']) {
-        if (fs.existsSync(target + suffix)) fs.unlinkSync(target + suffix);
-      }
-      fs.copyFileSync(safetyCopy, target);
-      reopenWithCurrentCredentials();
-    } catch (rollbackError) {
+  replaceDatabaseFile(filePath, target, safetyCopy, {
+    closeDatabase,
+    openRestoredDatabase: () => {
+      // Se o arquivo restaurado estiver criptografado, não dá pra rodar
+      // migrações aqui sem a senha — o relaunch abaixo passa pela tela de
+      // desbloqueio normal, que roda as migrações depois de destravado.
+      openDatabase();
+      validateRestoredDatabase(readHeader(target) === SQLITE_PLAINTEXT_HEADER, {
+        runMigrations,
+        validateEncryptedDatabase: () => validateDatabaseFile(target),
+      });
+    },
+    reopenPreviousDatabase: reopenWithCurrentCredentials,
+    reportRollbackError: rollbackError => {
       console.error('[Backup] Falha também ao restaurar a cópia de segurança:', rollbackError);
-    }
-    throw err;
-  }
-
-  // A cópia só é necessária para rollback durante esta operação. Mantê-la
-  // indefinidamente deixaria versões sensíveis antigas espalhadas no disco.
-  try { fs.unlinkSync(safetyCopy); } catch { /* a cópia pode ser necessária para recuperação manual */ }
+    },
+  });
 
   // Reinicia o app para garantir que toda a UI releia os dados restaurados.
   setTimeout(() => { app.relaunch(); app.exit(0); }, 800);
@@ -208,18 +190,18 @@ export function registerBackupHandlers(): void {
     const filePath = filePaths?.[0];
     if (!filePath) return { imported: false };
 
-    const confirmed = await confirmIpcAction(event, {
-      type: 'warning',
-      title: 'Importar backup',
-      message: 'Importar um backup substituirá TODOS os dados atuais do app. Esta ação não pode ser desfeita. Deseja continuar?',
-      buttons: ['Importar', 'Cancelar'],
-      defaultId: 1,
-      cancelId: 1,
-    });
-    if (!confirmed) return { imported: false };
-
-    restoreFromFile(filePath);
-    return { imported: true };
+    const imported = await runConfirmedAction(
+      () => confirmIpcAction(event, {
+        type: 'warning',
+        title: 'Importar backup',
+        message: 'Importar um backup substituirá TODOS os dados atuais do app. Esta ação não pode ser desfeita. Deseja continuar?',
+        buttons: ['Importar', 'Cancelar'],
+        defaultId: 1,
+        cancelId: 1,
+      }),
+      () => { restoreFromFile(filePath); },
+    );
+    return { imported };
   });
 
   ipcMain.handle('backup:exportIncremental', async (_event, value: unknown) => {
@@ -248,17 +230,17 @@ export function registerBackupHandlers(): void {
     const filePath = filePaths?.[0];
     if (!filePath) return { imported: false };
 
-    const confirmed = await confirmIpcAction(event, {
-      type: 'warning',
-      title: 'Importar backup incremental',
-      message: 'Importar um patch incremental? Ele pode atualizar ou remover registros correspondentes ao arquivo. Deseja continuar?',
-      buttons: ['Importar', 'Cancelar'],
-      defaultId: 1,
-      cancelId: 1,
-    });
-    if (!confirmed) return { imported: false };
-
-    importIncrementalPatch(filePath, password);
-    return { imported: true };
+    const imported = await runConfirmedAction(
+      () => confirmIpcAction(event, {
+        type: 'warning',
+        title: 'Importar backup incremental',
+        message: 'Importar um patch incremental? Ele pode atualizar ou remover registros correspondentes ao arquivo. Deseja continuar?',
+        buttons: ['Importar', 'Cancelar'],
+        defaultId: 1,
+        cancelId: 1,
+      }),
+      () => { importIncrementalPatch(filePath, password); },
+    );
+    return { imported };
   });
 }
