@@ -67,6 +67,18 @@ test('executa toda a cadeia de migrações e cria a hierarquia de categorias', (
     assert.equal(shadow.balance, 7.89);
     assert.equal(shadow.balance_cents, 789);
 
+    db.prepare(`
+      INSERT INTO credit_card_invoices
+        (id, account_id, amount, amount_cents, closing_date, due_date, status)
+      VALUES ('cents-invoice', 'shadow-account', 0, 0, '2026-08-10', '2026-08-20', 'open')
+    `).run();
+    db.prepare('UPDATE credit_card_invoices SET amount_cents = amount_cents + ? WHERE id = ?').run(10, 'cents-invoice');
+    db.prepare('UPDATE credit_card_invoices SET amount_cents = amount_cents + ? WHERE id = ?').run(20, 'cents-invoice');
+    const invoice = db.prepare('SELECT amount, amount_cents FROM credit_card_invoices WHERE id = ?')
+      .get('cents-invoice') as { amount: number; amount_cents: number };
+    assert.equal(invoice.amount_cents, 30);
+    assert.equal(invoice.amount, 0.3);
+
     const indexes = db.prepare("PRAGMA index_list('categories')").all() as { name: string }[];
     assert.ok(indexes.some(index => index.name === 'idx_categories_parent_id'));
 

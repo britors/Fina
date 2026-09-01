@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from './database';
-import { roundMoney } from '../shared/money';
+import { toExactCents, type Cents } from '../shared/money';
 import { invoicePeriodClosingDate, invoiceDueDate } from '../shared/utils';
 import type { CreditCardInvoice } from '../shared/types';
 
@@ -21,7 +21,7 @@ function findInvoiceIdByClosing(accountId: string, closingDate: string): string 
 function insertInvoice(accountId: string, closingDate: string, dueDate: string): string {
   const id = randomUUID();
   getDb().prepare(
-    `INSERT INTO credit_card_invoices (id, account_id, amount, closing_date, due_date, status) VALUES (?,?,0,?,?,'open')`
+    `INSERT INTO credit_card_invoices (id, account_id, amount, amount_cents, closing_date, due_date, status) VALUES (?,?,0,0,?,?,'open')`
   ).run(id, accountId, closingDate, dueDate);
   return id;
 }
@@ -33,6 +33,10 @@ function insertInvoice(accountId: string, closingDate: string, dueDate: string):
 // dia de fechamento/vencimento configurado — rastreamento é opt-in e nunca
 // retroativo.
 export function attachToInvoice(accountId: string, date: string, signedDelta: number): string | null {
+  return attachToInvoiceCents(accountId, date, toExactCents(signedDelta));
+}
+
+export function attachToInvoiceCents(accountId: string, date: string, signedDelta: Cents): string | null {
   const cycle = creditCardCycleFields(accountId);
   if (!cycle) return null;
 
@@ -40,8 +44,8 @@ export function attachToInvoice(accountId: string, date: string, signedDelta: nu
   const invoiceId = findInvoiceIdByClosing(accountId, closingDate)
     ?? insertInvoice(accountId, closingDate, invoiceDueDate(closingDate, cycle.closing_day, cycle.due_day));
 
-  getDb().prepare(`UPDATE credit_card_invoices SET amount = amount + ?, updated_at = datetime('now') WHERE id = ?`)
-    .run(roundMoney(signedDelta), invoiceId);
+  getDb().prepare(`UPDATE credit_card_invoices SET amount_cents = amount_cents + ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(signedDelta, invoiceId);
   return invoiceId;
 }
 
@@ -49,8 +53,12 @@ export function attachToInvoice(accountId: string, date: string, signedDelta: nu
 // lançamento já anexado) — nunca recalcula por data, o que quebraria se o
 // dia de fechamento do cartão tiver mudado depois do lançamento original.
 export function adjustInvoiceAmount(invoiceId: string, delta: number): void {
-  getDb().prepare(`UPDATE credit_card_invoices SET amount = amount + ?, updated_at = datetime('now') WHERE id = ?`)
-    .run(roundMoney(delta), invoiceId);
+  adjustInvoiceAmountCents(invoiceId, toExactCents(delta));
+}
+
+export function adjustInvoiceAmountCents(invoiceId: string, delta: Cents): void {
+  getDb().prepare(`UPDATE credit_card_invoices SET amount_cents = amount_cents + ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(delta, invoiceId);
 }
 
 // Bootstrap preguiçoso: acha a fatura em aberto mais antiga do cartão; se

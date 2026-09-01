@@ -4103,6 +4103,12 @@
     "es-ES": "Ingrese un monto de contribución válido.",
     "zh-CN": "输入有效的捐款金额。"
   },
+  "Informe o valor da fatura com no máximo duas casas decimais.": {
+    "pt-BR": "Informe o valor da fatura com no máximo duas casas decimais.",
+    "en-US": "Enter the invoice amount with no more than two decimal places.",
+    "es-ES": "Introduzca el importe de la factura con un máximo de dos decimales.",
+    "zh-CN": "输入发票金额，最多保留两位小数。"
+  },
   "Informe um valor válido para a fatura.": {
     "pt-BR": "Informe um valor válido para a fatura.",
     "en-US": "Enter a valid amount for the invoice.",

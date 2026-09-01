@@ -2,8 +2,9 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import { getExchangeRate } from './market';
-import { confirmedLedgerDelta, roundMoney } from '../accountBalances';
+import { confirmedLedgerDeltaCents, roundMoney } from '../accountBalances';
 import type { Account, AccountCurrency } from '../../shared/types';
+import { addCents, fromCents, toExactCents } from '../../shared/money';
 
 type CreatePayload = Omit<Account, 'id' | 'created_at' | 'updated_at' | 'balance'> & { balance?: number };
 type UpdatePayload = { id: string } & Partial<CreatePayload>;
@@ -32,10 +33,19 @@ export function registerAccountHandlers(): void {
   ipcMain.handle('accounts:create', async (_e, data: CreatePayload) => {
     const currency = data.currency ?? 'BRL';
     const { balance, original_balance } = await resolveBalance(currency, data.original_balance, data.balance);
+    const balanceCents = toExactCents(balance);
+    const creditLimitCents = data.credit_limit == null ? null : toExactCents(data.credit_limit);
+    const originalBalanceCents = original_balance == null ? null : toExactCents(original_balance);
     const id = randomUUID();
     getDb().prepare(
-      'INSERT INTO accounts (id, name, type, bank_name, balance, credit_limit, color, currency, original_balance, opening_balance_brl, closing_day, due_day) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
-    ).run(id, data.name, data.type, data.bank_name ?? null, balance, data.credit_limit ?? null, data.color ?? null, currency, original_balance, balance, data.closing_day ?? null, data.due_day ?? null);
+      `INSERT INTO accounts
+        (id, name, type, bank_name, balance, balance_cents, credit_limit, credit_limit_cents, color, currency,
+         original_balance, original_balance_cents, opening_balance_brl, opening_balance_brl_cents, closing_day, due_day)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).run(id, data.name, data.type, data.bank_name ?? null, fromCents(balanceCents), balanceCents,
+      creditLimitCents == null ? null : fromCents(creditLimitCents), creditLimitCents, data.color ?? null, currency,
+      originalBalanceCents == null ? null : fromCents(originalBalanceCents), originalBalanceCents,
+      fromCents(balanceCents), balanceCents, data.closing_day ?? null, data.due_day ?? null);
     return getDb().prepare('SELECT * FROM accounts WHERE id = ?').get(id);
   });
 
@@ -61,14 +71,16 @@ export function registerAccountHandlers(): void {
     // O saldo de uma conta com histórico é um acumulado do livro-caixa. Não
     // o reescreva ao editar nome, banco ou limite; ajustes devem ser feitos por
     // um lançamento explícito para continuarem auditáveis.
-    const { balance, original_balance } = { balance: current.balance, original_balance: current.original_balance };
     const name = data.name ?? current.name;
     const type = data.type ?? current.type;
+    const creditLimitCents = data.credit_limit === undefined
+      ? current.credit_limit == null ? null : toExactCents(current.credit_limit)
+      : data.credit_limit == null ? null : toExactCents(data.credit_limit);
     getDb().prepare(
-      `UPDATE accounts SET name=?, type=?, bank_name=?, balance=?, credit_limit=?, color=?, currency=?, original_balance=?, opening_balance_brl=?, remote_balance=?, closing_day=?, due_day=?, updated_at=datetime('now') WHERE id=?`
-    ).run(name, type, data.bank_name !== undefined ? data.bank_name : current.bank_name, balance,
-      data.credit_limit !== undefined ? data.credit_limit : current.credit_limit,
-      data.color !== undefined ? data.color : current.color, currency, original_balance, current.opening_balance_brl, current.remote_balance,
+      `UPDATE accounts SET name=?, type=?, bank_name=?, credit_limit_cents=?, color=?, currency=?, closing_day=?, due_day=?, updated_at=datetime('now') WHERE id=?`
+    ).run(name, type, data.bank_name !== undefined ? data.bank_name : current.bank_name,
+      creditLimitCents,
+      data.color !== undefined ? data.color : current.color, currency,
       data.closing_day !== undefined ? data.closing_day : current.closing_day,
       data.due_day !== undefined ? data.due_day : current.due_day, id);
     return db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
@@ -88,10 +100,10 @@ export function registerAccountHandlers(): void {
       if (account.original_balance == null) continue;
       const rate = await getExchangeRate(account.currency as 'USD' | 'EUR');
       if (rate == null) continue;
-      const openingBalance = roundMoney(account.original_balance * rate);
-      const ledgerDelta = confirmedLedgerDelta(account.id, account.type);
-      db.prepare(`UPDATE accounts SET opening_balance_brl=?, balance=?, updated_at=datetime('now') WHERE id=?`)
-        .run(openingBalance, roundMoney(openingBalance + ledgerDelta), account.id);
+      const openingBalance = toExactCents(roundMoney(account.original_balance * rate));
+      const ledgerDelta = confirmedLedgerDeltaCents(account.id, account.type);
+      db.prepare(`UPDATE accounts SET opening_balance_brl_cents=?, balance_cents=?, updated_at=datetime('now') WHERE id=?`)
+        .run(openingBalance, addCents(openingBalance, ledgerDelta), account.id);
     }
     return db.prepare('SELECT * FROM accounts ORDER BY name').all();
   });

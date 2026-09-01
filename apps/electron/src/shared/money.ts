@@ -22,6 +22,22 @@ export function fromCents(cents: number): number {
   return cents / 100;
 }
 
+export function asCents(cents: number): Cents {
+  if (!Number.isSafeInteger(cents)) throw new Error('cents-invalid');
+  return cents as Cents;
+}
+
+export function addCents(...values: readonly number[]): Cents {
+  const total = values.reduce((result, value) => {
+    if (!Number.isSafeInteger(value)) throw new Error('cents-invalid');
+    return result + BigInt(value);
+  }, 0n);
+  if (total > BigInt(MAX_SAFE_CENTS) || total < -BigInt(MAX_SAFE_CENTS)) {
+    throw new Error('money-out-of-range');
+  }
+  return Number(total) as Cents;
+}
+
 export function roundMoney(value: number): number {
   return fromCents(toCents(value));
 }

@@ -4,6 +4,7 @@ import { getDb } from '../database';
 import { ensureCurrentInvoice } from '../invoices';
 import { invoiceDueDate, invoicePeriodClosingDate } from '../../shared/utils';
 import type { BestPurchaseWindow, CreditCardInvoice, CreditCardInvoiceCardState, CreditCardInvoiceStatus, CreditCardInvoiceWithAccount } from '../../shared/types';
+import { fromCents, toExactCents } from '../../shared/money';
 
 function getInvoice(id: string): CreditCardInvoice | null {
   return (getDb().prepare('SELECT * FROM credit_card_invoices WHERE id = ?').get(id) as CreditCardInvoice | undefined) ?? null;
@@ -82,11 +83,17 @@ export function registerInvoiceHandlers(): void {
     if (!Number.isFinite(data.amount) || data.amount < 0) throw new Error('Informe um valor válido para a fatura.');
     if (!data.closing_date || !data.due_date) throw new Error('Informe as datas de fechamento e vencimento.');
     if (data.status === 'paid') throw new Error('Para marcar a fatura como paga, informe a conta debitada no fluxo de pagamento.');
+    let amountCents: number;
+    try {
+      amountCents = toExactCents(data.amount);
+    } catch {
+      throw new Error('Informe o valor da fatura com no máximo duas casas decimais.');
+    }
     const id = randomUUID();
     try {
       getDb().prepare(
-        'INSERT INTO credit_card_invoices (id, account_id, amount, closing_date, due_date, status) VALUES (?,?,?,?,?,?)'
-      ).run(id, data.account_id, data.amount, data.closing_date, data.due_date, data.status ?? 'open');
+        'INSERT INTO credit_card_invoices (id, account_id, amount, amount_cents, closing_date, due_date, status) VALUES (?,?,?,?,?,?,?)'
+      ).run(id, data.account_id, fromCents(amountCents), amountCents, data.closing_date, data.due_date, data.status ?? 'open');
     } catch {
       throw new Error('Já existe uma fatura com essa data de fechamento para este cartão.');
     }
@@ -100,10 +107,16 @@ export function registerInvoiceHandlers(): void {
     if (data.status === 'paid' && existing?.status !== 'paid') {
       throw new Error('Para marcar a fatura como paga, informe a conta debitada no fluxo de pagamento.');
     }
+    let amountCents: number;
+    try {
+      amountCents = toExactCents(data.amount);
+    } catch {
+      throw new Error('Informe o valor da fatura com no máximo duas casas decimais.');
+    }
     try {
       getDb().prepare(
-        `UPDATE credit_card_invoices SET amount=?, closing_date=?, due_date=?, status=?, updated_at=datetime('now') WHERE id=?`
-      ).run(data.amount, data.closing_date, data.due_date, data.status, data.id);
+        `UPDATE credit_card_invoices SET amount_cents=?, closing_date=?, due_date=?, status=?, updated_at=datetime('now') WHERE id=?`
+      ).run(amountCents, data.closing_date, data.due_date, data.status, data.id);
     } catch {
       throw new Error('Já existe uma fatura com essa data de fechamento para este cartão.');
     }

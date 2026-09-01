@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fromCents, MAX_SAFE_CENTS, parseDecimalCents, reconcileMoneyParts, roundMoney,
+  addCents, asCents, fromCents, MAX_SAFE_CENTS, parseDecimalCents, reconcileMoneyParts, roundMoney,
   splitCents, toCents, toExactCents,
 } from '../src/shared/money';
 
@@ -49,5 +49,11 @@ describe('money primitives', () => {
     assert.throws(() => reconcileMoneyParts(10, [3.333, 3.333, 3.334]), /money-precision-unsupported/);
     assert.throws(() => reconcileMoneyParts(10, [3.33, 3.33, 3.33]), /money-total-mismatch/);
     assert.throws(() => toExactCents(1.005), /money-precision-unsupported/);
+  });
+
+  test('soma centavos sem passar por ponto flutuante e detecta overflow', () => {
+    assert.equal(addCents(asCents(10), asCents(20), asCents(-5)), 25);
+    assert.throws(() => asCents(1.5), /cents-invalid/);
+    assert.throws(() => addCents(MAX_SAFE_CENTS, 1), /money-out-of-range/);
   });
 });

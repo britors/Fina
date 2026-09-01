@@ -3,11 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import type { CategorySplit, CategorySplitWithCategory, PaymentSplit, PaymentSplitWithAccount, Transaction, TransactionFilters, TransactionMemberSplit, TransactionMemberSplitWithMember, TransactionType } from '../../shared/types';
 import { isCreditLikeAccountType, isPixEligibleAccountType } from '../../shared/utils';
-import { attachToInvoice, adjustInvoiceAmount } from '../invoices';
+import { attachToInvoiceCents, adjustInvoiceAmountCents } from '../invoices';
 import { buildExpenseAnalyticsWhere, categoryOrChildPredicate, transactionCategoryOrChildPredicate, EXPENSES_BY_ROOT_MONTH_SQL, EXPENSES_BY_ROOT_RANGE_SQL, EXPENSE_CATEGORY_DETAILS_SQL, EXPENSE_MONTHLY_ROOT_SERIES_SQL, EXPENSE_MONTHLY_SUBCATEGORY_SERIES_SQL, EXPENSE_SUBCATEGORY_BREAKDOWN_SQL } from '../categoryHierarchyQueries';
 import type { ExpenseAnalyticsFilters } from '../categoryHierarchyQueries';
 import { formatMainDate } from '../i18n';
-import { fromCents, reconcileMoneyParts, splitCents, toCents } from '../../shared/money';
+import { fromCents, reconcileMoneyParts, splitCents, toCents, toExactCents, type Cents } from '../../shared/money';
 
 const JOIN = `
   SELECT t.*, a.name as account_name,
@@ -35,10 +35,14 @@ export function balanceDelta(type: TransactionType, amount: number): number {
 // aplicar o mesmo valor exato à fatura correspondente (attachToInvoice),
 // sem duplicar/dessincronizar a lógica de sinal.
 export function adjustBalance(accountId: string, delta: number): number {
+  return fromCents(adjustBalanceCents(accountId, toExactCents(delta)));
+}
+
+export function adjustBalanceCents(accountId: string, delta: Cents): Cents {
   const db = getDb();
   const account = db.prepare('SELECT type FROM accounts WHERE id = ?').get(accountId) as { type: string } | undefined;
-  const signedDelta = account && isCreditLikeAccountType(account.type) ? -delta : delta;
-  db.prepare(`UPDATE accounts SET balance = balance + ?, updated_at = datetime('now') WHERE id = ?`)
+  const signedDelta = (account && isCreditLikeAccountType(account.type) ? -delta : delta) as Cents;
+  db.prepare(`UPDATE accounts SET balance_cents = balance_cents + ?, updated_at = datetime('now') WHERE id = ?`)
     .run(signedDelta, accountId);
   return signedDelta;
 }
@@ -59,22 +63,25 @@ export function applyBalanceEffect(
   sign: 1 | -1,
 ): void {
   if (tx.type === 'transfer' && tx.to_account_id) {
-    adjustBalance(tx.account_id, -tx.amount * sign);
-    adjustBalance(tx.to_account_id, tx.amount * sign);
+    const amount = toExactCents(tx.amount);
+    adjustBalanceCents(tx.account_id, (-amount * sign) as Cents);
+    adjustBalanceCents(tx.to_account_id, (amount * sign) as Cents);
     return;
   }
 
   const payments = tx.payments?.length ? tx.payments : tx.id ? getTransactionPayments(tx.id) : [{ account_id: tx.account_id, amount: tx.amount }];
   for (const payment of payments) {
-    const signedDelta = adjustBalance(payment.account_id, balanceDelta(tx.type, payment.amount) * sign);
+    const amount = toExactCents(payment.amount);
+    const delta = (tx.type === 'income' ? amount * sign : -amount * sign) as Cents;
+    const signedDelta = adjustBalanceCents(payment.account_id, delta);
     if (sign === 1) {
-      const invoiceId = attachToInvoice(payment.account_id, tx.date, signedDelta);
+      const invoiceId = attachToInvoiceCents(payment.account_id, tx.date, signedDelta);
       if (invoiceId && tx.id) {
         getDb().prepare('UPDATE transaction_payments SET invoice_id = ? WHERE transaction_id = ? AND account_id = ?')
           .run(invoiceId, tx.id, payment.account_id);
       }
     } else if (payment.invoice_id) {
-      adjustInvoiceAmount(payment.invoice_id, signedDelta);
+      adjustInvoiceAmountCents(payment.invoice_id, signedDelta);
     }
   }
 }
@@ -164,9 +171,10 @@ function normalizeMemberSplits(amount: number, splits?: TransactionMemberSplit[]
 function replaceTransactionMemberSplits(transactionId: string, splits: TransactionMemberSplit[]): void {
   const db = getDb();
   db.prepare('DELETE FROM transaction_member_splits WHERE transaction_id = ?').run(transactionId);
-  const stmt = db.prepare('INSERT INTO transaction_member_splits (id, transaction_id, member_id, share_amount) VALUES (?,?,?,?)');
+  const stmt = db.prepare('INSERT INTO transaction_member_splits (id, transaction_id, member_id, share_amount, share_amount_cents) VALUES (?,?,?,?,?)');
   for (const split of splits) {
-    stmt.run(randomUUID(), transactionId, split.member_id, split.share_amount);
+    const cents = toExactCents(split.share_amount);
+    stmt.run(randomUUID(), transactionId, split.member_id, fromCents(cents), cents);
   }
 }
 
@@ -181,18 +189,20 @@ function getTransactionMemberSplits(transactionId: string): TransactionMemberSpl
 function replaceTransactionPayments(transactionId: string, payments: PaymentSplit[]): void {
   const db = getDb();
   db.prepare('DELETE FROM transaction_payments WHERE transaction_id = ?').run(transactionId);
-  const stmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
+  const stmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, amount_cents, is_pix) VALUES (?,?,?,?,?,?)');
   for (const payment of payments) {
-    stmt.run(randomUUID(), transactionId, payment.account_id, payment.amount, payment.is_pix ? 1 : 0);
+    const cents = toExactCents(payment.amount);
+    stmt.run(randomUUID(), transactionId, payment.account_id, fromCents(cents), cents, payment.is_pix ? 1 : 0);
   }
 }
 
 function replaceTransactionCategories(transactionId: string, categories: CategorySplit[]): void {
   const db = getDb();
   db.prepare('DELETE FROM transaction_categories WHERE transaction_id = ?').run(transactionId);
-  const stmt = db.prepare('INSERT INTO transaction_categories (id, transaction_id, category_id, amount) VALUES (?,?,?,?)');
+  const stmt = db.prepare('INSERT INTO transaction_categories (id, transaction_id, category_id, amount, amount_cents) VALUES (?,?,?,?,?)');
   for (const category of categories) {
-    stmt.run(randomUUID(), transactionId, category.category_id, category.amount);
+    const cents = toExactCents(category.amount);
+    stmt.run(randomUUID(), transactionId, category.category_id, fromCents(cents), cents);
   }
 }
 
@@ -210,12 +220,13 @@ function insertTransaction(
   data: TransactionInput, id: string, primaryAccountId: string, payments: PaymentSplit[], categories: CategorySplit[], memberSplits: TransactionMemberSplit[] = [],
 ): void {
   const primaryCategoryId = categories[0]?.category_id ?? data.category_id;
+  const amountCents = toExactCents(data.amount);
   getDb().prepare(`
-    INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, type, date, status,
+    INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, amount_cents, type, date, status,
       notes, recurring, owner, is_mei_revenue, installment_group_id, installment_index, installment_total, paid_by_member_id,
       mobile_device_id, mobile_client_id)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-  `).run(id, primaryAccountId, data.to_account_id ?? null, primaryCategoryId, data.description, data.amount, data.type, data.date, data.status,
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `).run(id, primaryAccountId, data.to_account_id ?? null, primaryCategoryId, data.description, fromCents(amountCents), amountCents, data.type, data.date, data.status,
          data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null, data.is_mei_revenue ? 1 : 0,
          data.installment_group_id ?? null, data.installment_index ?? null, data.installment_total ?? null, data.paid_by_member_id ?? null,
          data.mobile_device_id ?? null, data.mobile_client_id ?? null);
@@ -594,13 +605,14 @@ export function registerTransactionHandlers(): void {
     const memberSplits = normalizeMemberSplits(data.amount!, (data as TransactionInput).member_splits);
     const primaryAccountId = data.type === 'transfer' ? data.account_id! : payments[0]?.account_id ?? data.account_id!;
     const primaryCategoryId = data.type === 'transfer' ? data.category_id! : categories[0]?.category_id ?? data.category_id!;
+    const amountCents = toExactCents(data.amount!);
     const db = getDb();
     db.transaction(() => {
       const old = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as Transaction | undefined;
       const oldPayments = old ? getTransactionPayments(id) : [];
       db.prepare(
-        `UPDATE transactions SET account_id=?, to_account_id=?, category_id=?, description=?, amount=?, type=?, date=?, status=?, notes=?, recurring=?, owner=?, is_mei_revenue=?, paid_by_member_id=?, updated_at=datetime('now') WHERE id=?`
-      ).run(primaryAccountId, data.to_account_id ?? null, primaryCategoryId, data.description, data.amount, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null, data.is_mei_revenue ? 1 : 0, data.paid_by_member_id ?? null, id);
+        `UPDATE transactions SET account_id=?, to_account_id=?, category_id=?, description=?, amount=?, amount_cents=?, type=?, date=?, status=?, notes=?, recurring=?, owner=?, is_mei_revenue=?, paid_by_member_id=?, updated_at=datetime('now') WHERE id=?`
+      ).run(primaryAccountId, data.to_account_id ?? null, primaryCategoryId, data.description, fromCents(amountCents), amountCents, data.type, data.date, data.status, data.notes ?? null, data.recurring ? 1 : 0, data.owner ?? null, data.is_mei_revenue ? 1 : 0, data.paid_by_member_id ?? null, id);
 
       if (old) {
         const wasConfirmed = old.status === 'confirmed';
