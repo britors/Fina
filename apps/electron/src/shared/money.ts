@@ -2,11 +2,17 @@ export type Cents = number & { readonly __brand: 'Cents' };
 
 export const MAX_SAFE_CENTS = Number.MAX_SAFE_INTEGER;
 
+function shiftDecimal(value: number, places: number): number {
+  const [coefficient, exponent = '0'] = value.toString().split('e');
+  return Number(`${coefficient}e${Number(exponent) + places}`);
+}
+
 export function toCents(value: number): Cents {
   if (!Number.isFinite(value)) throw new Error('money-not-finite');
-  const absoluteScaled = Math.abs(value) * 100;
-  const tolerance = Number.EPSILON * Math.max(1, absoluteScaled) * 4;
-  const cents = Math.sign(value) * Math.floor(absoluteScaled + 0.5 + tolerance);
+  // Deslocar pelo expoente decimal evita tanto 1.005 * 100 = 100.4999…
+  // quanto uma tolerância crescente que alteraria vários centavos em valores
+  // grandes. O sinal separado mantém empate arredondado para longe de zero.
+  const cents = Math.sign(value) * Math.round(shiftDecimal(Math.abs(value), 2));
   if (!Number.isSafeInteger(cents)) throw new Error('money-out-of-range');
   return cents as Cents;
 }
@@ -26,12 +32,14 @@ export function parseDecimalCents(value: string): Cents {
   const match = /^([+-]?)(\d+)(?:\.(\d{1,2}))?$/.exec(value.trim());
   if (!match) throw new Error('money-format-invalid');
   const [, sign, whole, fraction = ''] = match;
-  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
-  if (!Number.isSafeInteger(cents)) throw new Error('money-out-of-range');
+  const absoluteCents = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
+  if (absoluteCents > BigInt(MAX_SAFE_CENTS)) throw new Error('money-out-of-range');
+  const cents = Number(absoluteCents);
   return (sign === '-' ? -cents : cents) as Cents;
 }
 
 export function splitCents(total: Cents, parts: number): Cents[] {
+  if (!Number.isSafeInteger(total)) throw new Error('cents-invalid');
   if (!Number.isInteger(parts) || parts < 1) throw new Error('money-parts-invalid');
   const sign = Math.sign(total) || 1;
   const absolute = Math.abs(total);

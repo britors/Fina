@@ -15,6 +15,12 @@ O limite operacional será de `±9.007.199.254.740.991` centavos
 (`±R$ 90.071.992.547.409,91`). Toda conversão deve rejeitar `NaN`, infinito,
 overflow e mais precisão que a fronteira declarada suporta.
 
+Esse limite é exato na representação canônica em centavos e em entradas
+decimais textuais. O contrato legado em `number` pode perder centavos antes da
+conversão em magnitudes extremas; por isso importadores e futuros contratos IPC
+devem preferir texto decimal ou `amount_cents`. A conversão de `number` usa sua
+representação decimal observável e nunca tenta reconstruir dígitos já perdidos.
+
 Não são centavos:
 
 - taxas de juros e percentuais;
@@ -64,6 +70,11 @@ Não são centavos:
    nas fronteiras.
 6. Em versão posterior, reconstruir tabelas para remover colunas `REAL` que
    representam dinheiro e eliminar o dual-write.
+
+O inventário executável e o preflight da etapa 2 ficam em
+`moneyMigrationAudit.ts`. A lista é deliberadamente estática: mudanças no
+schema exigem revisão explícita do que é dinheiro, evitando converter por
+engano percentuais, quantidades ou preços unitários fracionários.
 
 ## Invariantes e rollback
 

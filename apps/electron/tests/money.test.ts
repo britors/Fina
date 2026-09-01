@@ -1,6 +1,8 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fromCents, parseDecimalCents, roundMoney, splitCents, toCents } from '../src/shared/money';
+import {
+  fromCents, MAX_SAFE_CENTS, parseDecimalCents, roundMoney, splitCents, toCents,
+} from '../src/shared/money';
 
 describe('money primitives', () => {
   test('converte e arredonda simetricamente nas bordas binárias conhecidas', () => {
@@ -30,5 +32,13 @@ describe('money primitives', () => {
     assert.throws(() => toCents(Number.POSITIVE_INFINITY), /money-not-finite/);
     assert.throws(() => fromCents(1.5), /cents-invalid/);
     assert.throws(() => splitCents(toCents(1), 0), /money-parts-invalid/);
+  });
+
+  test('preserva o limite seguro sem tolerância crescente', () => {
+    assert.equal(parseDecimalCents('90071992547409.91'), MAX_SAFE_CENTS);
+    assert.equal(parseDecimalCents('-90071992547409.91'), -MAX_SAFE_CENTS);
+    assert.equal(toCents(10_000_000_000_000.01), 1_000_000_000_000_001);
+    assert.throws(() => parseDecimalCents('90071992547409.92'), /money-out-of-range/);
+    assert.throws(() => toCents(90_071_992_547_410), /money-out-of-range/);
   });
 });
