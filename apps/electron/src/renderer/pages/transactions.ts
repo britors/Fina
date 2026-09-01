@@ -10,6 +10,7 @@ import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { Account, AITransactionBatchDraft, AITransactionDraft, Category, CategorySplit, CategorySplitWithCategory, CategorySuggestion, CreditCardInvoice, FamilyMember, PaymentSplit, PaymentSplitWithAccount, TransactionMemberSplit, TransactionStatus, TransactionWithDetails, TransactionType } from '../../shared/types';
 import { categoryOptions } from '../components/categorySelect';
 import { consumePendingTransactionFilter } from '../navigation';
+import { reconcileMoneyParts } from '../../shared/money';
 
 let accounts: Account[]  = [];
 let categories: Category[] = [];
@@ -1091,7 +1092,6 @@ function collectPayments(overlay: HTMLElement, total: number): PaymentSplit[] | 
     is_pix: (row.querySelector<HTMLInputElement>('.payment-pix')?.checked ? 1 : 0) as 0 | 1,
   }));
   const seen = new Set<string>();
-  let sum = 0;
   for (const payment of payments) {
     if (!payment.account_id || !Number.isFinite(payment.amount) || payment.amount <= 0) {
       showAlert('Preencha todas as contas com valores válidos.');
@@ -1102,13 +1102,15 @@ function collectPayments(overlay: HTMLElement, total: number): PaymentSplit[] | 
       return null;
     }
     seen.add(payment.account_id);
-    sum += payment.amount;
   }
-  if (Math.abs(sum - total) > 0.005) {
+  let amounts: number[];
+  try {
+    amounts = reconcileMoneyParts(total, payments.map(payment => payment.amount));
+  } catch {
     showAlert('A soma das contas deve ser igual ao valor total.');
     return null;
   }
-  return payments;
+  return payments.map((payment, index) => ({ ...payment, amount: amounts[index] }));
 }
 
 function remainingAmount(overlay: HTMLElement): number {
@@ -1195,7 +1197,6 @@ function collectCategories(overlay: HTMLElement, total: number): CategorySplit[]
     amount: moneyInputValue(row.querySelector<HTMLInputElement>('.category-amount')),
   }));
   const seen = new Set<string>();
-  let sum = 0;
   for (const cat of cats) {
     if (!cat.category_id || !Number.isFinite(cat.amount) || cat.amount <= 0) {
       showAlert('Preencha todas as categorias com valores válidos.');
@@ -1206,13 +1207,15 @@ function collectCategories(overlay: HTMLElement, total: number): CategorySplit[]
       return null;
     }
     seen.add(cat.category_id);
-    sum += cat.amount;
   }
-  if (Math.abs(sum - total) > 0.005) {
+  let amounts: number[];
+  try {
+    amounts = reconcileMoneyParts(total, cats.map(cat => cat.amount));
+  } catch {
     showAlert('A soma das categorias deve ser igual ao valor total.');
     return null;
   }
-  return cats;
+  return cats.map((cat, index) => ({ ...cat, amount: amounts[index] }));
 }
 
 function remainingCategoryAmount(overlay: HTMLElement): number {

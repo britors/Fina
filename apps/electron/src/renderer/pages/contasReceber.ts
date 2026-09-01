@@ -9,6 +9,7 @@ import { setTopbarActions } from '../components/topbar';
 import { aiDraftNotice, openAICreateDraft } from '../components/aiCreateDraft';
 import type { Account, AIReceivableDraft, Receivable, ReceivableInterval, ReceivableStatus, ReceivableWithCategory, Category, CategorySplit, CategorySplitWithCategory, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOptions } from '../components/categorySelect';
+import { reconcileMoneyParts } from '../../shared/money';
 
 const INTERVAL_LABELS: Record<ReceivableInterval, string> = {
   weekly:     'Semanal',
@@ -513,7 +514,6 @@ function collectPayments(prefix: string, total: number, allowEmpty: boolean): Pa
 
   if (allowEmpty && payments.length === 0) return [];
   const seen = new Set<string>();
-  let sum = 0;
   for (const payment of payments) {
     if (!payment.account_id || !Number.isFinite(payment.amount) || payment.amount <= 0) {
       showAlert('Preencha todas as contas com valores válidos.');
@@ -524,13 +524,15 @@ function collectPayments(prefix: string, total: number, allowEmpty: boolean): Pa
       return null;
     }
     seen.add(payment.account_id);
-    sum += payment.amount;
   }
-  if (Math.abs(sum - total) > 0.005) {
+  let amounts: number[];
+  try {
+    amounts = reconcileMoneyParts(total, payments.map(payment => payment.amount));
+  } catch {
     showAlert('A soma das contas deve ser igual ao valor total.');
     return null;
   }
-  return payments;
+  return payments.map((payment, index) => ({ ...payment, amount: amounts[index] }));
 }
 
 function remainingAmount(overlay: HTMLElement, prefix: string): number {
@@ -620,7 +622,6 @@ function collectCategories(total: number, allowEmpty: boolean): CategorySplit[] 
 
   if (allowEmpty && cats.length === 0) return [];
   const seen = new Set<string>();
-  let sum = 0;
   for (const cat of cats) {
     if (!cat.category_id || !Number.isFinite(cat.amount) || cat.amount <= 0) {
       showAlert('Preencha todas as categorias com valores válidos.');
@@ -631,13 +632,15 @@ function collectCategories(total: number, allowEmpty: boolean): CategorySplit[] 
       return null;
     }
     seen.add(cat.category_id);
-    sum += cat.amount;
   }
-  if (Math.abs(sum - total) > 0.005) {
+  let amounts: number[];
+  try {
+    amounts = reconcileMoneyParts(total, cats.map(cat => cat.amount));
+  } catch {
     showAlert('A soma das categorias deve ser igual ao valor total.');
     return null;
   }
-  return cats;
+  return cats.map((cat, index) => ({ ...cat, amount: amounts[index] }));
 }
 
 function remainingCategoryAmount(overlay: HTMLElement): number {
