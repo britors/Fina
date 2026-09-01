@@ -1,16 +1,25 @@
 import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
-import { adjustBalance } from './transactions';
-import { attachToInvoice } from '../invoices';
+import { adjustBalanceCents } from './transactions';
+import { attachToInvoiceCents } from '../invoices';
 import { addInterval } from './bills';
 import type { CategorySplit, CategorySplitWithCategory, Receivable, ReceivableInterval, ReceivablePriceIncrease, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOrChildPredicate } from '../categoryHierarchyQueries';
 import { isPixEligibleAccountType } from '../../shared/utils';
-import { reconcileMoneyParts } from '../../shared/money';
+import { asCents, fromCents, reconcileMoneyParts, toExactCents, type Cents } from '../../shared/money';
 
 type ReceivableInput = Omit<Receivable, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[]; categories?: CategorySplit[] };
 type ReceivableUpdateInput = Partial<Receivable> & { id: string; payments?: PaymentSplit[]; categories?: CategorySplit[] };
+
+function requireReceivableAmountCents(amount: number): Cents {
+  if (!Number.isFinite(amount) || amount < 0) throw new Error('Informe um valor válido para a conta a receber.');
+  try {
+    return toExactCents(amount);
+  } catch {
+    throw new Error('Informe o valor da conta a receber com no máximo duas casas decimais.');
+  }
+}
 
 function autoMarkOverdue(): void {
   getDb().prepare(
@@ -94,9 +103,10 @@ function assertIncomeCategory(categoryId: string): void {
 function replaceReceivablePayments(receivableId: string, payments: PaymentSplit[]): void {
   const db = getDb();
   db.prepare('DELETE FROM receivable_payments WHERE receivable_id = ?').run(receivableId);
-  const stmt = db.prepare('INSERT INTO receivable_payments (id, receivable_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
+  const stmt = db.prepare('INSERT INTO receivable_payments (id, receivable_id, account_id, amount, amount_cents, is_pix) VALUES (?,?,?,?,?,?)');
   for (const payment of payments) {
-    stmt.run(randomUUID(), receivableId, payment.account_id, payment.amount, payment.is_pix ? 1 : 0);
+    const cents = toExactCents(payment.amount);
+    stmt.run(randomUUID(), receivableId, payment.account_id, fromCents(cents), cents, payment.is_pix ? 1 : 0);
   }
 }
 
@@ -113,9 +123,10 @@ function getReceivablePayments(receivableId: string): PaymentSplitWithAccount[] 
 function replaceReceivableCategories(receivableId: string, categories: CategorySplit[]): void {
   const db = getDb();
   db.prepare('DELETE FROM receivable_categories WHERE receivable_id = ?').run(receivableId);
-  const stmt = db.prepare('INSERT INTO receivable_categories (id, receivable_id, category_id, amount) VALUES (?,?,?,?)');
+  const stmt = db.prepare('INSERT INTO receivable_categories (id, receivable_id, category_id, amount, amount_cents) VALUES (?,?,?,?,?)');
   for (const category of categories) {
-    stmt.run(randomUUID(), receivableId, category.category_id, category.amount);
+    const cents = toExactCents(category.amount);
+    stmt.run(randomUUID(), receivableId, category.category_id, fromCents(cents), cents);
   }
 }
 
@@ -138,22 +149,22 @@ function enrichReceivables<T extends Receivable>(receivables: T[]): (T & { payme
   return receivables.map(receivable => enrichReceivable(receivable)!);
 }
 
-function latestPriceHistoryAmount(receivableId: string): number | null {
+function latestPriceHistoryAmountCents(receivableId: string): Cents | null {
   const row = getDb().prepare(
-    `SELECT amount FROM receivable_price_history WHERE receivable_id = ? ORDER BY changed_at DESC, rowid DESC LIMIT 1`
-  ).get(receivableId) as { amount: number } | undefined;
-  return row?.amount ?? null;
+    `SELECT amount_cents FROM receivable_price_history WHERE receivable_id = ? ORDER BY changed_at DESC, rowid DESC LIMIT 1`
+  ).get(receivableId) as { amount_cents: number } | undefined;
+  return row ? asCents(row.amount_cents) : null;
 }
 
 // Registra o valor de um recebimento recorrente sempre que ele mudar, para
 // permitir detectar reajuste de mensalidades/recebimentos fixos
 // (receivables:getPriceIncreases).
-function trackPriceHistory(receivableId: string, amount: number): void {
-  const previous = latestPriceHistoryAmount(receivableId);
-  if (previous !== null && Math.abs(previous - amount) < 0.005) return;
+function trackPriceHistory(receivableId: string, amountCents: Cents): void {
+  const previous = latestPriceHistoryAmountCents(receivableId);
+  if (previous === amountCents) return;
   getDb().prepare(
-    'INSERT INTO receivable_price_history (id, receivable_id, amount) VALUES (?,?,?)'
-  ).run(randomUUID(), receivableId, amount);
+    'INSERT INTO receivable_price_history (id, receivable_id, amount, amount_cents) VALUES (?,?,?,?)'
+  ).run(randomUUID(), receivableId, fromCents(amountCents), amountCents);
 }
 
 function markReceivableAsReceived({ id, category_id, categories: inputCategories, date, payments: inputPayments }: {
@@ -167,6 +178,7 @@ function markReceivableAsReceived({ id, category_id, categories: inputCategories
   const receivable = db.prepare('SELECT * FROM receivables WHERE id = ?').get(id) as Receivable | undefined;
   if (!receivable) return null;
   if (receivable.status === 'received') return receivable;
+  const receivableAmountCents = requireReceivableAmountCents(receivable.amount);
 
   const payments = normalizePayments({
     amount: receivable.amount,
@@ -191,8 +203,9 @@ function markReceivableAsReceived({ id, category_id, categories: inputCategories
   db.transaction(() => {
     if (receivable.recurring) {
       for (const payment of payments) {
-        const signedDelta = adjustBalance(payment.account_id, payment.amount);
-        attachToInvoice(payment.account_id, receivedAt, signedDelta);
+        const paymentCents = toExactCents(payment.amount);
+        const signedDelta = adjustBalanceCents(payment.account_id, paymentCents);
+        attachToInvoiceCents(payment.account_id, receivedAt, signedDelta);
       }
       db.prepare(`UPDATE receivables SET status='received', updated_at=datetime('now') WHERE id=?`).run(id);
       replaceReceivablePayments(id, payments);
@@ -202,20 +215,22 @@ function markReceivableAsReceived({ id, category_id, categories: inputCategories
 
     const txId = randomUUID();
     db.prepare(
-      'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,0)'
-    ).run(txId, payments[0].account_id, categories[0].category_id, receivable.description, receivable.amount, 'income', receivedAt, 'confirmed', null);
-    const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
+      'INSERT INTO transactions (id, account_id, category_id, description, amount, amount_cents, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,?,0)'
+    ).run(txId, payments[0].account_id, categories[0].category_id, receivable.description, fromCents(receivableAmountCents), receivableAmountCents, 'income', receivedAt, 'confirmed', null);
+    const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, amount_cents, is_pix) VALUES (?,?,?,?,?,?)');
     const invoiceLinkStmt = db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?');
     for (const payment of payments) {
       const paymentId = randomUUID();
-      txPaymentStmt.run(paymentId, txId, payment.account_id, payment.amount, payment.is_pix ? 1 : 0);
-      const signedDelta = adjustBalance(payment.account_id, payment.amount);
-      const invoiceId = attachToInvoice(payment.account_id, receivedAt, signedDelta);
+      const paymentCents = toExactCents(payment.amount);
+      txPaymentStmt.run(paymentId, txId, payment.account_id, fromCents(paymentCents), paymentCents, payment.is_pix ? 1 : 0);
+      const signedDelta = adjustBalanceCents(payment.account_id, paymentCents);
+      const invoiceId = attachToInvoiceCents(payment.account_id, receivedAt, signedDelta);
       if (invoiceId) invoiceLinkStmt.run(invoiceId, paymentId);
     }
-    const txCategoryStmt = db.prepare('INSERT INTO transaction_categories (id, transaction_id, category_id, amount) VALUES (?,?,?,?)');
+    const txCategoryStmt = db.prepare('INSERT INTO transaction_categories (id, transaction_id, category_id, amount, amount_cents) VALUES (?,?,?,?,?)');
     for (const category of categories) {
-      txCategoryStmt.run(randomUUID(), txId, category.category_id, category.amount);
+      const categoryCents = toExactCents(category.amount);
+      txCategoryStmt.run(randomUUID(), txId, category.category_id, fromCents(categoryCents), categoryCents);
     }
     db.prepare('DELETE FROM receivables WHERE id = ?').run(id);
   })();
@@ -281,6 +296,7 @@ export function registerReceivableHandlers(): void {
   });
 
   ipcMain.handle('receivables:create', (_e, data: ReceivableInput) => {
+    const amountCents = requireReceivableAmountCents(data.amount);
     const payments = normalizePayments(data, true);
     const categories = normalizeCategories(data, true);
     const primaryAccountId = payments[0]?.account_id ?? data.account_id ?? null;
@@ -290,11 +306,11 @@ export function registerReceivableHandlers(): void {
     const shouldMarkAsReceived = data.status === 'received';
     db.transaction(() => {
       db.prepare(
-        'INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring, auto_settle, recurrence_interval) VALUES (?,?,?,?,?,?,?,?,?,?)'
-      ).run(id, data.description, data.amount, data.due_date, shouldMarkAsReceived ? 'pending' : (data.status ?? 'pending'), primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly');
+        'INSERT INTO receivables (id, description, amount, amount_cents, due_date, status, account_id, category_id, recurring, auto_settle, recurrence_interval) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
+      ).run(id, data.description, fromCents(amountCents), amountCents, data.due_date, shouldMarkAsReceived ? 'pending' : (data.status ?? 'pending'), primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly');
       replaceReceivablePayments(id, payments);
       replaceReceivableCategories(id, categories);
-      if (data.recurring) trackPriceHistory(id, data.amount);
+      if (data.recurring) trackPriceHistory(id, amountCents);
     })();
     if (shouldMarkAsReceived) {
       markReceivableAsReceived({ id, category_id: data.category_id ?? undefined, categories: data.categories, date: data.due_date, payments: data.payments });
@@ -312,13 +328,14 @@ export function registerReceivableHandlers(): void {
     if (!Number.isInteger(times) || times < 1) throw new Error('Informe quantas vezes repetir (mínimo 1).');
 
     const createdIds: string[] = [];
+    const amountCents = requireReceivableAmountCents(receivable.amount);
     db.transaction(() => {
       for (let i = 1; i <= times; i++) {
         const newId = randomUUID();
         const newDue = addInterval(receivable.due_date, interval, i);
         db.prepare(
-          'INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring, auto_settle) VALUES (?,?,?,?,?,?,?,0,?)'
-        ).run(newId, receivable.description, receivable.amount, newDue, 'pending', receivable.account_id, receivable.category_id, receivable.auto_settle);
+          'INSERT INTO receivables (id, description, amount, amount_cents, due_date, status, account_id, category_id, recurring, auto_settle) VALUES (?,?,?,?,?,?,?,?,0,?)'
+        ).run(newId, receivable.description, fromCents(amountCents), amountCents, newDue, 'pending', receivable.account_id, receivable.category_id, receivable.auto_settle);
         replaceReceivablePayments(newId, getReceivablePayments(receivable.id));
         replaceReceivableCategories(newId, getReceivableCategories(receivable.id));
         createdIds.push(newId);
@@ -334,6 +351,7 @@ export function registerReceivableHandlers(): void {
     if (data.status === 'received' && current.status !== 'received') {
       throw new Error('Use receivables:markAsReceived para registrar o recebimento.');
     }
+    const amountCents = requireReceivableAmountCents(data.amount!);
     const payments = normalizePayments(data as ReceivableInput, true);
     const categories = normalizeCategories(data as ReceivableInput, true);
     const primaryAccountId = payments[0]?.account_id ?? data.account_id ?? null;
@@ -341,11 +359,11 @@ export function registerReceivableHandlers(): void {
     const db = getDb();
     db.transaction(() => {
       db.prepare(
-        `UPDATE receivables SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, auto_settle=?, recurrence_interval=?, updated_at=datetime('now') WHERE id=?`
-      ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
+        `UPDATE receivables SET description=?, amount_cents=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, auto_settle=?, recurrence_interval=?, updated_at=datetime('now') WHERE id=?`
+      ).run(data.description, amountCents, data.due_date, data.status, primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
       replaceReceivablePayments(id, payments);
       replaceReceivableCategories(id, categories);
-      if (data.recurring && data.amount != null) trackPriceHistory(id, data.amount);
+      if (data.recurring) trackPriceHistory(id, amountCents);
     })();
     return enrichReceivable(db.prepare('SELECT * FROM receivables WHERE id = ?').get(id) as Receivable | undefined);
   });
@@ -359,19 +377,20 @@ export function registerReceivableHandlers(): void {
   // nas notificações nativas/e-mail/webhook.
   ipcMain.handle('receivables:getPriceIncreases', () => {
     return getDb().prepare(`
-      SELECT r.id as receivable_id, r.description, prev.amount as previous_amount, last.amount as new_amount, last.changed_at
+      SELECT r.id as receivable_id, r.description, prev.amount_cents / 100.0 as previous_amount,
+        last.amount_cents / 100.0 as new_amount, last.changed_at
       FROM receivables r
       JOIN (
-        SELECT receivable_id, amount, changed_at,
+        SELECT receivable_id, amount_cents, changed_at,
                ROW_NUMBER() OVER (PARTITION BY receivable_id ORDER BY changed_at DESC, rowid DESC) as rn
         FROM receivable_price_history
       ) last ON last.receivable_id = r.id AND last.rn = 1
       JOIN (
-        SELECT receivable_id, amount, changed_at,
+        SELECT receivable_id, amount_cents, changed_at,
                ROW_NUMBER() OVER (PARTITION BY receivable_id ORDER BY changed_at DESC, rowid DESC) as rn
         FROM receivable_price_history
       ) prev ON prev.receivable_id = r.id AND prev.rn = 2
-      WHERE r.recurring = 1 AND last.amount > prev.amount
+      WHERE r.recurring = 1 AND last.amount_cents > prev.amount_cents
       ORDER BY last.changed_at DESC
     `).all() as ReceivablePriceIncrease[];
   });

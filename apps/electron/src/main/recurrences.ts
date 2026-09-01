@@ -4,6 +4,7 @@ import { addInterval, settleAutomaticBills } from './ipc/bills';
 import { settleAutomaticReceivables } from './ipc/receivables';
 import { applyBalanceEffect } from './ipc/transactions';
 import type { BillInterval, ReceivableInterval } from '../shared/types';
+import { asCents, fromCents } from '../shared/money';
 
 interface RecurrenceResult {
   transactions: number;
@@ -28,7 +29,7 @@ export function generateRecurrences(): RecurrenceResult {
     SELECT * FROM transactions WHERE recurring = 1
   `).all() as {
     id: string; account_id: string; category_id: string; description: string;
-    to_account_id: string | null; amount: number; type: 'income' | 'expense' | 'transfer';
+    to_account_id: string | null; amount: number; amount_cents: number; type: 'income' | 'expense' | 'transfer';
     date: string; status: 'confirmed' | 'pending'; notes: string | null; owner: string | null;
     is_mei_revenue: 0 | 1; paid_by_member_id: string | null;
   }[];
@@ -36,16 +37,16 @@ export function generateRecurrences(): RecurrenceResult {
   const checkTxLog  = db.prepare(`SELECT 1 FROM recurring_log WHERE source_id=? AND source_type='transaction' AND generated_date=?`);
   const insertTxLog = db.prepare(`INSERT OR IGNORE INTO recurring_log (source_id, source_type, generated_date) VALUES (?,?,?)`);
   const insertTx    = db.prepare(`
-    INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, type, date, status,
+    INSERT INTO transactions (id, account_id, to_account_id, category_id, description, amount, amount_cents, type, date, status,
       notes, recurring, owner, is_mei_revenue, paid_by_member_id)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
-  const txPayments = db.prepare(`SELECT account_id, amount, is_pix FROM transaction_payments WHERE transaction_id=?`);
-  const insertTxPayment = db.prepare(`INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
-  const txCategories = db.prepare(`SELECT category_id, amount FROM transaction_categories WHERE transaction_id=?`);
-  const insertTxCategory = db.prepare(`INSERT INTO transaction_categories (id, transaction_id, category_id, amount) VALUES (?,?,?,?)`);
-  const txMemberSplits = db.prepare(`SELECT member_id, share_amount FROM transaction_member_splits WHERE transaction_id=?`);
-  const insertTxMemberSplit = db.prepare(`INSERT INTO transaction_member_splits (id, transaction_id, member_id, share_amount) VALUES (?,?,?,?)`);
+  const txPayments = db.prepare(`SELECT account_id, amount_cents, is_pix FROM transaction_payments WHERE transaction_id=?`);
+  const insertTxPayment = db.prepare(`INSERT INTO transaction_payments (id, transaction_id, account_id, amount, amount_cents, is_pix) VALUES (?,?,?,?,?,?)`);
+  const txCategories = db.prepare(`SELECT category_id, amount_cents FROM transaction_categories WHERE transaction_id=?`);
+  const insertTxCategory = db.prepare(`INSERT INTO transaction_categories (id, transaction_id, category_id, amount, amount_cents) VALUES (?,?,?,?,?)`);
+  const txMemberSplits = db.prepare(`SELECT member_id, share_amount_cents FROM transaction_member_splits WHERE transaction_id=?`);
+  const insertTxMemberSplit = db.prepare(`INSERT INTO transaction_member_splits (id, transaction_id, member_id, share_amount, share_amount_cents) VALUES (?,?,?,?,?)`);
 
   const newDate = `${year}-${String(month).padStart(2, '0')}-01`;
 
@@ -61,17 +62,18 @@ export function generateRecurrences(): RecurrenceResult {
 
     const newId = randomUUID();
     insertTx.run(newId, tx.account_id, tx.to_account_id, tx.category_id, tx.description,
-                 tx.amount, tx.type, newDate, tx.status, tx.notes, 0, tx.owner,
+                 fromCents(tx.amount_cents), asCents(tx.amount_cents), tx.type, newDate, tx.status, tx.notes, 0, tx.owner,
                  tx.is_mei_revenue, tx.paid_by_member_id);
-    const payments = txPayments.all(tx.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[];
+    const paymentRows = txPayments.all(tx.id) as { account_id: string; amount_cents: number; is_pix: 0 | 1 }[];
+    const payments = paymentRows.map(payment => ({ ...payment, amount: fromCents(payment.amount_cents) }));
     for (const payment of payments) {
-      insertTxPayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
+      insertTxPayment.run(randomUUID(), newId, payment.account_id, payment.amount, asCents(payment.amount_cents), payment.is_pix);
     }
-    for (const category of txCategories.all(tx.id) as { category_id: string; amount: number }[]) {
-      insertTxCategory.run(randomUUID(), newId, category.category_id, category.amount);
+    for (const category of txCategories.all(tx.id) as { category_id: string; amount_cents: number }[]) {
+      insertTxCategory.run(randomUUID(), newId, category.category_id, fromCents(category.amount_cents), asCents(category.amount_cents));
     }
-    for (const split of txMemberSplits.all(tx.id) as { member_id: string; share_amount: number }[]) {
-      insertTxMemberSplit.run(randomUUID(), newId, split.member_id, split.share_amount);
+    for (const split of txMemberSplits.all(tx.id) as { member_id: string; share_amount_cents: number }[]) {
+      insertTxMemberSplit.run(randomUUID(), newId, split.member_id, fromCents(split.share_amount_cents), asCents(split.share_amount_cents));
     }
     if (tx.status === 'confirmed') {
       applyBalanceEffect({
@@ -96,32 +98,32 @@ export function generateRecurrences(): RecurrenceResult {
     SELECT * FROM bills
     WHERE recurring = 1 AND status != 'paid' AND due_date <= date('now', '+' || ? || ' days')
   `).all(BILL_LEAD_DAYS) as {
-    id: string; description: string; amount: number; due_date: string;
+    id: string; description: string; amount_cents: number; due_date: string;
     account_id: string | null; category_id: string | null; auto_settle: 0 | 1; recurrence_interval: BillInterval;
   }[];
 
   const checkBillLog  = db.prepare(`SELECT 1 FROM recurring_log WHERE source_id=? AND source_type='bill' AND generated_date=?`);
   const insertBillLog = db.prepare(`INSERT OR IGNORE INTO recurring_log (source_id, source_type, generated_date) VALUES (?,?,?)`);
   const insertBill    = db.prepare(`
-    INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring, auto_settle)
-    VALUES (?,?,?,?,?,?,?,0,?)
+    INSERT INTO bills (id, description, amount, amount_cents, due_date, status, account_id, category_id, recurring, auto_settle)
+    VALUES (?,?,?,?,?,?,?,?,0,?)
   `);
-  const billPayments = db.prepare(`SELECT account_id, amount, is_pix FROM bill_payments WHERE bill_id=?`);
-  const insertBillPayment = db.prepare(`INSERT INTO bill_payments (id, bill_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
-  const billCategories = db.prepare(`SELECT category_id, amount FROM bill_categories WHERE bill_id=?`);
-  const insertBillCategory = db.prepare(`INSERT INTO bill_categories (id, bill_id, category_id, amount) VALUES (?,?,?,?)`);
+  const billPayments = db.prepare(`SELECT account_id, amount_cents, is_pix FROM bill_payments WHERE bill_id=?`);
+  const insertBillPayment = db.prepare(`INSERT INTO bill_payments (id, bill_id, account_id, amount, amount_cents, is_pix) VALUES (?,?,?,?,?,?)`);
+  const billCategories = db.prepare(`SELECT category_id, amount_cents FROM bill_categories WHERE bill_id=?`);
+  const insertBillCategory = db.prepare(`INSERT INTO bill_categories (id, bill_id, category_id, amount, amount_cents) VALUES (?,?,?,?,?)`);
   const advanceBillDue = db.prepare(`UPDATE bills SET due_date=?, updated_at=datetime('now') WHERE id=?`);
 
   for (const bill of recurringBills) {
     if (checkBillLog.get(bill.id, bill.due_date)) continue;
 
     const newId = randomUUID();
-    insertBill.run(newId, bill.description, bill.amount, bill.due_date, 'pending', bill.account_id, bill.category_id, bill.auto_settle);
-    for (const payment of billPayments.all(bill.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[]) {
-      insertBillPayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
+    insertBill.run(newId, bill.description, fromCents(bill.amount_cents), asCents(bill.amount_cents), bill.due_date, 'pending', bill.account_id, bill.category_id, bill.auto_settle);
+    for (const payment of billPayments.all(bill.id) as { account_id: string; amount_cents: number; is_pix: 0 | 1 }[]) {
+      insertBillPayment.run(randomUUID(), newId, payment.account_id, fromCents(payment.amount_cents), asCents(payment.amount_cents), payment.is_pix);
     }
-    for (const category of billCategories.all(bill.id) as { category_id: string; amount: number }[]) {
-      insertBillCategory.run(randomUUID(), newId, category.category_id, category.amount);
+    for (const category of billCategories.all(bill.id) as { category_id: string; amount_cents: number }[]) {
+      insertBillCategory.run(randomUUID(), newId, category.category_id, fromCents(category.amount_cents), asCents(category.amount_cents));
     }
     insertBillLog.run(bill.id, 'bill', bill.due_date);
     result.bills++;
@@ -136,32 +138,32 @@ export function generateRecurrences(): RecurrenceResult {
     SELECT * FROM receivables
     WHERE recurring = 1 AND status != 'received' AND due_date <= date('now', '+' || ? || ' days')
   `).all(BILL_LEAD_DAYS) as {
-    id: string; description: string; amount: number; due_date: string;
+    id: string; description: string; amount_cents: number; due_date: string;
     account_id: string | null; category_id: string | null; auto_settle: 0 | 1; recurrence_interval: ReceivableInterval;
   }[];
 
   const checkReceivableLog  = db.prepare(`SELECT 1 FROM recurring_log WHERE source_id=? AND source_type='receivable' AND generated_date=?`);
   const insertReceivableLog = db.prepare(`INSERT OR IGNORE INTO recurring_log (source_id, source_type, generated_date) VALUES (?,?,?)`);
   const insertReceivable    = db.prepare(`
-    INSERT INTO receivables (id, description, amount, due_date, status, account_id, category_id, recurring, auto_settle)
-    VALUES (?,?,?,?,?,?,?,0,?)
+    INSERT INTO receivables (id, description, amount, amount_cents, due_date, status, account_id, category_id, recurring, auto_settle)
+    VALUES (?,?,?,?,?,?,?,?,0,?)
   `);
-  const receivablePayments = db.prepare(`SELECT account_id, amount, is_pix FROM receivable_payments WHERE receivable_id=?`);
-  const insertReceivablePayment = db.prepare(`INSERT INTO receivable_payments (id, receivable_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)`);
-  const receivableCategories = db.prepare(`SELECT category_id, amount FROM receivable_categories WHERE receivable_id=?`);
-  const insertReceivableCategory = db.prepare(`INSERT INTO receivable_categories (id, receivable_id, category_id, amount) VALUES (?,?,?,?)`);
+  const receivablePayments = db.prepare(`SELECT account_id, amount_cents, is_pix FROM receivable_payments WHERE receivable_id=?`);
+  const insertReceivablePayment = db.prepare(`INSERT INTO receivable_payments (id, receivable_id, account_id, amount, amount_cents, is_pix) VALUES (?,?,?,?,?,?)`);
+  const receivableCategories = db.prepare(`SELECT category_id, amount_cents FROM receivable_categories WHERE receivable_id=?`);
+  const insertReceivableCategory = db.prepare(`INSERT INTO receivable_categories (id, receivable_id, category_id, amount, amount_cents) VALUES (?,?,?,?,?)`);
   const advanceReceivableDue = db.prepare(`UPDATE receivables SET due_date=?, updated_at=datetime('now') WHERE id=?`);
 
   for (const receivable of recurringReceivables) {
     if (checkReceivableLog.get(receivable.id, receivable.due_date)) continue;
 
     const newId = randomUUID();
-    insertReceivable.run(newId, receivable.description, receivable.amount, receivable.due_date, 'pending', receivable.account_id, receivable.category_id, receivable.auto_settle);
-    for (const payment of receivablePayments.all(receivable.id) as { account_id: string; amount: number; is_pix: 0 | 1 }[]) {
-      insertReceivablePayment.run(randomUUID(), newId, payment.account_id, payment.amount, payment.is_pix);
+    insertReceivable.run(newId, receivable.description, fromCents(receivable.amount_cents), asCents(receivable.amount_cents), receivable.due_date, 'pending', receivable.account_id, receivable.category_id, receivable.auto_settle);
+    for (const payment of receivablePayments.all(receivable.id) as { account_id: string; amount_cents: number; is_pix: 0 | 1 }[]) {
+      insertReceivablePayment.run(randomUUID(), newId, payment.account_id, fromCents(payment.amount_cents), asCents(payment.amount_cents), payment.is_pix);
     }
-    for (const category of receivableCategories.all(receivable.id) as { category_id: string; amount: number }[]) {
-      insertReceivableCategory.run(randomUUID(), newId, category.category_id, category.amount);
+    for (const category of receivableCategories.all(receivable.id) as { category_id: string; amount_cents: number }[]) {
+      insertReceivableCategory.run(randomUUID(), newId, category.category_id, fromCents(category.amount_cents), asCents(category.amount_cents));
     }
     insertReceivableLog.run(receivable.id, 'receivable', receivable.due_date);
     result.receivables++;

@@ -59,6 +59,37 @@ describe('money migration preflight', () => {
     assert.deepEqual(violations, []);
   });
 
+  test('escritas da agenda e recorrências incluem a coluna canônica', () => {
+    const sourceRoot = join(process.cwd(), 'src/main');
+    const agendaTables = new Set([
+      'bills', 'bill_payments', 'bill_categories', 'bill_price_history',
+      'receivables', 'receivable_payments', 'receivable_categories', 'receivable_price_history',
+    ]);
+    const moneyByTable = new Map<string, string[]>();
+    for (const item of MONEY_COLUMNS) {
+      if (!agendaTables.has(item.table)) continue;
+      moneyByTable.set(item.table, [...(moneyByTable.get(item.table) ?? []), item.column]);
+    }
+    const violations: string[] = [];
+    const insert = /INSERT\s+INTO\s+["']?([a-z_]+)["']?\s*\(([^)]*)\)/gi;
+
+    for (const file of typescriptFiles(sourceRoot)) {
+      const source = readFileSync(file, 'utf8');
+      for (const match of source.matchAll(insert)) {
+        const monetaryColumns = moneyByTable.get(match[1]);
+        if (!monetaryColumns) continue;
+        const insertedColumns = new Set(match[2].split(',').map(column => column.trim().replace(/["']/g, '')));
+        for (const column of monetaryColumns) {
+          if (insertedColumns.has(column) && !insertedColumns.has(`${column}_cents`)) {
+            violations.push(`${relative(sourceRoot, file)}: ${match[1]}.${column}`);
+          }
+        }
+      }
+    }
+
+    assert.deepEqual(violations, []);
+  });
+
   test('reconcilia positivos, negativos, zero e inteiros em centavos', () => {
     const db = database();
     try {

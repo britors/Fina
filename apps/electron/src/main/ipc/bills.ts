@@ -1,15 +1,24 @@
 import { ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
-import { adjustBalance } from './transactions';
-import { attachToInvoice } from '../invoices';
+import { adjustBalanceCents } from './transactions';
+import { attachToInvoiceCents } from '../invoices';
 import type { Bill, BillInterval, BillPriceIncrease, CategorySplit, CategorySplitWithCategory, PaymentSplit, PaymentSplitWithAccount } from '../../shared/types';
 import { categoryOrChildPredicate } from '../categoryHierarchyQueries';
 import { isPixEligibleAccountType } from '../../shared/utils';
-import { reconcileMoneyParts } from '../../shared/money';
+import { asCents, fromCents, reconcileMoneyParts, toExactCents, type Cents } from '../../shared/money';
 
 type BillInput = Omit<Bill, 'id' | 'created_at' | 'updated_at'> & { payments?: PaymentSplit[]; categories?: CategorySplit[] };
 type BillUpdateInput = Partial<Bill> & { id: string; payments?: PaymentSplit[]; categories?: CategorySplit[] };
+
+function requireBillAmountCents(amount: number): Cents {
+  if (!Number.isFinite(amount) || amount < 0) throw new Error('Informe um valor válido para a conta a pagar.');
+  try {
+    return toExactCents(amount);
+  } catch {
+    throw new Error('Informe o valor da conta a pagar com no máximo duas casas decimais.');
+  }
+}
 
 function autoMarkOverdue(): void {
   getDb().prepare(
@@ -119,9 +128,10 @@ function assertExpenseCategory(categoryId: string): void {
 function replaceBillPayments(billId: string, payments: PaymentSplit[]): void {
   const db = getDb();
   db.prepare('DELETE FROM bill_payments WHERE bill_id = ?').run(billId);
-  const stmt = db.prepare('INSERT INTO bill_payments (id, bill_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
+  const stmt = db.prepare('INSERT INTO bill_payments (id, bill_id, account_id, amount, amount_cents, is_pix) VALUES (?,?,?,?,?,?)');
   for (const payment of payments) {
-    stmt.run(randomUUID(), billId, payment.account_id, payment.amount, payment.is_pix ? 1 : 0);
+    const cents = toExactCents(payment.amount);
+    stmt.run(randomUUID(), billId, payment.account_id, fromCents(cents), cents, payment.is_pix ? 1 : 0);
   }
 }
 
@@ -138,9 +148,10 @@ function getBillPayments(billId: string): PaymentSplitWithAccount[] {
 function replaceBillCategories(billId: string, categories: CategorySplit[]): void {
   const db = getDb();
   db.prepare('DELETE FROM bill_categories WHERE bill_id = ?').run(billId);
-  const stmt = db.prepare('INSERT INTO bill_categories (id, bill_id, category_id, amount) VALUES (?,?,?,?)');
+  const stmt = db.prepare('INSERT INTO bill_categories (id, bill_id, category_id, amount, amount_cents) VALUES (?,?,?,?,?)');
   for (const category of categories) {
-    stmt.run(randomUUID(), billId, category.category_id, category.amount);
+    const cents = toExactCents(category.amount);
+    stmt.run(randomUUID(), billId, category.category_id, fromCents(cents), cents);
   }
 }
 
@@ -163,21 +174,21 @@ function enrichBills<T extends Bill>(bills: T[]): (T & { payments: PaymentSplitW
   return bills.map(bill => enrichBill(bill)!);
 }
 
-function latestPriceHistoryAmount(billId: string): number | null {
+function latestPriceHistoryAmountCents(billId: string): Cents | null {
   const row = getDb().prepare(
-    `SELECT amount FROM bill_price_history WHERE bill_id = ? ORDER BY changed_at DESC, rowid DESC LIMIT 1`
-  ).get(billId) as { amount: number } | undefined;
-  return row?.amount ?? null;
+    `SELECT amount_cents FROM bill_price_history WHERE bill_id = ? ORDER BY changed_at DESC, rowid DESC LIMIT 1`
+  ).get(billId) as { amount_cents: number } | undefined;
+  return row ? asCents(row.amount_cents) : null;
 }
 
 // Registra o valor de uma conta recorrente sempre que ele mudar, para
 // permitir detectar aumento de preço de assinaturas (bills:getPriceIncreases).
-function trackPriceHistory(billId: string, amount: number): void {
-  const previous = latestPriceHistoryAmount(billId);
-  if (previous !== null && Math.abs(previous - amount) < 0.005) return;
+function trackPriceHistory(billId: string, amountCents: Cents): void {
+  const previous = latestPriceHistoryAmountCents(billId);
+  if (previous === amountCents) return;
   getDb().prepare(
-    'INSERT INTO bill_price_history (id, bill_id, amount) VALUES (?,?,?)'
-  ).run(randomUUID(), billId, amount);
+    'INSERT INTO bill_price_history (id, bill_id, amount, amount_cents) VALUES (?,?,?,?)'
+  ).run(randomUUID(), billId, fromCents(amountCents), amountCents);
 }
 
 function markBillAsPaid({ id, category_id, categories: inputCategories, date, payments: inputPayments }: {
@@ -191,6 +202,7 @@ function markBillAsPaid({ id, category_id, categories: inputCategories, date, pa
   const bill = db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined;
   if (!bill) return null;
   if (bill.status === 'paid') return bill;
+  const billAmountCents = requireBillAmountCents(bill.amount);
 
   const payments = normalizePayments({
     amount: bill.amount,
@@ -215,8 +227,9 @@ function markBillAsPaid({ id, category_id, categories: inputCategories, date, pa
   db.transaction(() => {
     if (bill.recurring) {
       for (const payment of payments) {
-        const signedDelta = adjustBalance(payment.account_id, -payment.amount);
-        attachToInvoice(payment.account_id, paidAt, signedDelta);
+        const paymentCents = toExactCents(payment.amount);
+        const signedDelta = adjustBalanceCents(payment.account_id, -paymentCents as Cents);
+        attachToInvoiceCents(payment.account_id, paidAt, signedDelta);
       }
       db.prepare(`UPDATE bills SET status='paid', updated_at=datetime('now') WHERE id=?`).run(id);
       replaceBillPayments(id, payments);
@@ -226,20 +239,22 @@ function markBillAsPaid({ id, category_id, categories: inputCategories, date, pa
 
     const txId = randomUUID();
     db.prepare(
-      'INSERT INTO transactions (id, account_id, category_id, description, amount, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,0)'
-    ).run(txId, payments[0].account_id, categories[0].category_id, bill.description, bill.amount, 'expense', paidAt, 'confirmed', null);
-    const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, is_pix) VALUES (?,?,?,?,?)');
+      'INSERT INTO transactions (id, account_id, category_id, description, amount, amount_cents, type, date, status, notes, recurring) VALUES (?,?,?,?,?,?,?,?,?,?,0)'
+    ).run(txId, payments[0].account_id, categories[0].category_id, bill.description, fromCents(billAmountCents), billAmountCents, 'expense', paidAt, 'confirmed', null);
+    const txPaymentStmt = db.prepare('INSERT INTO transaction_payments (id, transaction_id, account_id, amount, amount_cents, is_pix) VALUES (?,?,?,?,?,?)');
     const invoiceLinkStmt = db.prepare('UPDATE transaction_payments SET invoice_id = ? WHERE id = ?');
     for (const payment of payments) {
       const paymentId = randomUUID();
-      txPaymentStmt.run(paymentId, txId, payment.account_id, payment.amount, payment.is_pix ? 1 : 0);
-      const signedDelta = adjustBalance(payment.account_id, -payment.amount);
-      const invoiceId = attachToInvoice(payment.account_id, paidAt, signedDelta);
+      const paymentCents = toExactCents(payment.amount);
+      txPaymentStmt.run(paymentId, txId, payment.account_id, fromCents(paymentCents), paymentCents, payment.is_pix ? 1 : 0);
+      const signedDelta = adjustBalanceCents(payment.account_id, -paymentCents as Cents);
+      const invoiceId = attachToInvoiceCents(payment.account_id, paidAt, signedDelta);
       if (invoiceId) invoiceLinkStmt.run(invoiceId, paymentId);
     }
-    const txCategoryStmt = db.prepare('INSERT INTO transaction_categories (id, transaction_id, category_id, amount) VALUES (?,?,?,?)');
+    const txCategoryStmt = db.prepare('INSERT INTO transaction_categories (id, transaction_id, category_id, amount, amount_cents) VALUES (?,?,?,?,?)');
     for (const category of categories) {
-      txCategoryStmt.run(randomUUID(), txId, category.category_id, category.amount);
+      const categoryCents = toExactCents(category.amount);
+      txCategoryStmt.run(randomUUID(), txId, category.category_id, fromCents(categoryCents), categoryCents);
     }
     db.prepare('DELETE FROM bills WHERE id = ?').run(id);
   })();
@@ -307,6 +322,7 @@ export function registerBillHandlers(): void {
   });
 
   ipcMain.handle('bills:create', (_e, data: BillInput) => {
+    const amountCents = requireBillAmountCents(data.amount);
     const payments = normalizePayments(data, true);
     const categories = normalizeCategories(data, true);
     const primaryAccountId = payments[0]?.account_id ?? data.account_id ?? null;
@@ -316,11 +332,11 @@ export function registerBillHandlers(): void {
     const shouldMarkAsPaid = data.status === 'paid';
     db.transaction(() => {
       db.prepare(
-        'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring, auto_settle, recurrence_interval) VALUES (?,?,?,?,?,?,?,?,?,?)'
-      ).run(id, data.description, data.amount, data.due_date, shouldMarkAsPaid ? 'pending' : (data.status ?? 'pending'), primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly');
+        'INSERT INTO bills (id, description, amount, amount_cents, due_date, status, account_id, category_id, recurring, auto_settle, recurrence_interval) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
+      ).run(id, data.description, fromCents(amountCents), amountCents, data.due_date, shouldMarkAsPaid ? 'pending' : (data.status ?? 'pending'), primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly');
       replaceBillPayments(id, payments);
       replaceBillCategories(id, categories);
-      if (data.recurring) trackPriceHistory(id, data.amount);
+      if (data.recurring) trackPriceHistory(id, amountCents);
     })();
     if (shouldMarkAsPaid) {
       markBillAsPaid({ id, category_id: data.category_id ?? undefined, categories: data.categories, date: data.due_date, payments: data.payments });
@@ -338,13 +354,14 @@ export function registerBillHandlers(): void {
     if (!Number.isInteger(times) || times < 1) throw new Error('Informe quantas vezes repetir (mínimo 1).');
 
     const createdIds: string[] = [];
+    const amountCents = requireBillAmountCents(bill.amount);
     db.transaction(() => {
       for (let i = 1; i <= times; i++) {
         const newId = randomUUID();
         const newDue = addInterval(bill.due_date, interval, i);
         db.prepare(
-          'INSERT INTO bills (id, description, amount, due_date, status, account_id, category_id, recurring, auto_settle) VALUES (?,?,?,?,?,?,?,0,?)'
-        ).run(newId, bill.description, bill.amount, newDue, 'pending', bill.account_id, bill.category_id, bill.auto_settle);
+          'INSERT INTO bills (id, description, amount, amount_cents, due_date, status, account_id, category_id, recurring, auto_settle) VALUES (?,?,?,?,?,?,?,?,0,?)'
+        ).run(newId, bill.description, fromCents(amountCents), amountCents, newDue, 'pending', bill.account_id, bill.category_id, bill.auto_settle);
         replaceBillPayments(newId, getBillPayments(bill.id));
         replaceBillCategories(newId, getBillCategories(bill.id));
         createdIds.push(newId);
@@ -360,6 +377,7 @@ export function registerBillHandlers(): void {
     if (data.status === 'paid' && current.status !== 'paid') {
       throw new Error('Use bills:markAsPaid para registrar o pagamento.');
     }
+    const amountCents = requireBillAmountCents(data.amount!);
     const payments = normalizePayments(data as BillInput, true);
     const categories = normalizeCategories(data as BillInput, true);
     const primaryAccountId = payments[0]?.account_id ?? data.account_id ?? null;
@@ -367,11 +385,11 @@ export function registerBillHandlers(): void {
     const db = getDb();
     db.transaction(() => {
       db.prepare(
-        `UPDATE bills SET description=?, amount=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, auto_settle=?, recurrence_interval=?, updated_at=datetime('now') WHERE id=?`
-      ).run(data.description, data.amount, data.due_date, data.status, primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
+        `UPDATE bills SET description=?, amount_cents=?, due_date=?, status=?, account_id=?, category_id=?, recurring=?, auto_settle=?, recurrence_interval=?, updated_at=datetime('now') WHERE id=?`
+      ).run(data.description, amountCents, data.due_date, data.status, primaryAccountId, primaryCategoryId, data.recurring ? 1 : 0, data.auto_settle ? 1 : 0, data.recurrence_interval ?? 'monthly', id);
       replaceBillPayments(id, payments);
       replaceBillCategories(id, categories);
-      if (data.recurring && data.amount != null) trackPriceHistory(id, data.amount);
+      if (data.recurring) trackPriceHistory(id, amountCents);
     })();
     return enrichBill(db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as Bill | undefined);
   });
@@ -385,19 +403,20 @@ export function registerBillHandlers(): void {
   // nas notificações nativas/e-mail/webhook.
   ipcMain.handle('bills:getPriceIncreases', () => {
     return getDb().prepare(`
-      SELECT b.id as bill_id, b.description, prev.amount as previous_amount, last.amount as new_amount, last.changed_at
+      SELECT b.id as bill_id, b.description, prev.amount_cents / 100.0 as previous_amount,
+        last.amount_cents / 100.0 as new_amount, last.changed_at
       FROM bills b
       JOIN (
-        SELECT bill_id, amount, changed_at,
+        SELECT bill_id, amount_cents, changed_at,
                ROW_NUMBER() OVER (PARTITION BY bill_id ORDER BY changed_at DESC, rowid DESC) as rn
         FROM bill_price_history
       ) last ON last.bill_id = b.id AND last.rn = 1
       JOIN (
-        SELECT bill_id, amount, changed_at,
+        SELECT bill_id, amount_cents, changed_at,
                ROW_NUMBER() OVER (PARTITION BY bill_id ORDER BY changed_at DESC, rowid DESC) as rn
         FROM bill_price_history
       ) prev ON prev.bill_id = b.id AND prev.rn = 2
-      WHERE b.recurring = 1 AND last.amount > prev.amount
+      WHERE b.recurring = 1 AND last.amount_cents > prev.amount_cents
       ORDER BY last.changed_at DESC
     `).all() as BillPriceIncrease[];
   });

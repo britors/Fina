@@ -4061,6 +4061,18 @@
     "es-ES": "Indique el importe de la meta.",
     "zh-CN": "请输入目标金额。"
   },
+  "Informe o valor da conta a pagar com no máximo duas casas decimais.": {
+    "pt-BR": "Informe o valor da conta a pagar com no máximo duas casas decimais.",
+    "en-US": "Enter the bill amount with no more than two decimal places.",
+    "es-ES": "Introduzca el importe de la cuenta por pagar con un máximo de dos decimales.",
+    "zh-CN": "输入应付账款金额，最多保留两位小数。"
+  },
+  "Informe o valor da conta a receber com no máximo duas casas decimais.": {
+    "pt-BR": "Informe o valor da conta a receber com no máximo duas casas decimais.",
+    "en-US": "Enter the receivable amount with no more than two decimal places.",
+    "es-ES": "Introduzca el importe de la cuenta por cobrar con un máximo de dos decimales.",
+    "zh-CN": "输入应收账款金额，最多保留两位小数。"
+  },
   "Informe o vencimento antes de salvar.": {
     "pt-BR": "Informe o vencimento antes de salvar.",
     "en-US": "Enter the due date before saving.",
@@ -4108,6 +4120,18 @@
     "en-US": "Enter a valid contribution amount.",
     "es-ES": "Ingrese un monto de contribución válido.",
     "zh-CN": "输入有效的捐款金额。"
+  },
+  "Informe um valor válido para a conta a pagar.": {
+    "pt-BR": "Informe um valor válido para a conta a pagar.",
+    "en-US": "Enter a valid bill amount.",
+    "es-ES": "Introduzca un importe válido para la cuenta por pagar.",
+    "zh-CN": "输入有效的应付账款金额。"
+  },
+  "Informe um valor válido para a conta a receber.": {
+    "pt-BR": "Informe um valor válido para a conta a receber.",
+    "en-US": "Enter a valid receivable amount.",
+    "es-ES": "Introduzca un importe válido para la cuenta por cobrar.",
+    "zh-CN": "输入有效的应收账款金额。"
   },
   "Informe o valor da fatura com no máximo duas casas decimais.": {
     "pt-BR": "Informe o valor da fatura com no máximo duas casas decimais.",

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '../database';
 import { projectCompoundGrowth, simulateDebtPayoff } from '../../shared/utils';
 import type { Debt, DebtSimulation, DebtVsInvestComparison } from '../../shared/types';
+import { fromCents, toExactCents } from '../../shared/money';
 
 type CreatePayload = Omit<Debt, 'id' | 'created_at' | 'updated_at'>;
 
@@ -105,10 +106,11 @@ export function registerDebtHandlers(): void {
     if (!debt || !debt.next_due_date) throw new Error('Dívida não encontrada ou sem data de vencimento.');
 
     const billId = randomUUID();
+    const amountCents = toExactCents(debt.installment_amount);
     getDb().prepare(`
-      INSERT INTO bills (id, description, amount, due_date, status, account_id, recurring)
-      VALUES (?,?,?,?,'pending',NULL,0)
-    `).run(billId, debt.description, debt.installment_amount, debt.next_due_date);
+      INSERT INTO bills (id, description, amount, amount_cents, due_date, status, account_id, recurring)
+      VALUES (?,?,?,?,?,'pending',NULL,0)
+    `).run(billId, debt.description, fromCents(amountCents), amountCents, debt.next_due_date);
     return getDb().prepare('SELECT * FROM bills WHERE id = ?').get(billId);
   });
 
