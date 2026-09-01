@@ -1,7 +1,7 @@
 # ADR 001 — Valores monetários em centavos inteiros
 
-Status: proposta aprovada para implementação incremental
-Issue: #167
+Status: implementação incremental em andamento
+Issues: #167 (fundação), #169 (adoção canônica)
 
 ## Decisão
 
@@ -28,6 +28,26 @@ Não são centavos:
 - quantidades de ativos;
 - preço unitário de ativos que precise de mais de duas casas;
 - métricas calculadas que não sejam persistidas como dinheiro.
+
+## Escala por moeda
+
+O modelo atual suporta contas em BRL, USD e EUR. As três moedas usam escala 2
+no Fina: um inteiro representa `0,01` da moeda da conta. Portanto,
+`original_balance_cents = 123` significa BRL 1,23, USD 1,23 ou EUR 1,23 de
+acordo com `accounts.currency`; o nome `_cents` designa a unidade menor e não
+implica BRL.
+
+Taxas de câmbio continuam decimais e não usam `*_cents`. A conversão segue
+estas etapas, sem arredondamentos intermediários adicionais:
+
+1. validar o valor original com no máximo duas casas;
+2. multiplicá-lo pela taxa decimal vigente;
+3. arredondar uma única vez o resultado convertido para centavos de BRL;
+4. persistir `original_balance_cents` na moeda da conta e
+   `opening_balance_brl_cents`/`balance_cents` em BRL.
+
+Uma futura moeda cuja unidade menor não tenha escala 2 exige evolução explícita
+do schema e do protocolo. Ela não pode reutilizar silenciosamente estes campos.
 
 ## Inventário de domínio
 
@@ -108,6 +128,36 @@ adotar `*_cents` gradualmente sem divergência.
 - A migração roda em transação e cria backup completo antes da primeira escrita.
 - Enquanto houver dual-write, rollback consiste em voltar a ler o campo legado;
   depois da remoção de `REAL`, rollback exige restore do backup pré-migração.
+
+## Plano para remoção das colunas `REAL`
+
+A remoção não faz parte da migration 045 e só poderá ocorrer depois da janela
+de compatibilidade. Os gates são cumulativos:
+
+1. todas as leituras e escritas financeiras do processo principal usam
+   `*_cents`; um teste de arquitetura bloqueia novas agregações monetárias em
+   colunas legadas;
+2. o diagnóstico local de integridade retorna zero divergências nas 33 colunas
+   inventariadas após operações normais, restore completo e aplicação de patch;
+3. patch `cents-v1` é o formato emitido por padrão e a leitura de
+   `decimal-v1` permanece coberta como importação legada;
+4. mobile v2 está disponível em produção e o suporte a mobile v1 foi encerrado
+   em uma versão anterior, comunicada aos usuários;
+5. existe ao menos um ciclo de release estável com dual-write após todos os
+   gates anteriores, sem correção de divergência monetária pendente.
+
+Cumpridos os gates, uma nova migration reconstruirá cada tabela SQLite sem os
+campos monetários `REAL` e sem os triggers `money_shadow_*`. A migration deverá:
+
+- criar backup completo dedicado antes da reconstrução;
+- executar cada reconstrução e validação de chaves/índices em transação;
+- comparar contagem de linhas e totais inteiros antes/depois;
+- executar `foreign_key_check` e `integrity_check` antes do commit;
+- manter conversão decimal apenas nas fronteiras públicas ainda necessárias.
+
+O rollback dessa migration não recria valores por divisão ou arredondamento:
+restaura o backup dedicado. Backups produzidos depois da remoção declaram a
+versão de schema e não devem ser abertos por versões desktop anteriores.
 
 ## Casos obrigatórios de teste
 
