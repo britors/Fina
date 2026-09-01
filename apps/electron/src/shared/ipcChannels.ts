@@ -49,7 +49,7 @@ export const INVOKE_CHANNELS = [
   'receivables:getUpcoming', 'receivables:list', 'receivables:markAsReceived', 'receivables:update',
   'recurrenceDetection:dismiss', 'recurrenceDetection:list',
   'security:changePassword', 'security:disable', 'security:enable', 'security:status', 'security:unlock',
-  'settings:clearSmtpPassword', 'settings:getAll', 'settings:set', 'settings:setMany',
+  'settings:clearSmtpPassword', 'settings:getAll', 'settings:moneyDiagnostic', 'settings:set', 'settings:setMany',
   'sync:pull', 'sync:push', 'sync:status',
   'transactions:create', 'transactions:createInstallments', 'transactions:delete', 'transactions:get',
   'transactions:getExpenseAnalytics', 'transactions:getExpenseSubcategoryBreakdown',

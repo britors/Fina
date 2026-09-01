@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import {
-  assertMoneyMigrationReady, auditMoneyMigration, MONEY_COLUMNS, type MoneyAuditDatabase,
+  assertMoneyMigrationReady, auditMoneyMigration, auditMoneyShadowConsistency, MONEY_COLUMNS, type MoneyAuditDatabase,
 } from '../src/main/moneyMigrationAudit';
 
 const TEST_COLUMNS = [{ table: 'payments', column: 'amount' }] as const;
@@ -68,6 +68,31 @@ describe('money migration preflight', () => {
       assert.equal(result.ok, true);
       assert.equal(result.columns[0].rows, 5);
       assert.equal(result.columns[0].centsTotal, 1081n);
+    } finally {
+      db.close();
+    }
+  });
+
+  test('diagnostica divergência entre legado e centavos sem alterar os dados', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE payments (amount, amount_cents);
+      INSERT INTO payments VALUES (1.23, 123), (4.56, 455), (7.89, NULL);
+    `);
+    try {
+      const before = db.prepare('SELECT amount, amount_cents FROM payments ORDER BY rowid').all();
+      const result = auditMoneyShadowConsistency(auditDb(db), TEST_COLUMNS);
+      assert.equal(result.ok, false);
+      assert.equal(result.checkedColumns, 1);
+      assert.equal(result.checkedRows, 3);
+      assert.equal(result.divergentRows, 2);
+      assert.deepEqual(result.violations.map(item => ({
+        rowId: item.rowId, reason: item.reason, expectedCents: item.expectedCents,
+      })), [
+        { rowId: 2, reason: 'value-mismatch', expectedCents: 456 },
+        { rowId: 3, reason: 'null-mismatch', expectedCents: null },
+      ]);
+      assert.deepEqual(db.prepare('SELECT amount, amount_cents FROM payments ORDER BY rowid').all(), before);
     } finally {
       db.close();
     }

@@ -10,6 +10,15 @@ import type { Account, BalanceAlertSettings, Category, UpdateStatus } from '../.
 
 type Settings = Record<string, string>;
 
+interface MoneyDiagnostic {
+  ok: boolean;
+  checkedColumns: number;
+  checkedRows: number;
+  divergentRows: number;
+  truncated: boolean;
+  violations: { table: string; column: string; rowId: number; reason: string }[];
+}
+
 function askPatchPassword(mode: 'export' | 'import'): Promise<string | null> {
   return new Promise(resolve => {
     let settled = false;
@@ -517,6 +526,13 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
       <div><div class="settings-row-label">Arquivo do banco</div>
            <div class="settings-row-sub" style="word-break:break-all;max-width:380px">${esc(dbPath)}</div></div>
     </div>
+    <div class="settings-row">
+      <div><div class="settings-row-label">Integridade monetária</div>
+           <div class="settings-row-sub" id="money-diagnostic-result">Compara os valores canônicos em centavos com as colunas legadas, sem alterar os dados.</div></div>
+      <div class="settings-row-right">
+        <button class="btn btn-ghost btn-sm" id="btn-money-diagnostic">Verificar</button>
+      </div>
+    </div>
     <div class="settings-section-label" style="margin-top:20px">BACKUP</div>
     <div class="settings-hr"></div>
     <div class="settings-row">
@@ -629,6 +645,28 @@ async function renderData(el: HTMLElement, s: Settings, dbPath: string): Promise
   el.querySelector('#btn-export')?.addEventListener('click', async () => {
     const savedPath = await invoke<string | null>('backup:export');
     if (savedPath) showAlert(td("Backup salvo em: {value}", [savedPath]));
+  });
+
+  el.querySelector<HTMLButtonElement>('#btn-money-diagnostic')?.addEventListener('click', async event => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const output = el.querySelector<HTMLElement>('#money-diagnostic-result')!;
+    button.disabled = true;
+    output.textContent = 'Verificando integridade monetária...';
+    try {
+      const result = await invoke<MoneyDiagnostic>('settings:moneyDiagnostic');
+      if (result.ok) {
+        output.textContent = `Íntegro: ${result.checkedColumns} colunas e ${result.checkedRows} valores verificados.`;
+      } else {
+        const sample = result.violations
+          .map(item => `${item.table}.${item.column} (linha ${item.rowId}: ${item.reason})`)
+          .join(' · ');
+        output.textContent = `${result.divergentRows} divergência(s) encontrada(s). ${sample}`;
+      }
+    } catch (err) {
+      output.textContent = err instanceof Error ? err.message : 'Não foi possível verificar a integridade monetária.';
+    } finally {
+      button.disabled = false;
+    }
   });
 
   el.querySelector('#btn-export-incremental')?.addEventListener('click', async () => {

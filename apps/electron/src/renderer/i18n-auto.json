@@ -1391,6 +1391,12 @@
     "es-ES": "Comparar con",
     "zh-CN": "与比较"
   },
+  "Compara os valores canônicos em centavos com as colunas legadas, sem alterar os dados.": {
+    "pt-BR": "Compara os valores canônicos em centavos com as colunas legadas, sem alterar os dados.",
+    "en-US": "Compares canonical cent values with legacy columns without changing any data.",
+    "es-ES": "Compara los valores canónicos en centavos con las columnas heredadas sin modificar los datos.",
+    "zh-CN": "将规范的分值与旧列进行比较，而不更改数据。"
+  },
   "Comparar com quantos dias atrás": {
     "pt-BR": "Comparar com quantos dias atrás",
     "en-US": "Compare how many days ago",
@@ -4211,6 +4217,12 @@
     "es-ES": "Instituciones conectadas",
     "zh-CN": "关联机构"
   },
+  "Integridade monetária": {
+    "pt-BR": "Integridade monetária",
+    "en-US": "Monetary integrity",
+    "es-ES": "Integridad monetaria",
+    "zh-CN": "货币完整性"
+  },
   "Intervalo": {
     "pt-BR": "Intervalo",
     "en-US": "Interval",
@@ -5416,6 +5428,12 @@
     "en-US": "Unable to validate encrypted backup with current password.",
     "es-ES": "No se puede validar la copia de seguridad cifrada con la contraseña actual.",
     "zh-CN": "无法使用当前密码验证加密备份。"
+  },
+  "Não foi possível verificar a integridade monetária.": {
+    "pt-BR": "Não foi possível verificar a integridade monetária.",
+    "en-US": "Unable to verify monetary integrity.",
+    "es-ES": "No se pudo verificar la integridad monetaria.",
+    "zh-CN": "无法验证货币完整性。"
   },
   "Não foi possível verificar a conexão na Belvo.": {
     "pt-BR": "Não foi possível verificar a conexão na Belvo.",
@@ -8789,6 +8807,12 @@
     "es-ES": "Ver todo",
     "zh-CN": "查看全部"
   },
+  "Verificando integridade monetária...": {
+    "pt-BR": "Verificando integridade monetária...",
+    "en-US": "Checking monetary integrity...",
+    "es-ES": "Verificando la integridad monetaria...",
+    "zh-CN": "正在检查货币完整性..."
+  },
   "Verificando se há uma nova versão…": {
     "pt-BR": "Verificando se há uma nova versão…",
     "en-US": "Checking for a new version…",
@@ -9377,6 +9401,12 @@
     "es-ES": "{value} categoría{value} por encima del límite.",
     "zh-CN": "{value} 类别{value} 超出限制。"
   },
+  "{value} divergência(s) encontrada(s). {value}": {
+    "pt-BR": "{value} divergência(s) encontrada(s). {value}",
+    "en-US": "{value} divergence(s) found. {value}",
+    "es-ES": "Se encontraron {value} divergencia(s). {value}",
+    "zh-CN": "发现 {value} 个差异。{value}"
+  },
   "{value} de \"{value}\" {value}": {
     "pt-BR": "{value} de \"{value}\" {value}",
     "en-US": "{value} from \"{value}\" {value}",
@@ -9610,6 +9640,12 @@
     "en-US": "Icon",
     "es-ES": "Icono",
     "zh-CN": "图标"
+  },
+  "Íntegro: {value} colunas e {value} valores verificados.": {
+    "pt-BR": "Íntegro: {value} colunas e {value} valores verificados.",
+    "en-US": "Healthy: {value} columns and {value} values checked.",
+    "es-ES": "Íntegro: {value} columnas y {value} valores verificados.",
+    "zh-CN": "完整：已检查 {value} 列和 {value} 个值。"
   },
   "Última sincronização": {
     "pt-BR": "Última sincronização",

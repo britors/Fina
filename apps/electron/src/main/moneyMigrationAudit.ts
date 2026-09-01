@@ -71,6 +71,25 @@ export interface MoneyAuditResult {
   allocationViolations: MoneyAllocationViolation[];
 }
 
+export type MoneyShadowViolationReason = 'null-mismatch' | 'value-mismatch' | 'cents-storage-type' | 'legacy-invalid';
+
+export interface MoneyShadowViolation extends MoneyColumn {
+  rowId: number;
+  legacyValue: unknown;
+  centsValue: unknown;
+  expectedCents: number | null;
+  reason: MoneyShadowViolationReason;
+}
+
+export interface MoneyShadowAuditResult {
+  ok: boolean;
+  checkedColumns: number;
+  checkedRows: number;
+  divergentRows: number;
+  violations: MoneyShadowViolation[];
+  truncated: boolean;
+}
+
 interface MoneyAllocation {
   parentTable: string;
   childTable: string;
@@ -99,6 +118,74 @@ export interface MoneyAllocationViolation {
 
 function quoteIdentifier(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
+}
+
+export function auditMoneyShadowConsistency(
+  db: MoneyAuditDatabase,
+  columns: readonly MoneyColumn[] = MONEY_COLUMNS,
+  sampleLimit = 50,
+): MoneyShadowAuditResult {
+  if (!Number.isInteger(sampleLimit) || sampleLimit < 1 || sampleLimit > 1000) {
+    throw new Error('money-shadow-sample-limit-invalid');
+  }
+  let checkedRows = 0;
+  let divergentRows = 0;
+  const violations: MoneyShadowViolation[] = [];
+
+  for (const spec of columns) {
+    const table = quoteIdentifier(spec.table);
+    const legacy = quoteIdentifier(spec.column);
+    const cents = quoteIdentifier(`${spec.column}_cents`);
+    const mismatch = `CAST(ROUND(${legacy} * 100) AS INTEGER) IS NOT ${cents}
+      OR (${cents} IS NOT NULL AND typeof(${cents}) != 'integer')`;
+    const summary = db.prepare(`
+      SELECT COUNT(*) AS checked_rows,
+        COUNT(*) FILTER (WHERE ${mismatch}) AS divergent_rows
+      FROM ${table}
+    `).all()[0] as { checked_rows: number; divergent_rows: number };
+    checkedRows += summary.checked_rows;
+    divergentRows += summary.divergent_rows;
+
+    const remaining = sampleLimit - violations.length;
+    if (remaining <= 0 || summary.divergent_rows === 0) continue;
+    const rows = db.prepare(`
+      SELECT rowid AS row_id, ${legacy} AS legacy_value, ${cents} AS cents_value,
+        typeof(${cents}) AS cents_storage_type
+      FROM ${table}
+      WHERE ${mismatch}
+      ORDER BY rowid
+      LIMIT ${remaining}
+    `).all() as { row_id: number; legacy_value: unknown; cents_value: unknown; cents_storage_type: string }[];
+    for (const row of rows) {
+      let expectedCents: number | null = null;
+      let reason: MoneyShadowViolationReason;
+      if (row.cents_value != null && row.cents_storage_type !== 'integer') {
+        reason = 'cents-storage-type';
+      } else if ((row.legacy_value == null) !== (row.cents_value == null)) {
+        reason = 'null-mismatch';
+      } else {
+        try {
+          expectedCents = row.legacy_value == null ? null : toCents(row.legacy_value as number);
+          reason = 'value-mismatch';
+        } catch {
+          reason = 'legacy-invalid';
+        }
+      }
+      violations.push({
+        ...spec, rowId: row.row_id, legacyValue: row.legacy_value,
+        centsValue: row.cents_value, expectedCents, reason,
+      });
+    }
+  }
+
+  return {
+    ok: divergentRows === 0,
+    checkedColumns: columns.length,
+    checkedRows,
+    divergentRows,
+    violations,
+    truncated: divergentRows > violations.length,
+  };
 }
 
 export function auditMoneyMigration(

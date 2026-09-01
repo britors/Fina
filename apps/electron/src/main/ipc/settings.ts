@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { getDb } from '../database';
 import { deleteLocalSecret, getLocalSecret, setLocalSecret } from '../localSecrets';
 import { filterPublicSettings, validatePublicSettingEntries } from '../settingsPolicy';
+import { auditMoneyShadowConsistency } from '../moneyMigrationAudit';
 
 function migrateLegacySmtpPassword(): void {
   const row = getDb().prepare('SELECT value FROM app_settings WHERE key = ?').get('smtp_pass') as { value: string } | undefined;
@@ -36,6 +37,8 @@ function persistEntries(entries: Record<string, string>): void {
 }
 
 export function registerSettingsHandlers(): void {
+  ipcMain.handle('settings:moneyDiagnostic', () => auditMoneyShadowConsistency(getDb()));
+
   ipcMain.handle('settings:getAll', () => {
     migrateLegacySmtpPassword();
     const rows = getDb()
